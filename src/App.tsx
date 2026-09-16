@@ -1,11 +1,13 @@
-import { useEffect, useReducer, useState } from 'react'
-import type { ChangeEvent, FormEvent, ReactNode } from 'react'
+import { useReducer, useState } from 'react'
+import type { ChangeEvent, Dispatch, FormEvent, ReactNode } from 'react'
 import {
   companies,
   gameReducer,
   initialGame,
   sampleApplication,
   type Application,
+  type GameAction,
+  type GameState,
   type Stage,
 } from './game'
 import './App.css'
@@ -57,9 +59,12 @@ function WindowFrame({
 
   return (
     <section
+      id={`window-${id}`}
+      tabIndex={-1}
       className={`window ${active ? 'window-active' : ''} ${className}`}
       aria-labelledby={headingId}
       onClick={onFocus}
+      onFocusCapture={onFocus}
     >
       <div className="window-chrome">
         <div className="window-lights" aria-hidden="true">
@@ -90,22 +95,21 @@ function WindowFrame({
 
 function App() {
   const [state, dispatch] = useReducer(gameReducer, initialGame)
-  const [application, setApplication] = useState<Application>(emptyApplication)
-  const [windows, setWindows] = useState<WindowState>(initialWindows)
-  const [activeWindow, setActiveWindow] = useState<WindowId>('apply')
 
-  useEffect(() => {
-    if (state.stage === 'applying') {
-      setWindows({ apply: true, offer: false, messenger: false, terminal: false })
-      setActiveWindow('apply')
-    } else if (state.stage === 'offer') {
-      setWindows({ apply: false, offer: true, messenger: false, terminal: false })
-      setActiveWindow('offer')
-    } else {
-      setWindows({ apply: false, offer: false, messenger: true, terminal: true })
-      setActiveWindow('messenger')
-    }
-  }, [state.stage])
+  return <Desktop key={state.stage} state={state} dispatch={dispatch} />
+}
+
+function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<GameAction> }) {
+  const [application, setApplication] = useState<Application>(emptyApplication)
+  const [windows, setWindows] = useState<WindowState>(() => ({
+    apply: state.stage === 'applying',
+    offer: state.stage === 'offer',
+    messenger: state.stage === 'hired',
+    terminal: state.stage === 'hired',
+  }))
+  const [activeWindow, setActiveWindow] = useState<WindowId>(
+    state.stage === 'hired' ? 'messenger' : state.stage === 'offer' ? 'offer' : 'apply',
+  )
 
   const currentCompany = state.company ?? companies[0] ?? 'A Very Real Startup'
   const stageWindows: WindowId[] =
@@ -118,6 +122,11 @@ function App() {
   const openWindow = (id: WindowId) => {
     setWindows((current) => ({ ...current, [id]: true }))
     setActiveWindow(id)
+    requestAnimationFrame(() => {
+      const window = document.getElementById(`window-${id}`)
+      window?.focus({ preventScroll: true })
+      window?.scrollIntoView({ block: 'nearest' })
+    })
   }
 
   const minimizeWindow = (id: WindowId) => {
@@ -130,6 +139,8 @@ function App() {
 
   const resetSlice = () => {
     setApplication(emptyApplication())
+    setWindows(initialWindows)
+    setActiveWindow('apply')
     dispatch({ type: 'reset' })
   }
 
@@ -151,7 +162,8 @@ function App() {
   const updateApplication =
     (field: keyof Application) =>
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setApplication((current) => ({ ...current, [field]: event.currentTarget.value }))
+      const value = event.currentTarget.value
+      setApplication((current) => ({ ...current, [field]: value }))
     }
 
   const fillSample = () => setApplication({ ...sampleApplication })

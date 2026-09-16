@@ -30,7 +30,8 @@ button {
 }
 
 .app-shell {
-  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   color: var(--ink);
@@ -38,6 +39,7 @@ button {
 }
 
 .menu-bar {
+  flex-shrink: 0;
   min-height: 44px;
   padding: 0.42rem clamp(0.8rem, 2.8vw, 2.4rem);
   display: flex;
@@ -135,8 +137,8 @@ button {
   position: relative;
   isolation: isolate;
   flex: 1;
-  min-height: 650px;
-  overflow: hidden;
+  min-height: 0;
+  overflow: auto;
   padding: clamp(2.5rem, 6vh, 5.2rem) clamp(1rem, 5vw, 5rem) 4.3rem;
   background:
     radial-gradient(circle at 17% 20%, rgba(255, 255, 255, 0.91), transparent 28%),
@@ -1023,6 +1025,7 @@ button {
 }
 
 .dock-area {
+  flex-shrink: 0;
   position: relative;
   z-index: 8;
   display: flex;
@@ -1200,6 +1203,7 @@ textarea:focus-visible {
 
 @media (max-width: 620px) {
   .menu-bar {
+    flex-wrap: wrap;
     min-height: 42px;
     gap: 0.65rem;
     padding-inline: 0.72rem;
@@ -1213,6 +1217,9 @@ textarea:focus-visible {
 
   .resource-bar {
     gap: 0.22rem;
+    flex-wrap: wrap;
+    margin-left: 0;
+    width: 100%;
   }
 
   .resource-pill {
@@ -1226,7 +1233,7 @@ textarea:focus-visible {
 
   .desktop-area {
     min-height: 0;
-    overflow: visible;
+    overflow: auto;
     padding: 2.15rem 0.78rem 2.9rem;
   }
 
@@ -1287,6 +1294,10 @@ textarea:focus-visible {
 
   .messenger-sidebar {
     display: none;
+  }
+
+  .messenger-app {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .chat-header,
