@@ -517,20 +517,6 @@
   color: #a99ac3;
 }
 
-.employment-lane-empty {
-  display: grid;
-  min-height: 4rem;
-  place-content: center;
-  gap: 0.2rem;
-  color: #988aae;
-  font-size: 0.72rem;
-  text-align: center;
-}
-
-.employment-lane-empty span:first-child {
-  color: #b891ff;
-  font-size: 1.2rem;
-}
 
 .employment-lane-task {
   min-width: 0;
