@@ -38,6 +38,7 @@ const tokenFormatter = new Intl.NumberFormat('en-US', { notation: 'compact', max
 function App() {
   const [state, dispatch] = useReducer(gameReducer, initialGame)
   const [now, setNow] = useState(() => new Date())
+  const [isDevPaused, setIsDevPaused] = useState(false)
 
   useEffect(() => {
     let lastTickAt = Date.now()
@@ -47,23 +48,40 @@ function App() {
       const elapsedSeconds = Math.floor((currentTime - lastTickAt) / 1000)
       if (elapsedSeconds > 0) {
         lastTickAt += elapsedSeconds * 1000
-        if (state.stage === 'hired') {
+        if (state.stage === 'hired' && !isDevPaused) {
           dispatch({ type: 'tick', seconds: elapsedSeconds })
         }
       }
     }, 1000)
 
     return () => window.clearInterval(timer)
-  }, [state.stage])
+  }, [state.stage, isDevPaused])
 
   return (
     <div className={`app-shell stage-${state.stage}`}>
       <DesktopWidgets state={state} now={now} />
-      <Desktop key={state.stage === 'hired' || state.stage === 'lost' ? 'employment' : state.stage} state={state} dispatch={dispatch} />
+      <Desktop
+        key={state.stage === 'hired' || state.stage === 'lost' ? 'employment' : state.stage}
+        state={state}
+        dispatch={dispatch}
+        isDevPaused={isDevPaused}
+        onToggleDevPause={() => setIsDevPaused((current) => !current)}
+      />
     </div>
   )
 }
-function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<GameAction> }) {
+
+function Desktop({
+  state,
+  dispatch,
+  isDevPaused,
+  onToggleDevPause,
+}: {
+  state: GameState
+  dispatch: Dispatch<GameAction>
+  isDevPaused: boolean
+  onToggleDevPause: () => void
+}) {
   const [application, setApplication] = useState<Application>(emptyApplication)
   const hasEmployment =
     state.stage === 'hired' ||
@@ -153,12 +171,14 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
 
   const beginGame = () => {
     cancelAutofill()
+    setIsDevPaused(false)
     setApplication(emptyApplication())
     dispatch({ type: 'start', seed: Math.floor(Math.random() * 0x7fffffff) })
   }
 
   const retryGame = () => {
     cancelAutofill()
+    setIsDevPaused(false)
     setApplication(emptyApplication())
     dispatch({ type: 'reset' })
   }
@@ -241,6 +261,7 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
 
   const handleDevJump = (stage: Stage) => {
     cancelAutofill()
+    setIsDevPaused(false)
     setApplication(emptyApplication())
     dispatch({ type: 'dev-jump', stage })
   }
@@ -427,9 +448,12 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
           <details className="dev-tools">
             <summary>Dev</summary>
             <div className="dev-controls">
+              <button type="button" aria-pressed={isDevPaused} onClick={onToggleDevPause}>
+                {isDevPaused ? 'Resume timer' : 'Pause timer'}
+              </button>
+              <button type="button" onClick={() => dispatch({ type: 'tick', seconds: 10 })}>Advance 10s</button>
               <button type="button" onClick={() => handleDevJump('offer')}>Offer</button>
               <button type="button" onClick={() => handleDevJump('hired')}>Hired</button>
-              <button type="button" onClick={() => dispatch({ type: 'tick', seconds: 30 })}>Advance 30s</button>
               <button type="button" onClick={retryGame}>Reset</button>
             </div>
           </details>
