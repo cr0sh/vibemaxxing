@@ -67,6 +67,13 @@ const taskDeadline = (task: WorkTask, elapsed: number): string => {
 }
 const taskCost = (task: WorkTask): number => 10_000 * task.difficulty
 
+function findIdleTerminalSlot(tasks: readonly WorkTask[], terminalId: TerminalId, slotCount: number): number | null {
+  for (let slot = 0; slot < slotCount; slot += 1) {
+    if (!tasks.some((task) => task.terminalId === terminalId && task.slot === slot)) return slot
+  }
+  return null
+}
+
 function TaskAttachment({
   state,
   task,
@@ -337,7 +344,7 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
         </div>
         <UnreadIndicator count={unreadCount} onClick={scrollToLatest} />
       </div>
-      <DragDropHint visible={artifactDropVisible}>Release to deliver in Messenger</DragDropHint>
+      <DragDropHint visible={artifactDropVisible}>Drop artifact here</DragDropHint>
     </div>
   )
 }
@@ -375,6 +382,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
       const dropped = state.tasks.find((candidate) => candidate.id === id)
       if (dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null) {
         event.preventDefault()
+        event.stopPropagation()
         dispatch({ type: 'start-task', id, terminalId, slot })
         clear()
       }
@@ -415,11 +423,6 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
       <div className="employment-lane-heading">
         <span>{yolo ? 'YOLO' : task ? taskStatusLabel(task).toLowerCase() : 'idle'}</span>
       </div>
-      {!task && (
-        <div className="employment-lane-empty">
-          <span aria-hidden="true">⌁</span>
-        </div>
-      )}
       {task && (
         <div className="employment-lane-task">
           <p><span className="terminal-prompt">~</span> task/{task.id} · {task.title}</p>
@@ -475,27 +478,47 @@ export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }
   const yolo = terminal?.yolo ?? false
   const refillIn = 100 - (state.elapsed % 100 || 0)
   const { isSourceActive, clear } = useDragDropHints()
-  const hasIdleSlot = Array.from({ length: slots }, (_, slot) => !state.tasks.some((task) => task.terminalId === terminalId && task.slot === slot)).some(Boolean)
-  const taskDropVisible = state.stage === 'hired' && hasIdleSlot && isSourceActive('task')
+  const idleSlot = findIdleTerminalSlot(state.tasks, terminalId, slots)
+  const taskDropVisible = state.stage === 'hired' && idleSlot !== null && isSourceActive('task')
   const upgradeDropVisible = state.stage === 'hired' && (['split', 'yolo', 'terminal'] as const).some((upgrade) => (
     isSourceActive('upgrade', upgrade) &&
     upgradePrice(state, upgrade, upgrade === 'terminal' ? 'terminal' : terminalId) !== null
   ))
-  const handleUpgradeDrop = (event: DragEvent<HTMLDivElement>) => {
+  const handleTerminalDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (state.stage !== 'hired') return
     const upgrade = event.dataTransfer.getData('application/x-vibemaxxer-upgrade')
-    if (state.stage !== 'hired' || (upgrade !== 'split' && upgrade !== 'yolo' && upgrade !== 'terminal')) return
-    const terminalTarget = upgrade === 'terminal' ? 'terminal' : terminalId
-    if (upgradePrice(state, upgrade, terminalTarget) === null) return
-    event.preventDefault()
-    dispatch({ type: 'buy-upgrade', upgrade, terminalId: terminalTarget })
-    clear()
+    if (upgrade === 'split' || upgrade === 'yolo' || upgrade === 'terminal') {
+      const terminalTarget = upgrade === 'terminal' ? 'terminal' : terminalId
+      if (upgradePrice(state, upgrade, terminalTarget) === null) return
+      event.preventDefault()
+      dispatch({ type: 'buy-upgrade', upgrade, terminalId: terminalTarget })
+      clear()
+      return
+    }
+    const kind = event.dataTransfer.getData('application/x-vibemaxxer-task')
+    const id = Number(kind)
+    const dropped = state.tasks.find((candidate) => candidate.id === id)
+    if (
+      idleSlot !== null &&
+      kind &&
+      Number.isInteger(id) &&
+      dropped?.status === 'assigned' &&
+      dropped.terminalId === null &&
+      dropped.slot === null
+    ) {
+      event.preventDefault()
+      dispatch({ type: 'start-task', id, terminalId, slot: idleSlot })
+      clear()
+    }
   }
 
-  const handleUpgradeDragOver = (event: DragEvent<HTMLDivElement>) => {
+  const handleTerminalDragOver = (event: DragEvent<HTMLDivElement>) => {
+    const hasTask = event.dataTransfer.types.includes('application/x-vibemaxxer-task')
+    const hasUpgrade = event.dataTransfer.types.includes('application/x-vibemaxxer-upgrade')
     if (
       state.stage === 'hired' &&
-      event.dataTransfer.types.includes('application/x-vibemaxxer-upgrade') &&
-      (['split', 'yolo', 'terminal'] as const).some((upgrade) => upgradePrice(state, upgrade, upgrade === 'terminal' ? 'terminal' : terminalId) !== null)
+      ((hasTask && idleSlot !== null) ||
+        (hasUpgrade && (['split', 'yolo', 'terminal'] as const).some((upgrade) => upgradePrice(state, upgrade, upgrade === 'terminal' ? 'terminal' : terminalId) !== null)))
     ) {
       event.preventDefault()
       event.dataTransfer.dropEffect = 'move'
@@ -505,8 +528,8 @@ export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }
   return (
     <div
       className={`terminal-app employment-terminal ${yolo ? 'employment-terminal-yolo' : ''} ${taskDropVisible || upgradeDropVisible ? 'employment-drop-active' : ''}`}
-      onDragOver={handleUpgradeDragOver}
-      onDrop={handleUpgradeDrop}
+      onDragOver={handleTerminalDragOver}
+      onDrop={handleTerminalDrop}
     >
       <div className="terminal-topline">
         <span><span className="terminal-dot" aria-hidden="true" /> agent-shell</span>
@@ -536,7 +559,7 @@ export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }
         </div>
       </div>
       <DragDropHint visible={taskDropVisible || upgradeDropVisible}>
-        {taskDropVisible ? 'Release to start task' : 'Release to install on this terminal'}
+        {taskDropVisible ? 'Drop task here' : 'Drop upgrade here'}
       </DragDropHint>
     </div>
   )
