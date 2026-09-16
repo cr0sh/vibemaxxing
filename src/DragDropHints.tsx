@@ -17,6 +17,7 @@ type DragDropState = Readonly<{
 type DragDropContextValue = DragDropState & {
   beginSource: (source: DragDropSource) => void
   leaveSource: (source: DragDropSource) => void
+  disposeSource: (source: DragDropSource) => void
   startDrag: (source: DragDropSource) => void
   endDrag: () => void
   clear: () => void
@@ -38,6 +39,9 @@ export function DragDropHintsProvider({ children }: { children: ReactNode }) {
   }, [])
   const leaveSource = useCallback((source: DragDropSource) => {
     setState((current) => current.dragging || !sameSource(current.source, source) ? current : { source: null, dragging: false })
+  }, [])
+  const disposeSource = useCallback((source: DragDropSource) => {
+    setState((current) => sameSource(current.source, source) ? { source: null, dragging: false } : current)
   }, [])
   const startDrag = useCallback((source: DragDropSource) => {
     setState({ source, dragging: true })
@@ -66,11 +70,12 @@ export function DragDropHintsProvider({ children }: { children: ReactNode }) {
     ...state,
     beginSource,
     leaveSource,
+    disposeSource,
     startDrag,
     endDrag,
     clear,
     isSourceActive,
-  }), [beginSource, clear, endDrag, isSourceActive, leaveSource, startDrag, state])
+  }), [beginSource, clear, disposeSource, endDrag, isSourceActive, leaveSource, startDrag, state])
 
   return <DragDropContext.Provider value={value}>{children}</DragDropContext.Provider>
 }
@@ -82,12 +87,12 @@ export function useDragDropHints(): DragDropContextValue {
 }
 
 export function useDragDropSource(source: DragDropSource, enabled: boolean) {
-  const { beginSource, leaveSource, startDrag, endDrag, clear } = useDragDropHints()
+  const { beginSource, leaveSource, disposeSource, startDrag, endDrag, clear } = useDragDropHints()
 
   useEffect(() => {
     if (!enabled) leaveSource(source)
-    return () => leaveSource(source)
-  }, [enabled, leaveSource, source.kind, source.id])
+    return () => disposeSource(source)
+  }, [disposeSource, enabled, leaveSource, source.kind, source.id])
 
   const begin = useCallback(() => {
     if (enabled) beginSource(source)
