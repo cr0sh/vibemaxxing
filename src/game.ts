@@ -6,7 +6,17 @@ export type Application = {
 
 export type Stage = 'ready' | 'applying' | 'offer' | 'hired' | 'lost'
 
-type TaskStatus = 'assigned' | 'working' | 'approval' | 'blocked' | 'artifact'
+export type TaskStatus = 'assigned' | 'working' | 'approval' | 'blocked' | 'artifact'
+
+export type TerminalId = 'terminal' | 'terminal-2'
+
+export type TerminalUpgrade = 'split' | 'yolo' | 'terminal'
+
+export type TerminalState = {
+  id: TerminalId
+  slots: number
+  yolo: boolean
+}
 
 export type WorkTask = {
   id: number
@@ -19,6 +29,9 @@ export type WorkTask = {
   progress: number
   nextApprovalAt: number
   artifactName: string
+  terminalId: TerminalId | null
+  slot: number | null
+  approvalPrompt: string | null
 }
 
 export type GameState = {
@@ -30,7 +43,8 @@ export type GameState = {
   tokens: number
   money: number
   elapsed: number
-  task: WorkTask | null
+  tasks: WorkTask[]
+  terminals: TerminalState[]
   completedTasks: number
   nextTaskAt: number
   nextPingAt: number
@@ -51,10 +65,11 @@ export type GameAction =
   | { type: 'tick'; seconds: number }
   | { type: 'welcome-react' }
   | { type: 'acknowledge-ping' }
-  | { type: 'start-task'; id: number }
+  | { type: 'start-task'; id: number; terminalId: TerminalId; slot: number }
   | { type: 'approve-task'; id: number; approved: boolean }
   | { type: 'deliver-task'; id: number }
   | { type: 'buy-tokens' }
+  | { type: 'buy-upgrade'; upgrade: TerminalUpgrade; terminalId: TerminalId }
 
 export const companies: readonly string[] = [
   'Prompt & Circumstance',
@@ -65,14 +80,20 @@ export const companies: readonly string[] = [
 ]
 
 const MAX_ENERGY = 100
-const MAX_TOKENS = 1_000_000
+export const MAX_TOKENS = 10_000_000
 const TOKEN_TASK_COST = 10_000
-const TOKEN_PURCHASE_AMOUNT = 100_000
-const TOKEN_PURCHASE_COST = 10
+export const TOKEN_PURCHASE_AMOUNT = 100_000
+export const TOKEN_PURCHASE_COST = 10
 const TASK_INTERVAL = 120
 const MIN_EXPECTATION = 0.05
 const MAX_EXPECTATION = 1
 const UINT_RANGE = 4_294_967_296
+const MAX_TERMINAL_SLOTS = 4
+const MAX_TERMINALS = 2
+const SPLIT_PRICES: readonly number[] = [20, 40, 100]
+const YOLO_PRICE = 42
+const SECONDARY_PRICE_MULTIPLIER = 2
+const ADDITIONAL_TERMINAL_PRICE = 100
 
 const taskBlueprints: readonly Pick<WorkTask, 'title' | 'description' | 'artifactName'>[] = [
   {
@@ -117,6 +138,19 @@ const taskBlueprints: readonly Pick<WorkTask, 'title' | 'description' | 'artifac
   },
 ]
 
+const APPROVAL_PROMPTS: readonly string[] = [
+  'Apply the generated patch?',
+  'Run the test suite?',
+  'Execute the build?',
+  'Update the lockfile?',
+  'Run the migration?',
+  'Remove unused files?',
+  'Retry the failed command?',
+  'Run the formatter?',
+  'Update the configuration?',
+  'Commit the changes?',
+]
+
 function normalizeSeed(seed: number): number {
   if (!Number.isFinite(seed)) {
     return 1
@@ -138,6 +172,12 @@ function drawInteger(rng: number, minimum: number, maximum: number): readonly [n
   return [next, minimum + Math.floor(unit * (maximum - minimum + 1))]
 }
 
+function drawApprovalCheckpoint(rng: number): readonly [number, number, string] {
+  const [delayRng, approvalDelay] = drawInteger(rng, 1, 5)
+  const [nextRng, promptIndex] = drawInteger(delayRng, 0, APPROVAL_PROMPTS.length - 1)
+  return [nextRng, approvalDelay, APPROVAL_PROMPTS[promptIndex] ?? APPROVAL_PROMPTS[0] ?? '']
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value))
 }
@@ -147,17 +187,14 @@ function deadlineFor(difficulty: number, expectation: number, elapsed: number): 
   return elapsed + (1.5 * difficulty) / safeExpectation
 }
 
-function createTask(
-  state: GameState,
-  elapsed: number,
-): readonly [WorkTask, number] {
+function createTask(state: GameState, elapsed: number): readonly [WorkTask, number] {
   const [blueprintRng, blueprintIndex] = drawInteger(state.rng, 0, taskBlueprints.length - 1)
   const [nextRng, difficulty] = drawInteger(blueprintRng, 6, 12)
   const blueprint = taskBlueprints[blueprintIndex] ?? taskBlueprints[0]
 
   return [
     {
-      id: state.completedTasks + 1,
+      id: state.completedTasks + state.tasks.length + 1,
       title: blueprint.title,
       description: blueprint.description,
       difficulty,
@@ -167,28 +204,37 @@ function createTask(
       progress: 0,
       nextApprovalAt: 0,
       artifactName: blueprint.artifactName,
+      terminalId: null,
+      slot: null,
+      approvalPrompt: null
     },
     nextRng,
   ]
 }
 
+const PRIMARY_TERMINAL: TerminalState = { id: 'terminal', slots: 1, yolo: false }
+
 function createHiredState(state: GameState): GameState {
   const expectation = clamp(state.expectation, MIN_EXPECTATION, MAX_EXPECTATION)
-  const [task, taskRng] = createTask({ ...state, task: null, expectation }, state.elapsed)
+  const [task, taskRng] = createTask(
+    { ...state, tasks: [], terminals: [{ ...PRIMARY_TERMINAL }], expectation },
+    state.elapsed,
+  )
   const [nextRng, pingDelay] = drawInteger(taskRng, 90, 150)
 
   return {
     ...state,
     stage: 'hired',
     energy: MAX_ENERGY,
-    task,
+    tasks: [task],
+    terminals: [{ ...PRIMARY_TERMINAL }],
     nextTaskAt: state.elapsed + TASK_INTERVAL,
     nextPingAt: state.elapsed + pingDelay,
     pingDeadline: null,
     welcomeReacted: false,
     lastDelivery: null,
     failure: null,
-    expectation: clamp(state.expectation, MIN_EXPECTATION, MAX_EXPECTATION),
+    expectation,
     rng: nextRng,
   }
 }
@@ -197,7 +243,6 @@ function lose(state: GameState, failure: string): GameState {
   return {
     ...state,
     stage: 'lost',
-    pingDeadline: null,
     failure,
   }
 }
@@ -211,7 +256,8 @@ export const initialGame: GameState = {
   tokens: MAX_TOKENS,
   money: 0,
   elapsed: 0,
-  task: null,
+  tasks: [],
+  terminals: [{ ...PRIMARY_TERMINAL }],
   completedTasks: 0,
   nextTaskAt: 0,
   nextPingAt: 0,
@@ -221,6 +267,37 @@ export const initialGame: GameState = {
   failure: null,
   expectation: 0.2,
   rng: 1,
+}
+
+function getTerminal(state: GameState, terminalId: TerminalId): TerminalState | undefined {
+  return state.terminals.find((terminal) => terminal.id === terminalId)
+}
+
+function isTerminalId(value: string): value is TerminalId {
+  return value === 'terminal' || value === 'terminal-2'
+}
+
+
+function advanceTask(task: WorkTask, elapsed: number, terminals: readonly TerminalState[]): WorkTask {
+  if (task.status !== 'working') {
+    return task
+  }
+
+  const progress = Math.min(task.difficulty, task.progress + 1)
+  if (progress >= task.difficulty) {
+    return { ...task, progress, status: 'artifact', nextApprovalAt: 0, approvalPrompt: null }
+  }
+
+  const yolo = task.terminalId !== null && terminals.some(
+    (terminal) => terminal.id === task.terminalId && terminal.yolo,
+  )
+  if (yolo) {
+    return { ...task, progress, nextApprovalAt: 0 }
+  }
+
+  return elapsed >= task.nextApprovalAt
+    ? { ...task, progress, status: 'approval' }
+    : { ...task, progress }
 }
 
 function tickHired(state: GameState, seconds: number): GameState {
@@ -239,7 +316,7 @@ function tickHired(state: GameState, seconds: number): GameState {
       tokens: (current.elapsed + 1) % 100 === 0 ? MAX_TOKENS : current.tokens,
     }
 
-    if (current.task !== null && current.elapsed >= current.task.deadlineAt) {
+    if (current.tasks.some((task) => current.elapsed >= task.deadlineAt)) {
       return lose(current, 'The task deadline was missed.')
     }
 
@@ -247,22 +324,16 @@ function tickHired(state: GameState, seconds: number): GameState {
       return lose(current, 'The boss ping went unanswered.')
     }
 
-    if (current.task?.status === 'working') {
-      const progress = Math.min(current.task.difficulty, current.task.progress + 1)
-      const task =
-        progress >= current.task.difficulty
-          ? { ...current.task, progress, status: 'artifact' as const, nextApprovalAt: 0 }
-          : current.elapsed >= current.task.nextApprovalAt
-            ? { ...current.task, progress, status: 'approval' as const }
-            : { ...current.task, progress }
-      current = { ...current, task }
+    current = {
+      ...current,
+      tasks: current.tasks.map((task) => advanceTask(task, current.elapsed, current.terminals)),
     }
 
-    if (current.task === null && current.nextTaskAt > 0 && current.elapsed >= current.nextTaskAt) {
+    if (current.nextTaskAt > 0 && current.elapsed >= current.nextTaskAt) {
       const [task, nextRng] = createTask(current, current.elapsed)
       current = {
         ...current,
-        task,
+        tasks: [...current.tasks, task],
         nextTaskAt: current.nextTaskAt + TASK_INTERVAL,
         rng: nextRng,
       }
@@ -280,6 +351,48 @@ function tickHired(state: GameState, seconds: number): GameState {
   }
 
   return current
+}
+
+export function upgradePrice(
+  state: GameState,
+  upgrade: TerminalUpgrade,
+  terminalId: TerminalId,
+): number | null {
+  if (
+    state.stage !== 'hired' ||
+    !isTerminalId(terminalId) ||
+    (upgrade !== 'split' && upgrade !== 'yolo' && upgrade !== 'terminal')
+  ) {
+    return null
+  }
+
+  if (upgrade === 'terminal') {
+    return terminalId === 'terminal' &&
+      state.terminals.length < MAX_TERMINALS &&
+      getTerminal(state, 'terminal-2') === undefined
+      ? ADDITIONAL_TERMINAL_PRICE
+      : null
+  }
+
+  const terminal = getTerminal(state, terminalId)
+  if (terminal === undefined) {
+    return null
+  }
+
+  if (upgrade === 'yolo') {
+    return terminal.yolo ? null : YOLO_PRICE
+  }
+
+  if (terminal.slots < 1 || terminal.slots >= MAX_TERMINAL_SLOTS) {
+    return null
+  }
+
+  const basePrice = SPLIT_PRICES[terminal.slots - 1]
+  return basePrice === undefined
+    ? null
+    : terminalId === 'terminal-2'
+      ? basePrice * SECONDARY_PRICE_MULTIPLIER
+      : basePrice
 }
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
@@ -342,7 +455,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           ...state,
           stage: 'applying',
           company: null,
-          task: null,
+          tasks: [],
+          terminals: [{ ...PRIMARY_TERMINAL }],
           nextTaskAt: 0,
           nextPingAt: 0,
           pingDeadline: null,
@@ -360,7 +474,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             state.company !== null && companies.includes(state.company)
               ? state.company
               : companies[0] ?? null,
-          task: null,
+          tasks: [],
+          terminals: [{ ...PRIMARY_TERMINAL }],
           pingDeadline: null,
           failure: null,
         }
@@ -406,28 +521,58 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'start-task': {
       if (
         state.stage !== 'hired' ||
-        state.task === null ||
-        state.task.id !== action.id ||
-        state.task.status !== 'assigned'
+        !isTerminalId(action.terminalId) ||
+        !Number.isInteger(action.slot) ||
+        action.slot < 0
       ) {
         return state
       }
 
-      const cost = TOKEN_TASK_COST * state.task.difficulty
-      if (state.tokens < cost) {
+      const terminal = getTerminal(state, action.terminalId)
+      const taskIndex = state.tasks.findIndex((task) => task.id === action.id)
+      const task = taskIndex >= 0 ? state.tasks[taskIndex] : undefined
+      if (
+        terminal === undefined ||
+        action.slot >= terminal.slots ||
+        task === undefined ||
+        task.status !== 'assigned' ||
+        task.terminalId !== null ||
+        task.slot !== null ||
+        state.tasks.some((candidate) => candidate.terminalId === action.terminalId && candidate.slot === action.slot && candidate.status !== 'assigned')
+      ) {
         return state
       }
 
-      const [nextRng, approvalDelay] = drawInteger(state.rng, 1, 5)
+      const cost = TOKEN_TASK_COST * task.difficulty
+      if (!Number.isFinite(cost) || cost < 0 || state.tokens < cost) {
+        return state
+      }
+
+      const yolo = terminal.yolo
+      let nextRng = state.rng
+      let nextApprovalAt = 0
+      let nextApprovalPrompt: string | null = null
+      if (!yolo) {
+        const drawn = drawApprovalCheckpoint(state.rng)
+        nextRng = drawn[0]
+        nextApprovalAt = state.elapsed + drawn[1]
+        nextApprovalPrompt = drawn[2]
+      }
+
       return {
         ...state,
         tokens: state.tokens - cost,
-        task: {
-          ...state.task,
-          startedAt: state.elapsed,
-          status: 'working',
-          nextApprovalAt: state.elapsed + approvalDelay,
-        },
+        tasks: state.tasks.map((candidate, index) => index === taskIndex
+          ? {
+              ...candidate,
+              terminalId: action.terminalId,
+              slot: action.slot,
+              startedAt: state.elapsed,
+              status: 'working',
+              nextApprovalAt,
+              approvalPrompt: nextApprovalPrompt,
+            }
+          : candidate),
         rng: nextRng,
       }
     }
@@ -435,42 +580,68 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'approve-task': {
       if (
         state.stage !== 'hired' ||
-        state.task === null ||
-        state.task.id !== action.id ||
-        (state.task.status !== 'approval' && state.task.status !== 'blocked') ||
         typeof action.approved !== 'boolean'
       ) {
         return state
       }
 
-      if (!action.approved) {
-        return { ...state, task: { ...state.task, status: 'blocked' } }
+      const taskIndex = state.tasks.findIndex((task) => task.id === action.id)
+      const task = taskIndex >= 0 ? state.tasks[taskIndex] : undefined
+      if (
+        task === undefined ||
+        (task.status !== 'approval' && task.status !== 'blocked')
+      ) {
+        return state
       }
 
-      const [nextRng, approvalDelay] = drawInteger(state.rng, 1, 5)
+      if (!action.approved) {
+        return {
+          ...state,
+          tasks: state.tasks.map((candidate, index) => index === taskIndex
+            ? { ...candidate, status: 'blocked' }
+            : candidate),
+        }
+      }
+
+      if (
+        task.terminalId !== null &&
+        state.terminals.some((terminal) => terminal.id === task.terminalId && terminal.yolo)
+      ) {
+        return {
+          ...state,
+          tasks: state.tasks.map((candidate, index) => index === taskIndex
+            ? { ...candidate, status: 'working', nextApprovalAt: 0, approvalPrompt: null }
+            : candidate),
+        }
+      }
+
+      const [nextRng, approvalDelay, approvalPrompt] = drawApprovalCheckpoint(state.rng)
       return {
         ...state,
-        task: {
-          ...state.task,
-          status: 'working',
-          nextApprovalAt: state.elapsed + approvalDelay,
-        },
+        tasks: state.tasks.map((candidate, index) => index === taskIndex
+          ? {
+              ...candidate,
+              status: 'working',
+              nextApprovalAt: state.elapsed + approvalDelay,
+              approvalPrompt,
+            }
+          : candidate),
         rng: nextRng,
       }
     }
 
     case 'deliver-task': {
-      if (
-        state.stage !== 'hired' ||
-        state.task === null ||
-        state.task.id !== action.id ||
-        state.task.status !== 'artifact'
-      ) {
+      if (state.stage !== 'hired') {
         return state
       }
 
-      const duration = Math.max(1, state.elapsed - (state.task.startedAt ?? state.elapsed))
-      const observedSpeed = clamp(state.task.difficulty / duration, MIN_EXPECTATION, MAX_EXPECTATION)
+      const task = state.tasks.find((candidate) => candidate.id === action.id)
+      if (task === undefined || task.status !== 'artifact') {
+        return state
+      }
+
+      const duration = Math.max(1, state.elapsed - (task.startedAt ?? state.elapsed))
+      const observedSpeed = clamp(task.difficulty / duration, MIN_EXPECTATION, MAX_EXPECTATION)
       const expectation = clamp(
         state.expectation * 0.8 + observedSpeed * 0.2,
         MIN_EXPECTATION,
@@ -479,9 +650,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       return {
         ...state,
-        task: null,
+        tasks: state.tasks.filter((candidate) => candidate.id !== action.id),
         completedTasks: state.completedTasks + 1,
-        lastDelivery: state.task.artifactName,
+        lastDelivery: task.artifactName,
         expectation,
       }
     }
@@ -499,6 +670,47 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         money: state.money - TOKEN_PURCHASE_COST,
         tokens: Math.min(MAX_TOKENS, state.tokens + TOKEN_PURCHASE_AMOUNT),
+      }
+    }
+
+    case 'buy-upgrade': {
+      const price = upgradePrice(state, action.upgrade, action.terminalId)
+      if (price === null || state.money < price) {
+        return state
+      }
+
+      if (action.upgrade === 'terminal') {
+        return {
+          ...state,
+          money: state.money - price,
+          terminals: [...state.terminals, { id: 'terminal-2', slots: 1, yolo: false }],
+        }
+      }
+
+      if (action.upgrade === 'split') {
+        return {
+          ...state,
+          money: state.money - price,
+          terminals: state.terminals.map((terminal) => terminal.id === action.terminalId
+            ? { ...terminal, slots: Math.min(MAX_TERMINAL_SLOTS, terminal.slots + 1) }
+            : terminal),
+        }
+      }
+
+      return {
+        ...state,
+        money: state.money - price,
+        terminals: state.terminals.map((terminal) => terminal.id === action.terminalId
+          ? { ...terminal, yolo: true }
+          : terminal),
+        tasks: state.tasks.map((task) => task.terminalId === action.terminalId
+          ? {
+              ...task,
+              status: task.status === 'approval' || task.status === 'blocked' ? 'working' : task.status,
+              nextApprovalAt: 0,
+              approvalPrompt: null,
+            }
+          : task),
       }
     }
   }
