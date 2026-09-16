@@ -408,6 +408,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
               <div className="employment-button-row">
                 <button className="employment-terminal-button" type="button" onClick={() => approval(true)} disabled={state.stage !== 'hired'}>Yes — approve and resume</button>
                 <button className="employment-terminal-button employment-danger-button" type="button" onClick={() => approval(false)} disabled={state.stage !== 'hired'}>No — needs changes</button>
+              </div>
             </div>
           )}
 
