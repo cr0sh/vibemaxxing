@@ -13,6 +13,14 @@ function isNearBottom(element: HTMLElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= NEAR_BOTTOM_TOLERANCE
 }
 
+function hasSameMessageIds(current: ReadonlySet<string>, next: readonly string[]): boolean {
+  if (current.size !== next.length) return false
+  for (const id of next) {
+    if (!current.has(id)) return false
+  }
+  return true
+}
+
 function scrollBehavior(): ScrollBehavior {
   if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
     return 'auto'
@@ -20,10 +28,10 @@ function scrollBehavior(): ScrollBehavior {
   return 'smooth'
 }
 
-function scrollToBottom(element: HTMLElement): void {
+function scrollToBottom(element: HTMLElement, behavior: ScrollBehavior = 'auto'): void {
   const top = Math.max(0, element.scrollHeight - element.clientHeight)
   if (typeof element.scrollTo === 'function') {
-    element.scrollTo({ top, behavior: scrollBehavior() })
+    element.scrollTo({ top, behavior })
   } else {
     element.scrollTop = top
   }
@@ -34,20 +42,18 @@ export function useUnreadMessages(
   scrollRef: RefObject<HTMLElement | null>,
 ): { unreadCount: number; scrollToLatest: () => void } {
   const [unreadCount, setUnreadCount] = useState(0)
-  const currentMessageIds = useRef(new Set(messageIds))
-  const seenMessageIds = useRef(new Set(messageIds))
-  const unreadMessageIds = useRef(new Set<string>())
+  const currentMessageIds = useRef<Set<string> | null>(null)
+  const seenMessageIds = useRef<Set<string> | null>(null)
+  const unreadMessageIds = useRef<Set<string> | null>(null)
   const publishedCount = useRef(0)
   const mounted = useRef(false)
   const frame = useRef<number | null>(null)
   const atBottom = useRef<boolean | null>(null)
-  const pending = useRef<PendingWork>({ messages: false, scroll: false, layout: false })
-
-  // Keep identity-independent message state available to the frame that reconciles the DOM.
-  currentMessageIds.current = new Set(messageIds)
+  const following = useRef(false)
+  const pending = useRef<PendingWork | null>(null)
 
   const publishCount = useCallback(() => {
-    const nextCount = unreadMessageIds.current.size
+    const nextCount = unreadMessageIds.current?.size ?? 0
     if (publishedCount.current === nextCount) return
     publishedCount.current = nextCount
     setUnreadCount(nextCount)
@@ -60,23 +66,37 @@ export function useUnreadMessages(
       if (!mounted.current) return
 
       const element = scrollRef.current
-      if (!element) return
-
       const work = pending.current
-      pending.current = { messages: false, scroll: false, layout: false }
       const ids = currentMessageIds.current
+      const seenIds = seenMessageIds.current
+      const unreadIds = unreadMessageIds.current
+      if (!element || !work || !ids || !seenIds || !unreadIds) return
+      pending.current = null
 
-      // A removed message must not leave a stale unread badge behind.
-      for (const id of unreadMessageIds.current) {
-        if (!ids.has(id)) unreadMessageIds.current.delete(id)
+      // A removed message must not leave stale state behind. Pruning seen IDs also
+      // keeps this bookkeeping bounded and treats a later reappearance as new.
+      for (const id of unreadIds) {
+        if (!ids.has(id)) unreadIds.delete(id)
+      }
+      if (work.messages) {
+        for (const id of seenIds) {
+          if (!ids.has(id)) seenIds.delete(id)
+        }
       }
 
       // Scroll events are sampled in a frame so bursts of wheel/touch events cannot
       // fight message reconciliation or cause a render for every DOM event.
       if (work.scroll) {
         const nearBottom = isNearBottom(element)
-        atBottom.current = nearBottom
-        if (nearBottom) unreadMessageIds.current.clear()
+        if (following.current && !nearBottom) {
+          // Smooth programmatic scrolling emits intermediate events. Keep following
+          // the intended bottom until it arrives, unless user input cancels it.
+          atBottom.current = true
+        } else {
+          following.current = false
+          atBottom.current = nearBottom
+          if (nearBottom) unreadIds.clear()
+        }
       }
 
       // A resize or content reflow should preserve the user's position. If they were
@@ -90,15 +110,15 @@ export function useUnreadMessages(
           atBottom.current = true
         } else if (nearBottom) {
           atBottom.current = true
-          unreadMessageIds.current.clear()
+          unreadIds.clear()
         }
       }
 
       if (work.messages) {
         const newlyAdded: string[] = []
         for (const id of ids) {
-          if (seenMessageIds.current.has(id)) continue
-          seenMessageIds.current.add(id)
+          if (seenIds.has(id)) continue
+          seenIds.add(id)
           newlyAdded.push(id)
         }
 
@@ -107,7 +127,7 @@ export function useUnreadMessages(
           if (atBottom.current) {
             scrollToBottom(element)
           } else {
-            for (const id of newlyAdded) unreadMessageIds.current.add(id)
+            for (const id of newlyAdded) unreadIds.add(id)
           }
         }
       }
@@ -122,17 +142,27 @@ export function useUnreadMessages(
 
     mounted.current = true
     atBottom.current = null
-    pending.current.layout = true
+    following.current = false
+    pending.current = { messages: false, scroll: false, layout: true }
 
     const onScroll = () => {
+      if (!pending.current) pending.current = { messages: false, scroll: false, layout: false }
       pending.current.scroll = true
       scheduleFrame()
     }
+    const cancelFollowing = () => {
+      following.current = false
+    }
     element.addEventListener('scroll', onScroll, { passive: true })
+    element.addEventListener('wheel', cancelFollowing, { passive: true })
+    element.addEventListener('touchstart', cancelFollowing, { passive: true })
+    element.addEventListener('pointerdown', cancelFollowing, { passive: true })
+    element.addEventListener('keydown', cancelFollowing)
 
     const resizeObserver = typeof ResizeObserver === 'undefined'
       ? null
       : new ResizeObserver(() => {
+          if (!pending.current) pending.current = { messages: false, scroll: false, layout: false }
           pending.current.layout = true
           scheduleFrame()
         })
@@ -141,6 +171,7 @@ export function useUnreadMessages(
     const mutationObserver = typeof MutationObserver === 'undefined'
       ? null
       : new MutationObserver(() => {
+          if (!pending.current) pending.current = { messages: false, scroll: false, layout: false }
           pending.current.layout = true
           scheduleFrame()
         })
@@ -151,30 +182,50 @@ export function useUnreadMessages(
     return () => {
       mounted.current = false
       element.removeEventListener('scroll', onScroll)
+      element.removeEventListener('wheel', cancelFollowing)
+      element.removeEventListener('touchstart', cancelFollowing)
+      element.removeEventListener('pointerdown', cancelFollowing)
+      element.removeEventListener('keydown', cancelFollowing)
       resizeObserver?.disconnect()
       mutationObserver?.disconnect()
       if (frame.current !== null) {
         window.cancelAnimationFrame(frame.current)
         frame.current = null
       }
-      pending.current = { messages: false, scroll: false, layout: false }
+      pending.current = null
       atBottom.current = null
+      following.current = false
     }
   }, [scheduleFrame, scrollRef])
 
   useEffect(() => {
+    const currentIds = currentMessageIds.current
+    if (currentIds === null) {
+      const initialIds = new Set(messageIds)
+      currentMessageIds.current = initialIds
+      seenMessageIds.current = new Set(initialIds)
+      unreadMessageIds.current = new Set()
+      return
+    }
+    if (hasSameMessageIds(currentIds, messageIds)) return
+
+    currentMessageIds.current = new Set(messageIds)
+    if (!pending.current) pending.current = { messages: false, scroll: false, layout: false }
     pending.current.messages = true
     scheduleFrame()
   })
 
   const scrollToLatest = useCallback(() => {
     const element = scrollRef.current
-    if (!mounted.current || !element) return
+    const unreadIds = unreadMessageIds.current
+    if (!mounted.current || !element || !unreadIds) return
 
     atBottom.current = true
-    unreadMessageIds.current.clear()
+    unreadIds.clear()
     publishCount()
-    scrollToBottom(element)
+    const behavior = scrollBehavior()
+    following.current = behavior === 'smooth'
+    scrollToBottom(element, behavior)
   }, [publishCount, scrollRef])
 
   return { unreadCount, scrollToLatest }
