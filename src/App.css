@@ -510,14 +510,6 @@ button {
   font-size: 0.67rem;
 }
 
-.chance-badge {
-  padding: 0.28rem 0.48rem;
-  color: #5b3e9f;
-  border-radius: 999px;
-  background: #ece7ff;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-}
 
 .feedback {
   display: flex;
@@ -1275,4 +1267,357 @@ textarea:focus-visible {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+.widget-band {
+  --widget-height: clamp(3.55rem, 7vh, 4.25rem);
+}
+
+.widget-cluster {
+  align-items: stretch;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.clock-widget,
+.date-widget,
+.resource-widget {
+  height: var(--widget-height);
+  min-height: var(--widget-height);
+}
+
+.clock-widget {
+  min-width: 7rem;
+  padding-inline: 0.84rem;
+  font-size: 0.86rem;
+}
+
+.date-widget {
+  width: 4rem;
+  min-width: 4rem;
+}
+
+.calendar-month {
+  padding-top: 0.28rem;
+  font-size: 0.61rem;
+}
+
+.calendar-weekday {
+  padding-bottom: 0.26rem;
+  font-size: 0.54rem;
+}
+
+.date-widget strong {
+  font-size: 1.42rem;
+}
+
+.resource-widget {
+  min-width: 7.5rem;
+  padding: 0.55rem 0.7rem;
+  transition: transform 430ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 220ms ease;
+}
+
+.resource-widget-money,
+.resource-widget-tokens {
+  animation: resource-card-enter 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.widget-band-paid .resource-widget-energy {
+  animation: energy-card-shift 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.widget-label {
+  margin-bottom: 0.34rem;
+  font-size: 0.64rem;
+}
+
+.resource-values {
+  font-size: 0.75rem;
+}
+
+.resource-widget-icon {
+  font-size: 1.27rem;
+}
+
+.new-game-button {
+  padding: 0.58rem 0.82rem;
+  font-size: 0.78rem;
+}
+
+.window-title {
+  font-size: 0.81rem;
+}
+
+.window h2 {
+  font-size: clamp(1.6rem, 2.95vw, 2.3rem);
+}
+
+.company-label {
+  font-size: 0.72rem;
+}
+
+.field-label {
+  font-size: 0.83rem;
+}
+
+.field-label input,
+.field-label textarea {
+  font-size: 0.94rem;
+}
+
+.primary-button,
+.secondary-button {
+  font-size: 0.86rem;
+}
+
+.application-footnote {
+  font-size: 0.77rem;
+}
+
+.cost-badge {
+  padding: 0.28rem 0.52rem;
+  color: #5b3e9f;
+  border-radius: 999px;
+  background: #ece7ff;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  transform: none;
+}
+
+.offer-accept {
+  margin-top: 1.15rem;
+}
+
+.ready-screen {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  place-content: center;
+  justify-items: center;
+  padding: 2rem 1rem 3rem;
+  text-align: center;
+}
+
+.ready-kicker {
+  color: #7758b7;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.ready-screen h1 {
+  margin: 0.72rem 0 0.45rem;
+  color: #2c1e45;
+  font-size: clamp(2rem, 5vw, 3.65rem);
+  letter-spacing: -0.06em;
+  line-height: 1;
+}
+
+.ready-screen p {
+  margin: 0;
+  color: #665a79;
+  font-size: 1rem;
+}
+
+.ready-start {
+  margin-top: 1.4rem;
+  min-width: 9rem;
+  color: #fff;
+  border: 0;
+  background: linear-gradient(135deg, #815cff, #6540d2);
+  box-shadow: 0 11px 24px rgba(100, 63, 210, 0.28);
+}
+
+.loss-card {
+  display: grid;
+  min-height: 100%;
+  place-content: center;
+  justify-items: center;
+  gap: 0.45rem;
+  padding: 1.3rem;
+  text-align: center;
+}
+
+.loss-card h2 {
+  margin: 0.2rem 0 0.3rem;
+}
+
+.loss-card > p:not(.company-label) {
+  max-width: 30rem;
+  margin: 0 0 0.9rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.loss-icon {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  color: #fff;
+  border-radius: 0.9rem;
+  background: linear-gradient(135deg, #d66a74, #7954f6);
+  font-size: 1.65rem;
+}
+
+@keyframes resource-card-enter {
+  from { opacity: 0; transform: translateX(-1.2rem) scale(0.86); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes energy-card-shift {
+  from { transform: translateX(1.1rem); }
+  to { transform: translateX(0); }
+}
+
+@media (max-width: 620px) {
+  .widget-band {
+    --widget-height: 3.25rem;
+    min-height: 4.7rem;
+    padding: 0.55rem 0.58rem 0.42rem;
+  }
+
+  .widget-cluster {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(4.8rem, 0.9fr) minmax(2.85rem, 0.55fr) repeat(3, minmax(3.5rem, 1fr));
+    gap: 0.28rem;
+  }
+
+  .clock-widget,
+  .date-widget,
+  .resource-widget {
+    width: auto;
+    min-width: 0;
+    padding: 0.38rem 0.45rem;
+  }
+
+  .clock-widget {
+    font-size: 0.73rem;
+  }
+
+  .date-widget {
+    min-width: 0;
+  }
+
+  .date-widget strong {
+    font-size: 1.18rem;
+  }
+
+  .resource-widget {
+    gap: 0.3rem;
+  }
+
+  .resource-widget-icon {
+    width: 1.45rem;
+    height: 1.45rem;
+    font-size: 0.92rem;
+  }
+
+  .widget-label {
+    margin-bottom: 0.2rem;
+    font-size: 0.51rem;
+  }
+
+  .resource-values {
+    font-size: 0.65rem;
+  }
+
+  .ready-screen {
+    padding-inline: 0.8rem;
+  }
+
+  .ready-screen p {
+    font-size: 0.9rem;
+  }
+
+  .window h2 {
+    font-size: 1.58rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resource-widget-money,
+  .resource-widget-tokens,
+  .widget-band-paid .resource-widget-energy {
+    animation: none;
+  }
+}
+.submission-stamp span {
+  font-size: 0.67rem;
+}
+
+.feedback {
+  font-size: 0.88rem;
+}
+
+.offer-hero p {
+  font-size: 0.95rem;
+}
+
+.company-card h3 {
+  font-size: 1.15rem;
+}
+
+.company-card p:last-child {
+  font-size: 0.79rem;
+}
+
+.messenger-team {
+  font-size: 1.15rem;
+}
+
+.sidebar-heading {
+  font-size: 0.66rem;
+}
+
+.channel {
+  font-size: 0.82rem;
+}
+
+.chat-header strong {
+  font-size: 0.88rem;
+}
+
+.chat-header div > span {
+  font-size: 0.71rem;
+}
+
+.welcome-banner {
+  font-size: 0.83rem;
+}
+
+.message-body {
+  font-size: 0.9rem;
+}
+
+.message-meta strong {
+  font-size: 0.84rem;
+}
+
+.message-meta span {
+  font-size: 0.7rem;
+}
+
+.message-reaction {
+  font-size: 0.77rem;
+}
+
+.terminal-topline {
+  font-size: 0.72rem;
+}
+
+.terminal-output {
+  font-size: 0.79rem;
+}
+
+.dev-tools,
+.dev-controls button {
+  font-size: 0.71rem;
 }
