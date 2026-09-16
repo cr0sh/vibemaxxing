@@ -137,7 +137,15 @@ function ResourceBurst({ burst, overlayRef }: { burst: Burst; overlayRef: RefObj
 
 const MemoizedResourceBurst = memo(ResourceBurst)
 
-export function ResourceCounter({ value, prefix = '' }: { value: number; prefix?: string }) {
+export function ResourceCounter({
+  value,
+  prefix = '',
+  formatter,
+}: {
+  value: number
+  prefix?: string
+  formatter?: Intl.NumberFormat
+}) {
   const displayed = useRef(value)
   const previousTarget = useRef(value)
   const sequence = useRef(0)
@@ -258,7 +266,7 @@ export function ResourceCounter({ value, prefix = '' }: { value: number; prefix?
   return (
     <>
       <strong ref={widgetRef} className={`resource-count ${frame.active ? 'resource-count-changing' : ''}`} aria-label={`${prefix}${value.toLocaleString()}`}>
-        <span aria-hidden="true">{prefix}{frame.value.toLocaleString()}</span>
+        <span aria-hidden="true">{prefix}{formatter ? formatter.format(frame.value) : frame.value.toLocaleString()}</span>
       </strong>
       {burst && <MemoizedResourceBurst burst={burst} overlayRef={burstRef} />}
     </>

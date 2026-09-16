@@ -33,6 +33,7 @@ const fillCharacterIntervals = {
 } as const
 
 const fillFrameDelay = 16
+const tokenFormatter = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 })
 
 function App() {
   const [state, dispatch] = useReducer(gameReducer, initialGame)
@@ -498,7 +499,7 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
                   <span className="resource-widget-icon" aria-hidden="true">◇</span>
                   <div>
                     <span className="widget-label">Tokens</span>
-                    <span className="resource-values"><ResourceCounter value={state.tokens} /></span>
+                    <span className="resource-values"><ResourceCounter value={state.tokens} formatter={tokenFormatter} /></span>
                   </div>
                 </div>
               </div>
