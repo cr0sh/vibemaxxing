@@ -236,7 +236,7 @@ function tickHired(state: GameState, seconds: number): GameState {
       ...current,
       elapsed: current.elapsed + 1,
       money: current.money + 1,
-      tokens: current.elapsed % 100 === 0 ? MAX_TOKENS : current.tokens,
+      tokens: (current.elapsed + 1) % 100 === 0 ? MAX_TOKENS : current.tokens,
     }
 
     if (current.task !== null && current.elapsed >= current.task.deadlineAt) {
