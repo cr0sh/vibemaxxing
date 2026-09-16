@@ -163,6 +163,9 @@
   background: linear-gradient(145deg, rgba(74, 47, 124, 0.72), rgba(38, 25, 70, 0.74));
   box-shadow: 0 0.7rem 1.5rem rgba(16, 7, 32, 0.2);
 }
+.employment-task-attachment {
+  grid-template-columns: auto minmax(0, 1fr);
+}
 
 .employment-task-attachment[draggable='true'],
 .employment-artifact-attachment[draggable='true'] {
@@ -572,15 +575,9 @@
     gap: 0.58rem;
   }
 
-
-  .employment-attachment .employment-inline-button,
-  .employment-attachment .employment-attachment-cost {
+  .employment-attachment .employment-inline-button {
     grid-column: 1 / -1;
     justify-self: stretch;
-  }
-
-  .employment-attachment .employment-attachment-cost {
-    padding-left: 0.15rem;
   }
 
   .employment-chat-state {

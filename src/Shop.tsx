@@ -25,7 +25,7 @@ type UpgradeProduct = {
 }
 
 const upgradeProducts: readonly UpgradeProduct[] = [
-  { upgrade: 'split', icon: '◫', title: 'Split window', detail: 'Add one independent lane.' },
+  { upgrade: 'split', icon: '◫', title: 'Split window', detail: 'Run another agent in parallel.' },
   { upgrade: 'yolo', icon: '⚡', title: 'YOLO mode', detail: 'Skip command approval pauses.' },
   { upgrade: 'terminal', icon: '🖥️', title: 'Additional terminal', detail: 'Open a second terminal window.' },
 ]
@@ -64,7 +64,7 @@ export function ShopContent({ state, dispatch }: ShopProps) {
   const productState = (upgrade: TerminalUpgrade, price: number | null): string => {
     if (state.stage !== 'hired') return 'Unavailable'
     if (price === null) {
-      if (upgrade === 'split') return 'Max lanes'
+      if (upgrade === 'split') return 'Maximum panes'
       if (upgrade === 'yolo') return 'Installed'
       return 'Two terminals max'
     }
@@ -92,7 +92,7 @@ export function ShopContent({ state, dispatch }: ShopProps) {
         >
           {state.terminals.map((terminal) => <option key={terminal.id} value={terminal.id}>{terminalLabel(terminal.id)}</option>)}
         </select>
-        <span>Drag an upgrade onto any terminal lane.</span>
+        <span>Drag an upgrade onto a terminal agent pane.</span>
       </div>
 
       <div className="shop-products">

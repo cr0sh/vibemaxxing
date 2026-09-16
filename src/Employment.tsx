@@ -99,11 +99,6 @@ function TaskAttachment({
           <span>{taskDeadline(task, elapsed)}</span>
         </div>
       </div>
-      <span className="employment-attachment-cost">
-        {isAssigned && !canAfford ? `Need ${taskCost(task).toLocaleString()} tokens` : task.terminalId
-          ? `${task.terminalId}${task.slot === null ? '' : ` · lane ${task.slot + 1}`}`
-          : `${taskCost(task).toLocaleString()} tokens`}
-      </span>
     </div>
   )
 }
@@ -358,7 +353,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
   return (
     <section
       className={`employment-terminal-lane ${dragActive ? 'employment-drop-active' : ''}`}
-      aria-label={`Terminal lane ${slot + 1}`}
+      aria-label={`Terminal agent pane ${slot + 1}`}
       onDragOver={(event) => {
         if (
           event.dataTransfer.types.includes('application/x-vibemaxxer-task') ||
@@ -373,7 +368,6 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
       onDrop={handleDrop}
     >
       <div className="employment-lane-heading">
-        <span>Lane {slot + 1}</span>
         <span>{yolo ? 'YOLO' : task ? taskStatusLabel(task).toLowerCase() : 'idle'}</span>
       </div>
       {!task && (
@@ -427,7 +421,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
           )}
         </div>
       )}
-      {dragActive && <div className="employment-drop-hint" role="status">Release to use this lane</div>}
+      {dragActive && <div className="employment-drop-hint" role="status">Release to use this pane</div>}
     </section>
   )
 }
