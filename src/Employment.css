@@ -1,0 +1,619 @@
+.employment-messenger,
+.employment-terminal {
+  position: relative;
+  min-width: 0;
+  color: #f4efff;
+}
+.employment-messenger {
+  height: 100%;
+}
+
+.employment-terminal .terminal-output {
+  font-size: min(calc(0.68rem * 1.15), calc(0.68rem + 2pt));
+}
+
+.employment-terminal .terminal-topline {
+  font-size: min(calc(0.63rem * 1.15), calc(0.63rem + 2pt));
+}
+
+.employment-messenger .chat-pane {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.employment-messenger .chat-scroll-region {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.employment-messenger .drag-drop-hint {
+  border-color: rgba(109, 220, 160, 0.9);
+  background: rgba(30, 90, 70, 0.84);
+  color: #f4fff8;
+}
+
+.employment-messenger .chat-header {
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.employment-messenger .chat-header strong {
+  font-size: 0.94rem;
+}
+
+.employment-chat-state {
+  margin-left: auto;
+  color: #ad9dcd;
+  font-size: 0.72rem;
+  text-align: right;
+}
+.employment-messenger .messenger-team {
+  font-size: min(calc(1rem * 1.15), calc(1rem + 2pt));
+}
+
+.employment-messenger .sidebar-heading {
+  font-size: min(calc(0.57rem * 1.15), calc(0.57rem + 2pt));
+}
+
+.employment-messenger .channel {
+  font-size: min(calc(0.71rem * 1.15), calc(0.71rem + 2pt));
+}
+
+.employment-messenger .chat-header div > span {
+  font-size: min(calc(0.62rem * 1.15), calc(0.62rem + 2pt));
+}
+
+.employment-messenger .welcome-banner {
+  font-size: min(calc(0.72rem * 1.15), calc(0.72rem + 2pt));
+}
+
+.employment-messenger .message-body {
+  font-size: min(calc(0.78rem * 1.15), calc(0.78rem + 2pt));
+}
+
+.employment-messenger .message-meta strong {
+  font-size: min(calc(0.73rem * 1.15), calc(0.73rem + 2pt));
+}
+
+.employment-messenger .message-meta span {
+  font-size: min(calc(0.61rem * 1.15), calc(0.61rem + 2pt));
+}
+
+.employment-messenger .message-reaction {
+  font-size: min(calc(0.67rem * 1.15), calc(0.67rem + 2pt));
+}
+
+.employment-messenger .chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.employment-message-entry {
+  animation: employment-message-in 360ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.employment-message-entry:nth-child(2) {
+  animation-delay: 55ms;
+}
+
+.employment-message-entry:nth-child(3) {
+  animation-delay: 100ms;
+}
+
+.employment-message-entry:nth-child(4) {
+  animation-delay: 145ms;
+}
+
+.employment-message-entry:nth-child(5) {
+  animation-delay: 190ms;
+}
+
+@keyframes employment-message-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.7rem, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.employment-emoji-pop {
+  position: absolute;
+  top: -0.58rem;
+  left: 50%;
+  display: inline-block;
+  margin-left: 0.1rem;
+  color: #ffe7a7;
+  font-size: 1.35em;
+  animation: employment-emoji-pop 750ms ease-out both;
+  pointer-events: none;
+}
+
+@keyframes employment-emoji-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.5) rotate(-10deg);
+  }
+
+  28% {
+    opacity: 1;
+    transform: translateY(-0.3rem) scale(1.08) rotate(4deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-1.5rem) scale(0.82) rotate(12deg);
+  }
+}
+
+.employment-reaction-button {
+  position: relative;
+  border: 1px solid rgba(218, 188, 255, 0.28);
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.employment-reaction-button:hover,
+.employment-reaction-button:focus-visible,
+.employment-reaction-active {
+  border-color: rgba(255, 222, 138, 0.75);
+  background: rgba(255, 222, 138, 0.17);
+  transform: translateY(-1px);
+}
+
+.employment-attachment {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.72rem;
+  width: min(100%, 38rem);
+  padding: 0.85rem;
+  border: 1px solid rgba(202, 169, 255, 0.28);
+  border-radius: 0.72rem;
+  background: linear-gradient(145deg, rgba(74, 47, 124, 0.72), rgba(38, 25, 70, 0.74));
+  box-shadow: 0 0.7rem 1.5rem rgba(16, 7, 32, 0.2);
+}
+.employment-task-attachment:focus-visible,
+.employment-artifact-attachment:focus-visible {
+  outline: 2px solid rgba(255, 229, 155, 0.92);
+  outline-offset: 2px;
+}
+.employment-task-attachment {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.employment-task-attachment[draggable='true'],
+.employment-artifact-attachment[draggable='true'] {
+  cursor: grab;
+}
+
+.employment-task-attachment[draggable='true']:active,
+.employment-artifact-attachment[draggable='true']:active {
+  cursor: grabbing;
+}
+
+.employment-task-attachment:hover,
+.employment-artifact-attachment:hover {
+  border-color: rgba(218, 188, 255, 0.58);
+}
+
+.employment-attachment-icon {
+  display: grid;
+  width: 2.45rem;
+  height: 2.45rem;
+  place-items: center;
+  border: 1px solid rgba(235, 211, 255, 0.36);
+  border-radius: 0.56rem;
+  background: rgba(20, 11, 42, 0.48);
+  color: #e5ceff;
+  font-size: 1.35rem;
+}
+
+.employment-artifact-attachment .employment-attachment-icon {
+  border-color: rgba(135, 230, 180, 0.46);
+  color: #9ff4c2;
+}
+
+.employment-attachment-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.24rem;
+}
+
+.employment-attachment-copy strong,
+.employment-attachment-copy span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.employment-attachment-copy strong {
+  color: #fff8ff;
+  font-size: 0.92rem;
+}
+
+.employment-attachment-copy > span {
+  color: #cbbce2;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.employment-attachment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.65rem;
+  color: #a99ac3;
+  font-size: 0.68rem;
+}
+
+.employment-attachment-meta span + span::before {
+  margin-right: 0.65rem;
+  color: #776693;
+  content: '·';
+}
+
+.employment-task-approval,
+.employment-task-blocked {
+  border-color: rgba(255, 205, 109, 0.46);
+}
+
+.employment-task-artifact,
+.employment-artifact-attachment {
+  border-color: rgba(109, 220, 160, 0.48);
+  background: linear-gradient(145deg, rgba(30, 90, 70, 0.62), rgba(27, 46, 56, 0.76));
+}
+
+.employment-inline-button,
+.employment-check-button,
+.employment-terminal-button {
+  min-height: 2.35rem;
+  border: 1px solid rgba(224, 201, 255, 0.36);
+  border-radius: 0.5rem;
+  padding: 0.52rem 0.72rem;
+  background: rgba(107, 70, 167, 0.58);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease, opacity 160ms ease;
+}
+
+.employment-inline-button:hover,
+.employment-inline-button:focus-visible,
+.employment-check-button:hover,
+.employment-check-button:focus-visible,
+.employment-terminal-button:hover,
+.employment-terminal-button:focus-visible {
+  border-color: rgba(241, 221, 255, 0.82);
+  background: rgba(128, 84, 195, 0.8);
+  transform: translateY(-1px);
+}
+
+.employment-inline-button:disabled,
+.employment-check-button:disabled,
+.employment-terminal-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
+.employment-check-button {
+  border-color: rgba(255, 224, 139, 0.55);
+  background: rgba(144, 104, 45, 0.48);
+}
+
+.employment-check-button:hover,
+.employment-check-button:focus-visible {
+  border-color: rgba(255, 229, 155, 0.95);
+  background: rgba(164, 122, 53, 0.68);
+}
+
+.employment-countdown {
+  margin-left: 0.28rem;
+  color: #ffe29a;
+  font-variant-numeric: tabular-nums;
+}
+
+.employment-ping-entry {
+  border-left: 2px solid #f6c970;
+  padding-left: 0.7rem;
+}
+
+.employment-next-ping,
+.employment-next-task {
+  margin: 0;
+  color: #a99ac3;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.employment-next-ping strong,
+.employment-next-task strong {
+  color: #e0d3f2;
+  font-variant-numeric: tabular-nums;
+}
+
+.employment-delivery-entry {
+  border-left: 2px solid #86e5ae;
+  padding-left: 0.7rem;
+}
+
+.employment-messenger .self-avatar {
+  background: linear-gradient(145deg, #2e9070, #23644f) !important;
+}
+.employment-firing-entry {
+  border-left: 2px solid #ee8b87;
+  padding-left: 0.7rem;
+}
+
+
+
+.employment-terminal {
+  display: flex;
+  flex-direction: column;
+
+  min-height: 365px;
+  overflow: hidden;
+}
+
+.employment-terminal .terminal-output {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
+  padding-bottom: 1rem;
+}
+
+.employment-terminal .terminal-output > p {
+  overflow-wrap: anywhere;
+}
+
+.employment-progress-wrap {
+  width: min(100%, 30rem);
+  height: 0.75rem;
+  margin: 1.1rem 0 0.58rem;
+  overflow: hidden;
+  border: 1px solid rgba(144, 124, 190, 0.45);
+  border-radius: 999px;
+  background: rgba(16, 10, 33, 0.72);
+}
+
+.employment-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #b891ff, #74dbbd);
+  transition: width 340ms ease-out;
+}
+
+.employment-terminal-stats,
+.employment-token-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.45rem 1rem;
+  color: #aaa0c2;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.employment-terminal-stats span:first-child {
+  color: #d7c9eb;
+}
+
+.employment-terminal-action-block {
+  display: grid;
+  gap: 0.55rem;
+  width: min(100%, 30rem);
+  margin-top: 1.2rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(205, 179, 245, 0.2);
+  border-radius: 0.56rem;
+  background: rgba(50, 31, 83, 0.4);
+}
+
+.employment-terminal-action-block p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.employment-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.employment-danger-button {
+  border-color: rgba(244, 150, 139, 0.5);
+  background: rgba(133, 52, 69, 0.54);
+}
+
+.employment-danger-button:hover,
+.employment-danger-button:focus-visible {
+  border-color: rgba(255, 177, 160, 0.9);
+  background: rgba(157, 58, 75, 0.72);
+}
+
+.employment-deliver-button {
+  border-color: rgba(124, 228, 171, 0.54);
+  background: rgba(42, 126, 91, 0.55);
+}
+
+.employment-deliver-button:hover,
+.employment-deliver-button:focus-visible {
+  border-color: rgba(151, 246, 194, 0.92);
+  background: rgba(46, 150, 104, 0.73);
+}
+
+.employment-control-hint {
+  color: #bcabcF;
+  font-size: 0.69rem;
+  line-height: 1.35;
+}
+
+.employment-terminal-footer {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0.55rem;
+  margin-top: auto;
+  padding: 0.8rem 1rem 1rem;
+  border-top: 1px solid rgba(145, 126, 179, 0.26);
+}
+
+.employment-token-line strong {
+  color: #f0dcff;
+}
+
+.employment-refill-countdown {
+  color: #bdaed6;
+  font-variant-numeric: tabular-nums;
+}
+
+
+.employment-terminal-lanes {
+  display: grid;
+  align-content: start;
+  gap: 0.65rem;
+  padding: 0.75rem 0.85rem 1rem;
+}
+
+.employment-terminal-lane {
+  position: relative;
+  min-width: 0;
+  min-height: 7.5rem;
+  padding: 0.68rem;
+  overflow: hidden;
+  border: 1px solid rgba(144, 124, 190, 0.38);
+  border-radius: 0.62rem;
+  background: rgba(25, 16, 51, 0.52);
+}
+.employment-terminal-lanes.panes-1 > .employment-terminal-lane:not(:has(.employment-lane-task)) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.employment-lane-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: #d9caed;
+  font-size: 0.69rem;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+
+.employment-lane-heading span:last-child {
+  color: #a99ac3;
+}
+
+
+.employment-lane-task {
+  min-width: 0;
+}
+
+.employment-lane-task > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.employment-lane-task > p:first-child {
+  color: #f0e8ff;
+  font-size: 0.74rem;
+}
+
+.employment-lane-task > p:nth-child(2) {
+  margin-top: 0.32rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.employment-lane-task .employment-progress-wrap {
+  width: 100%;
+  margin-top: 0.72rem;
+}
+
+.employment-lane-task .employment-terminal-action-block {
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.68rem;
+}
+
+.employment-lane-task .employment-attachment {
+  width: 100%;
+}
+
+.employment-terminal-yolo {
+  border-radius: 0.7rem;
+  animation: employment-terminal-rainbow 4s linear infinite;
+}
+
+@keyframes employment-terminal-rainbow {
+  0% { box-shadow: 0 0 0 2px rgba(255, 97, 155, 0.78), 0 0 1.5rem rgba(255, 97, 155, 0.24); }
+  33% { box-shadow: 0 0 0 2px rgba(103, 228, 255, 0.78), 0 0 1.5rem rgba(103, 228, 255, 0.24); }
+  66% { box-shadow: 0 0 0 2px rgba(181, 123, 255, 0.78), 0 0 1.5rem rgba(181, 123, 255, 0.24); }
+  100% { box-shadow: 0 0 0 2px rgba(255, 97, 155, 0.78), 0 0 1.5rem rgba(255, 97, 155, 0.24); }
+}
+
+.employment-drop-active {
+  outline: 2px dashed rgba(163, 225, 255, 0.82);
+  outline-offset: -0.5rem;
+}
+
+.window.terminal-window-yolo {
+  animation: employment-terminal-rainbow 4s linear infinite;
+}
+
+
+@media (max-width: 620px) {
+  .employment-attachment {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0.58rem;
+  }
+
+  .employment-attachment .employment-inline-button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .employment-chat-state {
+    display: none;
+  }
+
+  .employment-terminal {
+    min-height: 350px;
+  }
+
+  .employment-button-row > * {
+    flex: 1 1 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .employment-messenger *,
+  .employment-terminal *,
+  .window.terminal-window-yolo,
+  .employment-terminal-yolo {
+    animation: none !important;
+  }
+  .employment-messenger *::before,
+  .employment-terminal *::before,
+  .employment-messenger *::after,
+  .employment-terminal *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

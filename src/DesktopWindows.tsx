@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
+import { DragDropHintsProvider } from './DragDropHints'
 import './DesktopWindows.css'
 
 type Point = { x: number; y: number }
@@ -16,8 +17,11 @@ const WorkspaceContext = createContext<WorkspaceState | null>(null)
 const windowDefaults: Record<string, Size & Point> = {
   apply: { width: 650, height: 540, x: 0.5, y: 0.17 },
   offer: { width: 620, height: 440, x: 0.5, y: 0.22 },
-  messenger: { width: 570, height: 440, x: 0.12, y: 0.1 },
-  terminal: { width: 470, height: 360, x: 0.72, y: 0.3 },
+  messenger: { width: 570, height: 560, x: 0.12, y: 0.1 },
+  terminal: { width: 470, height: 500, x: 0.72, y: 0.3 },
+  'terminal-2': { width: 470, height: 500, x: 0.26, y: 0.28 },
+  shop: { width: 520, height: 440, x: 0.5, y: 0.14 },
+  defeat: { width: 430, height: 330, x: 0.5, y: 0.28 },
 }
 const defaultWindow = { width: 520, height: 380, x: 0.5, y: 0.16 }
 const arrowDirections: Record<string, Point> = {
@@ -64,9 +68,11 @@ export function WindowWorkspace({ className = '', children }: { className?: stri
   }, [])
 
   return (
-    <WorkspaceContext.Provider value={{ size, order, register, unregister, raise }}>
-      <div ref={elementRef} className={`windows ${className}`}>{children}</div>
-    </WorkspaceContext.Provider>
+    <DragDropHintsProvider>
+      <WorkspaceContext.Provider value={{ size, order, register, unregister, raise }}>
+        <div ref={elementRef} className={`windows ${className}`}>{children}</div>
+      </WorkspaceContext.Provider>
+    </DragDropHintsProvider>
   )
 }
 
@@ -76,6 +82,7 @@ interface WindowFrameProps {
   title: string
   active: boolean
   className?: string
+  contentLayout?: 'padded' | 'fill'
   onFocus: () => void
   onMinimize: () => void
   children: ReactNode
@@ -84,7 +91,7 @@ interface WindowFrameProps {
 
 type Drag = { pointerId: number; origin: Point; start: Point }
 
-export function WindowFrame({ id, icon, title, active, className = '', onFocus, onMinimize, children, hidden = false }: WindowFrameProps) {
+export function WindowFrame({ id, icon, title, active, className = '', contentLayout = 'padded', onFocus, onMinimize, children, hidden = false }: WindowFrameProps) {
   const workspace = useContext(WorkspaceContext)
   if (!workspace) throw new Error('WindowFrame requires a WindowWorkspace')
   const { size: bounds, order, register, unregister, raise } = workspace
@@ -96,6 +103,7 @@ export function WindowFrame({ id, icon, title, active, className = '', onFocus, 
     x: (bounds.width - size.width) * defaults.x,
     y: (bounds.height - size.height) * defaults.y,
   }, size, bounds)
+  const windowRef = useRef<HTMLElement>(null)
   const drag = useRef<Drag | null>(null)
   const [dragging, setDragging] = useState(false)
 
@@ -104,8 +112,12 @@ export function WindowFrame({ id, icon, title, active, className = '', onFocus, 
     return () => unregister(id)
   }, [id, register, unregister])
 
-  useEffect(() => {
-    if (active && !hidden) raise(id)
+  useLayoutEffect(() => {
+    if (hidden || !active) return
+    raise(id)
+    if (!windowRef.current?.contains(document.activeElement)) {
+      windowRef.current?.focus({ preventScroll: true })
+    }
   }, [active, hidden, id, raise])
 
   const focus = () => {
@@ -147,6 +159,7 @@ export function WindowFrame({ id, icon, title, active, className = '', onFocus, 
   return (
     <section
       id={`window-${id}`}
+      ref={windowRef}
       tabIndex={-1}
       className={`window ${active ? 'window-active' : ''} ${className}`}
       style={{ width: size.width, height: size.height, left: position.x, top: position.y, zIndex: order.indexOf(id) + 1, visibility: bounds.width && bounds.height ? undefined : 'hidden' }}
@@ -192,7 +205,7 @@ export function WindowFrame({ id, icon, title, active, className = '', onFocus, 
           <span aria-hidden="true">−</span>
         </button>
       </div>
-      <div className="window-content">{children}</div>
+      <div className={`window-content window-content-${contentLayout}`}>{children}</div>
     </section>
   )
 }

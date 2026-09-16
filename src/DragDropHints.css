@@ -1,0 +1,24 @@
+.drag-drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  border: 2px dashed rgba(194, 169, 255, 0.88);
+  border-radius: inherit;
+  background: rgba(38, 24, 76, 0.78);
+  box-shadow: inset 0 0 2.5rem rgba(168, 124, 255, 0.16);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-align: center;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drag-drop-hint {
+    transition-duration: 0.01ms;
+  }
+}
