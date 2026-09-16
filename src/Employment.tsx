@@ -62,6 +62,7 @@ const taskDeadline = (task: WorkTask, elapsed: number): string => {
   const remaining = task.deadlineAt - elapsed
   return remaining <= 0 ? 'Deadline passed' : `${formatSeconds(remaining)} left`
 }
+const taskCost = (task: WorkTask): number => 10_000 * task.difficulty
 
 function TaskAttachment({
   state,

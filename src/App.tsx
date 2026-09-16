@@ -5,6 +5,7 @@ import {
   gameReducer,
   initialGame,
   type Application,
+  type GameAction,
   type GameState,
   type Stage,
   type TerminalId,
@@ -61,10 +62,11 @@ function App() {
     </div>
   )
 }
-
 function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<GameAction> }) {
-  const hasEmploymentRef = useRef(state.stage === 'hired')
-  const hasEmployment = state.stage === 'hired' || (state.stage === 'lost' && hasEmploymentRef.current)
+  const [application, setApplication] = useState<Application>(emptyApplication)
+  const hasEmployment =
+    state.stage === 'hired' ||
+    (state.stage === 'lost' && (state.tasks.length > 0 || state.completedTasks > 0 || state.elapsed > 0 || state.lastDelivery !== null))
   const [windows, setWindows] = useState<WindowState>(() => ({
     apply: state.stage === 'applying',
     offer: state.stage === 'offer',
@@ -78,6 +80,9 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
     state.stage === 'lost' ? 'defeat' : state.stage === 'hired' ? 'messenger' : state.stage === 'offer' ? 'offer' : 'apply',
   )
   const [isAutofilling, setIsAutofilling] = useState(false)
+  const [defeatDismissed, setDefeatDismissed] = useState(false)
+  const defeatAutoFront = state.stage === 'lost' && hasEmployment && !defeatDismissed
+  const isWindowActive = (id: WindowId): boolean => defeatAutoFront ? id === 'defeat' : activeWindow === id
   const fillTimer = useRef<number | null>(null)
   const fillRun = useRef(0)
   const lastSample = useRef<number | null>(null)
@@ -94,15 +99,6 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
     return () => {
       if (fillTimer.current !== null) window.clearTimeout(fillTimer.current)
       fillRun.current += 1
-    }
-  }, [state.stage])
-  useEffect(() => {
-    if (state.stage === 'hired') {
-      hasEmploymentRef.current = true
-    }
-    if (state.stage === 'lost' && hasEmploymentRef.current) {
-      setWindows((current) => ({ ...current, defeat: true }))
-      setActiveWindow('defeat')
     }
   }, [state.stage])
 
@@ -122,11 +118,17 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
 
   const openWindow = (id: WindowId) => {
     setWindows((current) => ({ ...current, [id]: true }))
+    if (id === 'defeat') setDefeatDismissed(false)
     setActiveWindow(id)
   }
 
   const minimizeWindow = (id: WindowId) => {
-    setWindows((current) => ({ ...current, [id]: false }))
+    setWindows((current) => ({
+      ...current,
+      [id]: false,
+      ...(id === 'defeat' && hasEmployment ? { messenger: true } : {}),
+    }))
+    if (id === 'defeat') setDefeatDismissed(true)
     if (activeWindow === id) {
       const remaining = stageWindows.find((windowId) => windowId !== id && windows[windowId])
       if (remaining) setActiveWindow(remaining)
@@ -249,7 +251,7 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                   id="apply"
                   icon="📨"
                   title="Applications"
-                  active={activeWindow === 'apply'}
+                  active={isWindowActive('apply')}
                   className="application-window"
                   hidden={!windows.apply}
                   onFocus={() => setActiveWindow('apply')}
@@ -303,7 +305,7 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                   id="offer"
                   icon="📬"
                   title="Incoming offer"
-                  active={activeWindow === 'offer'}
+                  active={isWindowActive('offer')}
                   className="offer-window"
                   hidden={!windows.offer}
                   onFocus={() => setActiveWindow('offer')}
@@ -336,10 +338,10 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                     id="messenger"
                     icon="💬"
                     title="Messenger"
-                    active={activeWindow === 'messenger'}
+                    active={isWindowActive('messenger')}
                     className="messenger-window-frame"
                     contentLayout="fill"
-                    hidden={!windows.messenger}
+                    hidden={!windows.messenger && !defeatAutoFront}
                     onFocus={() => setActiveWindow('messenger')}
                     onMinimize={() => minimizeWindow('messenger')}
                   >
@@ -352,7 +354,7 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                       id={terminal.id}
                       icon="🖥️"
                       title={terminal.id === 'terminal' ? 'Terminal' : 'Terminal 2'}
-                      active={activeWindow === terminal.id}
+                      active={isWindowActive(terminal.id)}
                       className={`terminal-window-frame ${terminal.yolo ? 'terminal-window-yolo' : ''}`}
                       contentLayout="fill"
                       hidden={!windows[terminal.id]}
@@ -372,7 +374,7 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                     id="shop"
                     icon="🛍️"
                     title="Shop"
-                    active={activeWindow === 'shop'}
+                    active={isWindowActive('shop')}
                     className="shop-window-frame"
                     contentLayout="fill"
                     hidden={!windows.shop}
@@ -388,9 +390,9 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                   id="defeat"
                   icon="⚠️"
                   title="Run ended"
-                  active={activeWindow === 'defeat'}
+                  active={isWindowActive('defeat')}
                   className="loss-window"
-                  hidden={!windows.defeat}
+                  hidden={state.stage !== 'lost' || !hasEmployment || defeatDismissed}
                   onFocus={() => setActiveWindow('defeat')}
                   onMinimize={() => minimizeWindow('defeat')}
                 >
@@ -435,15 +437,17 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                         : id === 'defeat'
                           ? { icon: '⚠️', label: 'Run ended' }
                           : { icon: '🖥️', label: id === 'terminal' ? 'Terminal' : 'Terminal 2' }
-              const isOpen = windows[id]
+              const isOpen = id === 'defeat'
+                ? state.stage === 'lost' && !defeatDismissed
+                : windows[id] || (id === 'messenger' && defeatAutoFront)
               return (
                 <button
-                  className={`dock-item ${activeWindow === id ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''}`}
+                  className={`dock-item ${isWindowActive(id) ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''}`}
                   type="button"
                   key={id}
                   onClick={() => openWindow(id)}
                   aria-label={`${isOpen ? 'Focus' : 'Open'} ${item.label} window`}
-                  aria-pressed={activeWindow === id && isOpen}
+                  aria-pressed={isWindowActive(id) && isOpen}
                 >
                   <span className="dock-icon" aria-hidden="true">{item.icon}</span>
                   <span className="dock-label">{item.label}</span>
