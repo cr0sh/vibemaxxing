@@ -1,0 +1,37 @@
+.unread-indicator {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.75rem;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 999px;
+  color: inherit;
+  background: color-mix(in srgb, Canvas 88%, currentColor 12%);
+  box-shadow: 0 0.2rem 0.6rem color-mix(in srgb, CanvasText 20%, transparent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.unread-indicator:hover {
+  background: color-mix(in srgb, Canvas 78%, currentColor 22%);
+}
+
+.unread-indicator:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unread-indicator {
+    transition: none;
+  }
+}
