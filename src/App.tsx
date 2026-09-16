@@ -142,7 +142,6 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
               <span>{timeLabel}</span>
             </time>
             <time className="date-widget" dateTime={now.toISOString()} aria-label={dateLabel}>
-              <span className="calendar-icon" aria-hidden="true">📅</span>
               <span className="calendar-month">{monthLabel}</span>
               <strong>{now.getDate()}</strong>
               <span className="calendar-weekday">{weekdayLabel}</span>
@@ -166,7 +165,6 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
             >
               <div className="window-heading-row">
                 <div>
-                  <p className="window-eyebrow">Application</p>
                   <h2>Job application</h2>
                 </div>
                 <div className="submission-stamp" aria-label={`${state.submissions} submissions`}>
@@ -174,7 +172,6 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                   <span>sent</span>
                 </div>
               </div>
-              <p className="window-intro">Tell us about your work.</p>
               <form className="application-form" onSubmit={submitApplication}>
                 <div className="field-grid">
                   <label className="field-label">
@@ -246,12 +243,10 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
               onFocus={() => setActiveWindow('offer')}
               onMinimize={() => minimizeWindow('offer')}
             >
-              <p className="window-eyebrow">Offer</p>
               <div className="offer-hero">
                 <span className="offer-spark" aria-hidden="true">✦</span>
                 <div>
                   <h2>Offer received</h2>
-                  <p>A team would like to hire you.</p>
                 </div>
               </div>
               <div className="company-card">
@@ -261,9 +256,6 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                   <h3>{currentCompany}</h3>
                   <p>Role: Vibe Engineer · Remote</p>
                 </div>
-              </div>
-              <div className="offer-copy">
-                <p>Review the offer, then choose whether to join the team.</p>
               </div>
               <button className="primary-button offer-accept" type="button" onClick={() => dispatch({ type: 'accept' })}>
                 Accept offer <span aria-hidden="true">→</span>
@@ -332,9 +324,6 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                   <div className="terminal-output" aria-label="Terminal status">
                     <p className="terminal-muted">No task assigned</p>
                     <p className="terminal-cursor"><span className="terminal-prompt">~</span> <span className="cursor-block" aria-hidden="true" /></p>
-                  </div>
-                  <div className="terminal-scope">
-                    <button className="terminal-replay" type="button" onClick={resetGame}>New game</button>
                   </div>
                 </div>
               </WindowFrame>

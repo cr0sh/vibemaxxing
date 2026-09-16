@@ -199,15 +199,6 @@ button {
   text-align: center;
 }
 
-.calendar-icon {
-  position: absolute;
-  top: 0.22rem;
-  right: 0.25rem;
-  z-index: 1;
-  color: #fff;
-  font-size: 0.55rem;
-  line-height: 1;
-}
 
 .calendar-month,
 .calendar-weekday {
@@ -261,14 +252,30 @@ button {
   box-shadow: 0 7px 15px rgba(68, 43, 124, 0.12);
 }
 
-.replay-button,
 .primary-button,
 .secondary-button,
-.dev-controls button,
-.terminal-replay {
+.dev-controls button {
   border: 0;
   cursor: pointer;
   transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.window {
+  border: 1px solid rgba(76, 49, 142, 0.24);
+  border-radius: 0.85rem;
+  background: #fffdf8;
+  box-shadow: var(--shadow-window);
+  animation: window-appear 220ms ease-out;
+}
+
+.window-active {
+  border-color: rgba(104, 68, 197, 0.5);
+  box-shadow: 0 22px 65px rgba(55, 34, 104, 0.24);
+}
+
+@keyframes window-appear {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .window-chrome,
@@ -358,9 +365,7 @@ button {
   line-height: 1.05;
 }
 
-.window-eyebrow,
-.company-label,
-.scope-label {
+.company-label {
   margin: 0;
   color: var(--purple-deep);
   font-size: 0.63rem;
@@ -370,13 +375,6 @@ button {
   text-transform: uppercase;
 }
 
-.window-intro {
-  max-width: 630px;
-  margin: 0.75rem 0 1.5rem;
-  color: var(--ink-soft);
-  font-size: 0.86rem;
-  line-height: 1.5;
-}
 
 .submission-stamp {
   min-width: 3.85rem;
@@ -629,16 +627,6 @@ button {
   font-size: 0.57rem;
 }
 
-.offer-copy {
-  margin: 1.2rem 0;
-  color: var(--ink-soft);
-  font-size: 0.8rem;
-  line-height: 1.5;
-}
-
-.offer-copy p {
-  margin: 0;
-}
 
 .offer-accept {
   width: 100%;
@@ -883,26 +871,6 @@ button {
   animation: cursor-blink 1.1s steps(2, jump-none) infinite;
 }
 
-.terminal-scope {
-  padding: 0.9rem 1rem 1rem;
-  border-top: 1px solid rgba(208, 190, 255, 0.12);
-  background: #21113e;
-}
-
-.terminal-replay {
-  padding: 0;
-  color: #e0d3ff;
-  background: transparent;
-  font-family: var(--sans);
-  font-size: 0.68rem;
-  font-weight: 750;
-}
-
-.terminal-replay:hover,
-.terminal-replay:focus-visible {
-  color: #fff;
-  text-decoration: underline;
-}
 
 .dev-tools {
   position: absolute;
@@ -967,46 +935,46 @@ button {
 
 .dock {
   position: relative;
+  isolation: isolate;
   display: flex;
   align-items: end;
   justify-content: center;
-  gap: clamp(0.38rem, 1.2vw, 0.8rem);
-  min-height: 4.1rem;
-  padding: 0.5rem 0.78rem 0.42rem;
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  border-radius: 1.1rem;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(241, 234, 255, 0.35) 16%, rgba(123, 91, 190, 0.25) 62%, rgba(61, 39, 111, 0.31)),
-    rgba(255, 255, 255, 0.2);
-  box-shadow: var(--shadow-dock), inset 0 1px rgba(255, 255, 255, 0.88), inset 0 -5px 12px rgba(65, 42, 110, 0.12);
-  backdrop-filter: blur(18px) saturate(125%);
+  gap: 0.6rem;
+  min-width: 11rem;
+  min-height: 5rem;
+  padding: 0 1.5rem 0.7rem;
   pointer-events: auto;
-  transform: perspective(600px) rotateX(6deg);
 }
 
 .dock::before {
   position: absolute;
-  top: 0.24rem;
-  right: 5%;
-  left: 5%;
-  height: 0.35rem;
+  z-index: -1;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 4.2rem;
   content: '';
-  border-radius: 50%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.74), transparent);
-  filter: blur(1px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 0.3rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.65) 70%, rgba(159, 146, 181, 0.6));
+  box-shadow: inset 0 1px 0 #fff, 0 10px 22px rgba(45, 28, 77, 0.25);
+  backdrop-filter: blur(14px) saturate(130%);
+  transform: perspective(220px) rotateX(56deg);
+  transform-origin: center bottom;
   pointer-events: none;
 }
 
 .dock::after {
   position: absolute;
-  right: 9%;
-  bottom: -0.58rem;
-  left: 9%;
-  height: 0.7rem;
+  z-index: -1;
+  right: 0;
+  bottom: -0.3rem;
+  left: 0;
+  height: 0.3rem;
   content: '';
-  border-radius: 50%;
-  background: rgba(69, 40, 124, 0.22);
-  filter: blur(9px);
+  border-radius: 0 0 0.2rem 0.2rem;
+  background: linear-gradient(#f3eff9, #a298b5);
+  box-shadow: 0 8px 15px rgba(45, 28, 77, 0.22);
   pointer-events: none;
 }
 
@@ -1037,6 +1005,7 @@ button {
   box-shadow: 0 6px 11px rgba(13, 7, 31, 0.2), inset 0 1px rgba(255, 255, 255, 0.78), inset 0 -4px 9px rgba(70, 36, 130, 0.13);
   font-size: clamp(1.45rem, 3vw, 1.8rem);
   line-height: 1;
+  -webkit-box-reflect: below 1px linear-gradient(transparent 60%, rgba(255, 255, 255, 0.25));
   transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), filter 180ms ease;
 }
 
@@ -1084,10 +1053,10 @@ button {
 .dock-indicator {
   width: 0.3rem;
   height: 0.3rem;
-  margin-top: 0.02rem;
+  margin-top: 0.28rem;
   border-radius: 50%;
   background: #bca5f7;
-  opacity: 0;
+  opacity: 0.7;
 }
 
 .dock-item-active .dock-indicator {
@@ -1106,6 +1075,7 @@ button {
 .dock-item:focus-visible .dock-icon {
   animation: dock-bounce 420ms cubic-bezier(0.22, 1, 0.36, 1);
   filter: brightness(1.12) saturate(1.08);
+  transform: translateY(-0.35rem) scale(1.12);
 }
 
 button:focus-visible,
@@ -1159,6 +1129,7 @@ textarea:focus-visible {
 
 @media (max-width: 620px) {
   .widget-band {
+    flex-wrap: wrap;
     align-items: start;
     gap: 0.48rem;
     min-height: 5.85rem;
@@ -1166,15 +1137,26 @@ textarea:focus-visible {
   }
 
   .widget-cluster {
+    flex: 1 1 100%;
     min-width: 0;
     gap: 0.3rem;
   }
 
   .resource-widget {
+    flex: 1;
     min-width: 0;
     max-width: 11.9rem;
     padding: 0.48rem;
     gap: 0.4rem;
+  }
+
+  .clock-widget,
+  .date-widget {
+    flex-shrink: 0;
+  }
+
+  .new-game-button {
+    margin-left: auto;
   }
 
   .resource-widget-icon {
