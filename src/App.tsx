@@ -1,20 +1,22 @@
-import { useEffect, useReducer, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import type { ChangeEvent, Dispatch, FormEvent } from 'react'
 import {
   companies,
   gameReducer,
   initialGame,
-  sampleApplication,
   type Application,
   type GameAction,
   type GameState,
   type Stage,
 } from './game'
+import { applicationSamples } from './applicationSamples'
+import { MessengerContent, TerminalContent } from './Employment'
 import { WindowFrame, WindowWorkspace } from './DesktopWindows'
 import './App.css'
 
 type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal'
 type WindowState = Record<WindowId, boolean>
+type ApplicationField = keyof Application
 
 const emptyApplication = (): Application => ({
   name: '',
@@ -23,52 +25,105 @@ const emptyApplication = (): Application => ({
 })
 
 const initialWindows: WindowState = {
-  apply: true,
+  apply: false,
   offer: false,
   messenger: false,
   terminal: false,
 }
 
+const fillFields: ApplicationField[] = ['name', 'email', 'pitch']
+
 function App() {
   const [state, dispatch] = useReducer(gameReducer, initialGame)
-
-  return <Desktop key={state.stage} state={state} dispatch={dispatch} />
-}
-
-function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<GameAction> }) {
-  const [application, setApplication] = useState<Application>(emptyApplication)
-  const [windows, setWindows] = useState<WindowState>(() => ({
-    apply: state.stage === 'applying',
-    offer: state.stage === 'offer',
-    messenger: state.stage === 'hired',
-    terminal: state.stage === 'hired',
-  }))
-  const [activeWindow, setActiveWindow] = useState<WindowId>(
-    state.stage === 'hired' ? 'messenger' : state.stage === 'offer' ? 'offer' : 'apply',
-  )
   const [now, setNow] = useState(() => new Date())
+  const latestState = useRef(state)
+  latestState.current = state
 
   useEffect(() => {
-    const clock = window.setInterval(() => setNow(new Date()), 1000)
-    return () => window.clearInterval(clock)
+    let lastTickAt = Date.now()
+    const timer = window.setInterval(() => {
+      const currentTime = Date.now()
+      setNow(new Date(currentTime))
+      const elapsedSeconds = Math.floor((currentTime - lastTickAt) / 1000)
+      if (elapsedSeconds > 0) {
+        lastTickAt += elapsedSeconds * 1000
+        if (latestState.current.stage === 'hired') {
+          dispatch({ type: 'tick', seconds: elapsedSeconds })
+        }
+      }
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [dispatch])
+
+  return <Desktop state={state} dispatch={dispatch} now={now} />
+}
+
+function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatch<GameAction>; now: Date }) {
+  const [application, setApplication] = useState<Application>(emptyApplication)
+  const [windows, setWindows] = useState<WindowState>(initialWindows)
+  const [activeWindow, setActiveWindow] = useState<WindowId>('apply')
+  const [isAutofilling, setIsAutofilling] = useState(false)
+  const fillTimer = useRef<number | null>(null)
+  const fillRun = useRef(0)
+  const lastSample = useRef<number | null>(null)
+  const latestState = useRef(state)
+  latestState.current = state
+  const cancelAutofill = () => {
+    if (fillTimer.current !== null) {
+      window.clearTimeout(fillTimer.current)
+      fillTimer.current = null
+    }
+    fillRun.current += 1
+    setIsAutofilling(false)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (fillTimer.current !== null) window.clearTimeout(fillTimer.current)
+      fillRun.current += 1
+    }
   }, [])
+
+  useEffect(() => {
+    cancelAutofill()
+    setApplication(emptyApplication())
+
+    if (state.stage === 'ready') {
+      setWindows(initialWindows)
+      setActiveWindow('apply')
+    } else if (state.stage === 'applying' || state.stage === 'lost') {
+      setWindows((current) => ({ ...current, apply: true, offer: false, messenger: false, terminal: false }))
+      setActiveWindow('apply')
+    } else if (state.stage === 'offer') {
+      setWindows((current) => ({ ...current, apply: false, offer: true, messenger: false, terminal: false }))
+      setActiveWindow('offer')
+    } else {
+      setWindows((current) => ({ ...current, apply: false, offer: false, messenger: true, terminal: true }))
+      setActiveWindow((current) => current === 'terminal' ? current : 'messenger')
+    }
+  }, [state.stage])
+
 
   const currentCompany = state.company ?? companies[0] ?? 'Prompt & Circumstance'
   const stageWindows: WindowId[] =
-    state.stage === 'applying'
+    state.stage === 'applying' || state.stage === 'lost'
       ? ['apply']
       : state.stage === 'offer'
         ? ['offer']
-        : ['messenger', 'terminal']
+        : state.stage === 'hired'
+          ? ['messenger', 'terminal']
+          : []
   const timeLabel = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   const dateLabel = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
   const monthLabel = now.toLocaleDateString([], { month: 'short' }).toUpperCase()
   const weekdayLabel = now.toLocaleDateString([], { weekday: 'short' }).toUpperCase()
+  const showPaidResources = state.stage === 'hired' || (state.stage === 'lost' && state.company !== null)
 
   const openWindow = (id: WindowId) => {
     setWindows((current) => ({ ...current, [id]: true }))
     setActiveWindow(id)
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       document.getElementById(`window-${id}`)?.focus({ preventScroll: true })
     })
   }
@@ -81,10 +136,15 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
     }
   }
 
-  const resetGame = () => {
+  const beginGame = () => {
+    cancelAutofill()
     setApplication(emptyApplication())
-    setWindows(initialWindows)
-    setActiveWindow('apply')
+    dispatch({ type: 'start', seed: Math.floor(Math.random() * 0x7fffffff) })
+  }
+
+  const retryGame = () => {
+    cancelAutofill()
+    setApplication(emptyApplication())
     dispatch({ type: 'reset' })
   }
 
@@ -94,7 +154,9 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
       event.currentTarget.reportValidity()
       return
     }
+    if (state.energy < 3) return
 
+    cancelAutofill()
     dispatch({
       type: 'submit',
       roll: Math.random(),
@@ -104,15 +166,64 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
   }
 
   const updateApplication =
-    (field: keyof Application) =>
+    (field: ApplicationField) =>
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      cancelAutofill()
       const value = event.currentTarget.value
       setApplication((current) => ({ ...current, [field]: value }))
     }
 
-  const fillSample = () => setApplication({ ...sampleApplication })
+  const fillSample = () => {
+    if (state.stage !== 'applying' || state.submissions < 5 || applicationSamples.length === 0) return
+
+    cancelAutofill()
+    const candidates = applicationSamples
+      .map((sample, index) => ({ sample, index }))
+      .filter(({ index }) => index !== lastSample.current)
+    const picked = candidates[Math.floor(Math.random() * candidates.length)] ?? { sample: applicationSamples[0], index: 0 }
+    lastSample.current = picked.index
+    const sample = picked.sample
+    const run = fillRun.current
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+
+    if (prefersReducedMotion) {
+      setIsAutofilling(false)
+      setApplication({ ...sample })
+      return
+    }
+
+    setIsAutofilling(true)
+    setApplication(emptyApplication())
+    let fieldIndex = 0
+    let characterIndex = 0
+
+    const advance = () => {
+      if (run !== fillRun.current || latestState.current.stage !== 'applying') return
+      const field = fillFields[fieldIndex]
+      if (!field) {
+        fillTimer.current = null
+        setIsAutofilling(false)
+        return
+      }
+      const value = sample[field]
+      if (characterIndex <= value.length) {
+        const visible = value.slice(0, characterIndex)
+        setApplication((current) => ({ ...current, [field]: visible }))
+        characterIndex += 1
+        fillTimer.current = window.setTimeout(advance, field === 'pitch' ? 14 : 34)
+      } else {
+        fieldIndex += 1
+        characterIndex = 0
+        fillTimer.current = window.setTimeout(advance, 110)
+      }
+    }
+
+    advance()
+
+  }
 
   const handleDevJump = (stage: Stage) => {
+    cancelAutofill()
     setApplication(emptyApplication())
     dispatch({ type: 'dev-jump', stage })
   }
@@ -124,19 +235,8 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
         <div className="desktop-orbit desktop-orbit-two" aria-hidden="true" />
         <div className="desktop-grid" aria-hidden="true" />
 
-        <section className="widget-band" aria-label="Desktop widgets">
+        <section className={`widget-band ${showPaidResources ? 'widget-band-paid' : ''}`} aria-label="Desktop widgets">
           <div className="widget-cluster">
-            <div className="resource-widget" aria-label="Starting inventory">
-              <span className="resource-widget-icon" aria-hidden="true">🎒</span>
-              <div>
-                <span className="widget-label">Inventory</span>
-                <span className="resource-values">
-                  <strong>Energy 100</strong>
-                  <strong>Tokens 1M</strong>
-                  <strong>Money $0</strong>
-                </span>
-              </div>
-            </div>
             <time className="clock-widget" dateTime={now.toISOString()} aria-label={`Local time ${timeLabel}`}>
               <span className="clock-icon" aria-hidden="true">◷</span>
               <span>{timeLabel}</span>
@@ -146,231 +246,231 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
               <strong>{now.getDate()}</strong>
               <span className="calendar-weekday">{weekdayLabel}</span>
             </time>
+            {showPaidResources && (
+              <>
+                <div className="resource-widget resource-widget-money" aria-label={`Money ${state.money} dollars`}>
+                  <span className="resource-widget-icon" aria-hidden="true">$</span>
+                  <div>
+                    <span className="widget-label">Money</span>
+                    <span className="resource-values"><strong>${state.money.toLocaleString()}</strong></span>
+                  </div>
+                </div>
+                <div className="resource-widget resource-widget-tokens" aria-label={`Tokens ${state.tokens}`}>
+                  <span className="resource-widget-icon" aria-hidden="true">◇</span>
+                  <div>
+                    <span className="widget-label">Tokens</span>
+                    <span className="resource-values"><strong>{state.tokens.toLocaleString()}</strong></span>
+                  </div>
+                </div>
+              </>
+            )}
+            <div className="resource-widget resource-widget-energy" aria-label={`Energy ${state.energy}`}>
+              <span className="resource-widget-icon" aria-hidden="true">⚡</span>
+              <div>
+                <span className="widget-label">Energy</span>
+                <span className="resource-values"><strong>{state.energy}</strong></span>
+              </div>
+            </div>
           </div>
-          <button className="new-game-button" type="button" onClick={resetGame}>New game</button>
         </section>
 
-        <div className="workspace-area">
-        <WindowWorkspace className={`windows-${state.stage}`}>
-          {state.stage === 'applying' && (
-            <WindowFrame
-              id="apply"
-              icon="📨"
-              title="Applications"
-              active={activeWindow === 'apply'}
-              className="application-window"
-              hidden={!windows.apply}
-              onFocus={() => setActiveWindow('apply')}
-              onMinimize={() => minimizeWindow('apply')}
-            >
-              <div className="window-heading-row">
-                <div>
-                  <h2>Job application</h2>
-                </div>
-                <div className="submission-stamp" aria-label={`${state.submissions} submissions`}>
-                  <strong>{String(state.submissions).padStart(2, '0')}</strong>
-                  <span>sent</span>
-                </div>
-              </div>
-              <form className="application-form" onSubmit={submitApplication}>
-                <div className="field-grid">
-                  <label className="field-label">
-                    <span>Your name</span>
-                    <input
-                      name="name"
-                      value={application.name}
-                      onChange={updateApplication('name')}
-                      required
-                      autoComplete="name"
-                      placeholder="Your name"
-                    />
-                  </label>
-                  <label className="field-label">
-                    <span>Email address</span>
-                    <input
-                      name="email"
-                      type="email"
-                      value={application.email}
-                      onChange={updateApplication('email')}
-                      required
-                      autoComplete="email"
-                      placeholder="you@example.com"
-                    />
-                  </label>
-                </div>
-                <label className="field-label">
-                  <span>One-paragraph pitch</span>
-                  <textarea
-                    name="pitch"
-                    value={application.pitch}
-                    onChange={updateApplication('pitch')}
-                    required
-                    rows={4}
-                    placeholder="A short description of your work"
-                  />
-                </label>
-                <div className="form-actions">
-                  <button className="primary-button" type="submit">
-                    Submit application <span aria-hidden="true">↗</span>
-                  </button>
-                  {state.submissions >= 8 && (
-                    <button className="secondary-button" type="button" onClick={fillSample}>
-                      <span aria-hidden="true">✨</span> Fill sample
-                    </button>
+        {state.stage === 'ready' ? (
+          <section className="ready-screen" aria-labelledby="ready-heading">
+            <span className="ready-kicker">A new workday awaits</span>
+            <h1 id="ready-heading">Find your next role</h1>
+            <p>Start with 100 energy. Make the right impression.</p>
+            <button className="new-game-button ready-start" type="button" onClick={beginGame}>New game</button>
+          </section>
+        ) : (
+          <div className="workspace-area">
+            <WindowWorkspace className={`windows-${state.stage}`}>
+              {state.stage === 'applying' && (
+                <WindowFrame
+                  id="apply"
+                  icon="📨"
+                  title="Applications"
+                  active={activeWindow === 'apply'}
+                  className="application-window"
+                  hidden={!windows.apply}
+                  onFocus={() => setActiveWindow('apply')}
+                  onMinimize={() => minimizeWindow('apply')}
+                >
+                  <div className="window-heading-row">
+                    <div>
+                      <p className="company-label">Open application queue</p>
+                      <h2>Job application</h2>
+                    </div>
+                    <div className="submission-stamp" aria-label={`${state.submissions} submissions`}>
+                      <strong>{String(state.submissions).padStart(2, '0')}</strong>
+                      <span>sent</span>
+                    </div>
+                  </div>
+                  <form className="application-form" onSubmit={submitApplication}>
+                    <div className="field-grid">
+                      <label className="field-label">
+                        <span>Your name</span>
+                        <input name="name" value={application.name} onChange={updateApplication('name')} required autoComplete="name" placeholder="Your name" />
+                      </label>
+                      <label className="field-label">
+                        <span>Email address</span>
+                        <input name="email" type="email" value={application.email} onChange={updateApplication('email')} required autoComplete="email" placeholder="you@example.com" />
+                      </label>
+                    </div>
+                    <label className="field-label">
+                      <span>One-paragraph pitch</span>
+                      <textarea name="pitch" value={application.pitch} onChange={updateApplication('pitch')} required rows={4} placeholder="A short description of your work" />
+                    </label>
+                    <div className="form-actions">
+                      <button className="primary-button" type="submit" disabled={state.energy < 3 || isAutofilling}>
+                        Submit application <span aria-hidden="true">↗</span>
+                      </button>
+                      {state.submissions >= 5 && (
+                        <button className="secondary-button" type="button" onClick={fillSample}>
+                          <span aria-hidden="true">✦</span> Auto-fill application
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                  <div className="application-footnote">
+                    <span className="cost-badge">3 energy per submission</span>
+                    <span>{state.energy} energy remaining</span>
+                  </div>
+                  {state.lastResult === 'rejected' && (
+                    <p className="feedback feedback-rejected" role="status" aria-live="polite" key={state.submissions}>
+                      <span aria-hidden="true">⊘</span> Application not selected. Try again.
+                    </p>
                   )}
-                </div>
-              </form>
-              <div className="application-footnote">
-                <span className="chance-badge">1% chance / submission</span>
-                <span>{state.submissions} submissions</span>
-              </div>
-              {state.lastResult === 'rejected' && (
-                <p className="feedback feedback-rejected" role="status" aria-live="polite" key={state.submissions}>
-                  <span aria-hidden="true">⊘</span> Application not selected. Try again.
-                </p>
+                </WindowFrame>
               )}
-            </WindowFrame>
-          )}
 
-          {state.stage === 'offer' && (
-            <WindowFrame
-              id="offer"
-              icon="📬"
-              title="Incoming offer"
-              active={activeWindow === 'offer'}
-              className="offer-window"
-              hidden={!windows.offer}
-              onFocus={() => setActiveWindow('offer')}
-              onMinimize={() => minimizeWindow('offer')}
-            >
-              <div className="offer-hero">
-                <span className="offer-spark" aria-hidden="true">✦</span>
-                <div>
-                  <h2>Offer received</h2>
-                </div>
-              </div>
-              <div className="company-card">
-                <div className="company-icon" aria-hidden="true">🏢</div>
-                <div>
-                  <p className="company-label">Company</p>
-                  <h3>{currentCompany}</h3>
-                  <p>Role: Vibe Engineer · Remote</p>
-                </div>
-              </div>
-              <button className="primary-button offer-accept" type="button" onClick={() => dispatch({ type: 'accept' })}>
-                Accept offer <span aria-hidden="true">→</span>
-              </button>
-            </WindowFrame>
-          )}
-
-          {state.stage === 'hired' && (
-            <>
-              <WindowFrame
-                id="messenger"
-                icon="💬"
-                title="Messenger"
-                active={activeWindow === 'messenger'}
-                className="messenger-window-frame"
-                hidden={!windows.messenger}
-                onFocus={() => setActiveWindow('messenger')}
-                onMinimize={() => minimizeWindow('messenger')}
-              >
-                <div className="messenger-app">
-                  <div className="messenger-sidebar">
-                    <div className="messenger-team">vibe<span>corp</span></div>
-                    <p className="sidebar-heading">Channels</p>
-                    <div className="channel active-channel"><span aria-hidden="true">#</span> general</div>
-                    <div className="channel"><span aria-hidden="true">#</span> watercooler</div>
-                    <p className="sidebar-heading sidebar-heading-spaced">Direct messages</p>
-                    <div className="channel"><span className="online-dot" aria-hidden="true" /> boss.exe</div>
-                  </div>
-                  <div className="chat-pane">
-                    <div className="chat-header">
-                      <div>
-                        <strong># general</strong>
-                        <span>Team chat</span>
-                      </div>
-                    </div>
-                    <div className="chat-messages">
-                      <div className="welcome-banner"><span aria-hidden="true">🎉</span> Welcome to the team</div>
-                      <div className="message-row">
-                        <div className="avatar boss-avatar" aria-hidden="true">B</div>
-                        <div className="message-body">
-                          <div className="message-meta"><strong>boss.exe</strong><span>just now</span></div>
-                          <p>Welcome aboard. Your workspace is ready.</p>
-                          <div className="message-reaction" aria-label="One celebration reaction">🎉 1</div>
-                        </div>
-                      </div>
+              {state.stage === 'offer' && (
+                <WindowFrame
+                  id="offer"
+                  icon="📬"
+                  title="Incoming offer"
+                  active={activeWindow === 'offer'}
+                  className="offer-window"
+                  hidden={!windows.offer}
+                  onFocus={() => setActiveWindow('offer')}
+                  onMinimize={() => minimizeWindow('offer')}
+                >
+                  <div className="offer-hero">
+                    <span className="offer-spark" aria-hidden="true">✦</span>
+                    <div>
+                      <p className="company-label">A reply worth opening</p>
+                      <h2>Offer received</h2>
                     </div>
                   </div>
-                </div>
-              </WindowFrame>
-
-              <WindowFrame
-                id="terminal"
-                icon="🖥️"
-                title="Terminal"
-                active={activeWindow === 'terminal'}
-                className="terminal-window-frame"
-                hidden={!windows.terminal}
-                onFocus={() => setActiveWindow('terminal')}
-                onMinimize={() => minimizeWindow('terminal')}
-              >
-                <div className="terminal-app">
-                  <div className="terminal-topline">
-                    <span><span className="terminal-dot" aria-hidden="true" /> agent-shell</span>
-                    <span>zsh · idle</span>
+                  <div className="company-card">
+                    <div className="company-icon" aria-hidden="true">🏢</div>
+                    <div>
+                      <p className="company-label">Company</p>
+                      <h3>{currentCompany}</h3>
+                      <p>Role: Vibe Engineer · Remote</p>
+                    </div>
                   </div>
-                  <div className="terminal-output" aria-label="Terminal status">
-                    <p className="terminal-muted">No task assigned</p>
-                    <p className="terminal-cursor"><span className="terminal-prompt">~</span> <span className="cursor-block" aria-hidden="true" /></p>
-                  </div>
-                </div>
-              </WindowFrame>
-            </>
-          )}
-        </WindowWorkspace>
-        </div>
+                  <button className="primary-button offer-accept" type="button" onClick={() => dispatch({ type: 'accept' })}>
+                    Accept offer <span aria-hidden="true">→</span>
+                  </button>
+                </WindowFrame>
+              )}
 
-        {import.meta.env.DEV && (
+              {state.stage === 'lost' && (
+                <WindowFrame
+                  id="apply"
+                  icon="⚠️"
+                  title="Session ended"
+                  active={activeWindow === 'apply'}
+                  className="loss-window"
+                  hidden={!windows.apply}
+                  onFocus={() => setActiveWindow('apply')}
+                  onMinimize={() => minimizeWindow('apply')}
+                >
+                  <div className="loss-card">
+                    <span className="loss-icon" aria-hidden="true">⌁</span>
+                    <p className="company-label">The desktop went quiet</p>
+                    <h2>Assignment missed</h2>
+                    <p>{state.failure ?? 'The deadline passed before the artifact arrived.'}</p>
+                    <button className="primary-button" type="button" onClick={retryGame}>Retry</button>
+                  </div>
+                </WindowFrame>
+              )}
+
+              {state.stage === 'hired' && (
+                <>
+                  <WindowFrame
+                    id="messenger"
+                    icon="💬"
+                    title="Messenger"
+                    active={activeWindow === 'messenger'}
+                    className="messenger-window-frame"
+                    hidden={!windows.messenger}
+                    onFocus={() => setActiveWindow('messenger')}
+                    onMinimize={() => minimizeWindow('messenger')}
+                  >
+                    <MessengerContent state={state} dispatch={dispatch} onOpenTerminal={() => openWindow('terminal')} />
+                  </WindowFrame>
+
+                  <WindowFrame
+                    id="terminal"
+                    icon="🖥️"
+                    title="Terminal"
+                    active={activeWindow === 'terminal'}
+                    className="terminal-window-frame"
+                    hidden={!windows.terminal}
+                    onFocus={() => setActiveWindow('terminal')}
+                    onMinimize={() => minimizeWindow('terminal')}
+                  >
+                    <TerminalContent state={state} dispatch={dispatch} onOpenMessenger={() => openWindow('messenger')} />
+                  </WindowFrame>
+                </>
+              )}
+            </WindowWorkspace>
+          </div>
+        )}
+
+        {import.meta.env.DEV && state.stage !== 'ready' && (
           <details className="dev-tools">
             <summary>Dev</summary>
             <div className="dev-controls">
               <button type="button" onClick={() => handleDevJump('offer')}>Offer</button>
               <button type="button" onClick={() => handleDevJump('hired')}>Hired</button>
-              <button type="button" onClick={resetGame}>Reset</button>
+              <button type="button" onClick={() => dispatch({ type: 'tick', seconds: 30 })}>Advance 30s</button>
+              <button type="button" onClick={retryGame}>Reset</button>
             </div>
           </details>
         )}
       </main>
 
-      <footer className="dock-area">
-        <nav className="dock" aria-label="Desktop windows">
-          {stageWindows.map((id) => {
-            const item = {
-              apply: { icon: '📨', label: 'Applications' },
-              offer: { icon: '📬', label: 'Offer' },
-              messenger: { icon: '💬', label: 'Messenger' },
-              terminal: { icon: '🖥️', label: 'Terminal' },
-            }[id]
-            const isOpen = windows[id]
-            return (
-              <button
-                className={`dock-item ${activeWindow === id ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''}`}
-                type="button"
-                key={id}
-                onClick={() => openWindow(id)}
-                aria-label={`${isOpen ? 'Focus' : 'Open'} ${item.label} window`}
-                aria-pressed={activeWindow === id && isOpen}
-              >
-                <span className="dock-icon" aria-hidden="true">{item.icon}</span>
-                <span className="dock-label">{item.label}</span>
-                <span className="dock-indicator" aria-hidden="true" />
-              </button>
-            )
-          })}
-        </nav>
-      </footer>
+      {state.stage !== 'ready' && (
+        <footer className="dock-area">
+          <nav className="dock" aria-label="Desktop windows">
+            {stageWindows.map((id) => {
+              const item = {
+                apply: { icon: state.stage === 'lost' ? '⚠️' : '📨', label: state.stage === 'lost' ? 'Session ended' : 'Applications' },
+                offer: { icon: '📬', label: 'Offer' },
+                messenger: { icon: '💬', label: 'Messenger' },
+                terminal: { icon: '🖥️', label: 'Terminal' },
+              }[id]
+              const isOpen = windows[id]
+              return (
+                <button
+                  className={`dock-item ${activeWindow === id ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''}`}
+                  type="button"
+                  key={id}
+                  onClick={() => openWindow(id)}
+                  aria-label={`${isOpen ? 'Focus' : 'Open'} ${item.label} window`}
+                  aria-pressed={activeWindow === id && isOpen}
+                >
+                  <span className="dock-icon" aria-hidden="true">{item.icon}</span>
+                  <span className="dock-label">{item.label}</span>
+                  <span className="dock-indicator" aria-hidden="true" />
+                </button>
+              )
+            })}
+          </nav>
+        </footer>
+      )}
     </div>
   )
 }

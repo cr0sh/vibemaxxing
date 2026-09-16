@@ -2,7 +2,6 @@
 
 The player has three resources.
 
-  run Terminal so will be in trouble
 - Energy: needs to do "something". Defeats if went zero
 - Token: needs to run agent in the Terminal. The game proceeds even if it's zero but user can't
 - Money(`$`): needs to purchase various features or upgrades.
@@ -12,7 +11,7 @@ The flow of the game is:
 - The player is an SWE. Starts from have a job
   - The probability of job offer is 1% at start
   - The user should submit a form to apply, fields reset to blank after each submission(deliberate friction)
-  - After 8 submissions, there will be a autocomplete button next to the submit
+  - After 5 submissions, an autocomplete button appears next to the submit
     button to ease the user
 - You've got hired to *INSERT RANDOM COMPANY NAME HERE FROM A LIST*
   - You now have two windows. Messenger(slack-like purple theme) and Terminal
@@ -51,4 +50,3 @@ The flow of the game is:
   shown. Also a purchase button is shown next, which purchases 100K tokens at
   \$10.
 
-TBD: more contents below
