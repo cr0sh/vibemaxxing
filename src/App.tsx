@@ -12,6 +12,7 @@ import {
 import { applicationSamples } from './applicationSamples'
 import { MessengerContent, TerminalContent } from './Employment'
 import { WindowFrame, WindowWorkspace } from './DesktopWindows'
+import { ResourceCounter } from './ResourceCounter'
 import './App.css'
 
 type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal'
@@ -102,9 +103,6 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
   const openWindow = (id: WindowId) => {
     setWindows((current) => ({ ...current, [id]: true }))
     setActiveWindow(id)
-    window.requestAnimationFrame(() => {
-      document.getElementById(`window-${id}`)?.focus({ preventScroll: true })
-    })
   }
 
   const minimizeWindow = (id: WindowId) => {
@@ -338,6 +336,7 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                     title="Messenger"
                     active={activeWindow === 'messenger'}
                     className="messenger-window-frame"
+                    contentLayout="fill"
                     hidden={!windows.messenger}
                     onFocus={() => setActiveWindow('messenger')}
                     onMinimize={() => minimizeWindow('messenger')}
@@ -351,6 +350,7 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                     title="Terminal"
                     active={activeWindow === 'terminal'}
                     className="terminal-window-frame"
+                    contentLayout="fill"
                     hidden={!windows.terminal}
                     onFocus={() => setActiveWindow('terminal')}
                     onMinimize={() => minimizeWindow('terminal')}
@@ -418,6 +418,31 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
   return (
         <section className={`widget-band ${showPaidResources ? 'widget-band-paid' : ''}`} aria-label="Desktop widgets">
           <div className="widget-cluster">
+            <div className={`paid-resources ${showPaidResources ? 'paid-resources-visible' : ''}`} aria-hidden={!showPaidResources}>
+              <div className="paid-resources-inner">
+                <div className="resource-widget resource-widget-money" aria-label={`Money ${state.money} dollars`}>
+                  <span className="resource-widget-icon" aria-hidden="true">$</span>
+                  <div>
+                    <span className="widget-label">Money</span>
+                    <span className="resource-values"><ResourceCounter value={state.money} prefix="$" /></span>
+                  </div>
+                </div>
+                <div className="resource-widget resource-widget-tokens" aria-label={`Tokens ${state.tokens}`}>
+                  <span className="resource-widget-icon" aria-hidden="true">◇</span>
+                  <div>
+                    <span className="widget-label">Tokens</span>
+                    <span className="resource-values"><ResourceCounter value={state.tokens} /></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="resource-widget resource-widget-energy" aria-label={`Energy ${state.energy}`}>
+              <span className="resource-widget-icon" aria-hidden="true">⚡</span>
+              <div>
+                <span className="widget-label">Energy</span>
+                <span className="resource-values"><ResourceCounter value={state.energy} /></span>
+              </div>
+            </div>
             <time className="clock-widget" dateTime={now.toISOString()} aria-label={`Local time ${timeLabel}`}>
               <span className="clock-icon" aria-hidden="true">◷</span>
               <span>{timeLabel}</span>
@@ -427,31 +452,6 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
               <strong>{now.getDate()}</strong>
               <span className="calendar-weekday">{weekdayLabel}</span>
             </time>
-            <div className={`paid-resources ${showPaidResources ? 'paid-resources-visible' : ''}`} aria-hidden={!showPaidResources}>
-              <div className="paid-resources-inner">
-                <div className="resource-widget resource-widget-money" aria-label={`Money ${state.money} dollars`}>
-                  <span className="resource-widget-icon" aria-hidden="true">$</span>
-                  <div>
-                    <span className="widget-label">Money</span>
-                    <span className="resource-values"><strong>${state.money.toLocaleString()}</strong></span>
-                  </div>
-                </div>
-                <div className="resource-widget resource-widget-tokens" aria-label={`Tokens ${state.tokens}`}>
-                  <span className="resource-widget-icon" aria-hidden="true">◇</span>
-                  <div>
-                    <span className="widget-label">Tokens</span>
-                    <span className="resource-values"><strong>{state.tokens.toLocaleString()}</strong></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="resource-widget resource-widget-energy" aria-label={`Energy ${state.energy}`}>
-              <span className="resource-widget-icon" aria-hidden="true">⚡</span>
-              <div>
-                <span className="widget-label">Energy</span>
-                <span className="resource-values"><strong>{state.energy}</strong></span>
-              </div>
-            </div>
           </div>
         </section>
   )

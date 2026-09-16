@@ -61,6 +61,18 @@
   overscroll-behavior: contain;
 }
 
+.window-content.window-content-fill {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.window-content.window-content-fill > * {
+  flex: 1 0 auto;
+  min-height: 100%;
+  margin: 0;
+}
+
 .window-drag-instructions {
   position: absolute;
   width: 1px;

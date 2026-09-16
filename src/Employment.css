@@ -334,6 +334,7 @@
   background: linear-gradient(145deg, #2e9070, #23644f) !important;
 }
 
+
 .employment-terminal {
   display: flex;
   flex-direction: column;
@@ -439,7 +440,7 @@
   flex: 0 0 auto;
   gap: 0.55rem;
   margin-top: auto;
-  padding-top: 0.8rem;
+  padding: 0.8rem 1rem 1rem;
   border-top: 1px solid rgba(145, 126, 179, 0.26);
 }
 

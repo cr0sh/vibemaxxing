@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
 import './DesktopWindows.css'
 
@@ -76,6 +76,7 @@ interface WindowFrameProps {
   title: string
   active: boolean
   className?: string
+  contentLayout?: 'padded' | 'fill'
   onFocus: () => void
   onMinimize: () => void
   children: ReactNode
@@ -84,7 +85,7 @@ interface WindowFrameProps {
 
 type Drag = { pointerId: number; origin: Point; start: Point }
 
-export function WindowFrame({ id, icon, title, active, className = '', onFocus, onMinimize, children, hidden = false }: WindowFrameProps) {
+export function WindowFrame({ id, icon, title, active, className = '', contentLayout = 'padded', onFocus, onMinimize, children, hidden = false }: WindowFrameProps) {
   const workspace = useContext(WorkspaceContext)
   if (!workspace) throw new Error('WindowFrame requires a WindowWorkspace')
   const { size: bounds, order, register, unregister, raise } = workspace
@@ -96,6 +97,7 @@ export function WindowFrame({ id, icon, title, active, className = '', onFocus, 
     x: (bounds.width - size.width) * defaults.x,
     y: (bounds.height - size.height) * defaults.y,
   }, size, bounds)
+  const windowRef = useRef<HTMLElement>(null)
   const drag = useRef<Drag | null>(null)
   const [dragging, setDragging] = useState(false)
 
@@ -104,8 +106,12 @@ export function WindowFrame({ id, icon, title, active, className = '', onFocus, 
     return () => unregister(id)
   }, [id, register, unregister])
 
-  useEffect(() => {
-    if (active && !hidden) raise(id)
+  useLayoutEffect(() => {
+    if (hidden || !active) return
+    raise(id)
+    if (!windowRef.current?.contains(document.activeElement)) {
+      windowRef.current?.focus({ preventScroll: true })
+    }
   }, [active, hidden, id, raise])
 
   const focus = () => {
@@ -147,6 +153,7 @@ export function WindowFrame({ id, icon, title, active, className = '', onFocus, 
   return (
     <section
       id={`window-${id}`}
+      ref={windowRef}
       tabIndex={-1}
       className={`window ${active ? 'window-active' : ''} ${className}`}
       style={{ width: size.width, height: size.height, left: position.x, top: position.y, zIndex: order.indexOf(id) + 1, visibility: bounds.width && bounds.height ? undefined : 'hidden' }}
@@ -192,7 +199,7 @@ export function WindowFrame({ id, icon, title, active, className = '', onFocus, 
           <span aria-hidden="true">−</span>
         </button>
       </div>
-      <div className="window-content">{children}</div>
+      <div className={`window-content window-content-${contentLayout}`}>{children}</div>
     </section>
   )
 }
