@@ -132,12 +132,17 @@ describe('employment transitions', () => {
     expect(refilled.tokens).toBe(MAX_TOKENS)
   })
 
-  test('missing a task deadline ends employment and stops wages', () => {
+  test('missing a task deadline preserves firing evidence and stops wages', () => {
     const hired = hire()
     const task = taskWith(hired, 1)
-    const lost = gameReducer(hired, { type: 'tick', seconds: Math.ceil(task.deadlineAt) + 1 })
+    const pingDeadline = task.deadlineAt + 50
+    const context = { ...hired, pingDeadline }
+    const lost = gameReducer(context, { type: 'tick', seconds: Math.ceil(task.deadlineAt) + 1 })
     expect(lost.stage).toBe('lost')
-    expect(gameReducer(lost, { type: 'tick', seconds: 100 }).money).toBe(lost.money)
+    expect(lost.failure).toBe('The task deadline was missed.')
+    expect(lost.tasks).toEqual(context.tasks)
+    expect(lost.pingDeadline).toBe(pingDeadline)
+    expect(gameReducer(lost, { type: 'tick', seconds: 100 })).toEqual(lost)
   })
 })
 

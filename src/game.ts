@@ -222,7 +222,6 @@ function lose(state: GameState, failure: string): GameState {
   return {
     ...state,
     stage: 'lost',
-    pingDeadline: null,
     failure,
   }
 }
