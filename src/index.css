@@ -8,16 +8,20 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-html {
+html,
+body,
+#root {
+  width: 100%;
   min-width: 320px;
-  min-height: 100%;
-  background: #d7cafa;
-}
-
-body {
-  min-width: 320px;
+  height: 100%;
   min-height: 100dvh;
   margin: 0;
+}
+
+html,
+body {
+  overflow: hidden;
+  background: #d7cafa;
 }
 
 button,
@@ -29,10 +33,6 @@ textarea {
 button {
   -webkit-appearance: none;
   appearance: none;
-}
-
-#root {
-  min-height: 100dvh;
 }
 
 ::selection {
