@@ -16,7 +16,6 @@ import './App.css'
 
 type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal'
 type WindowState = Record<WindowId, boolean>
-type ApplicationField = keyof Application
 
 const emptyApplication = (): Application => ({
   name: '',
@@ -24,7 +23,12 @@ const emptyApplication = (): Application => ({
   pitch: '',
 })
 
-const fillFields: ApplicationField[] = ['name', 'email', 'pitch']
+const fillCharacterIntervals = {
+  name: 34 / 3,
+  email: 34 / 3,
+  pitch: 14 / 3,
+} as const
+const fillFrameDelay = 16
 
 function App() {
   const [state, dispatch] = useReducer(gameReducer, initialGame)
@@ -167,28 +171,32 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
 
     setIsAutofilling(true)
     setApplication(emptyApplication())
-    let fieldIndex = 0
-    let characterIndex = 0
+    const startedAt = performance.now()
+    const completionDuration = Math.max(
+      sample.name.length * fillCharacterIntervals.name,
+      sample.email.length * fillCharacterIntervals.email,
+      sample.pitch.length * fillCharacterIntervals.pitch,
+    )
 
     const advance = () => {
       if (run !== fillRun.current) return
-      const field = fillFields[fieldIndex]
-      if (!field) {
+
+      const elapsed = performance.now() - startedAt
+      const visibleName = sample.name.slice(0, Math.min(sample.name.length, Math.floor(elapsed / fillCharacterIntervals.name)))
+      const visibleEmail = sample.email.slice(0, Math.min(sample.email.length, Math.floor(elapsed / fillCharacterIntervals.email)))
+      const visiblePitch = sample.pitch.slice(0, Math.min(sample.pitch.length, Math.floor(elapsed / fillCharacterIntervals.pitch)))
+
+      setApplication((current) => {
+        if (current.name === visibleName && current.email === visibleEmail && current.pitch === visiblePitch) return current
+        return { ...current, name: visibleName, email: visibleEmail, pitch: visiblePitch }
+      })
+
+      if (elapsed >= completionDuration) {
         fillTimer.current = null
         setIsAutofilling(false)
         return
       }
-      const value = sample[field]
-      if (characterIndex <= value.length) {
-        const visible = value.slice(0, characterIndex)
-        setApplication((current) => ({ ...current, [field]: visible }))
-        characterIndex += 1
-        fillTimer.current = window.setTimeout(advance, field === 'pitch' ? 14 : 34)
-      } else {
-        fieldIndex += 1
-        characterIndex = 0
-        fillTimer.current = window.setTimeout(advance, 110)
-      }
+      fillTimer.current = window.setTimeout(advance, Math.min(fillFrameDelay, completionDuration - elapsed))
     }
 
     advance()
