@@ -113,6 +113,30 @@ describe('employment transitions', () => {
     expect(taskWith(state, id).progress).toBeGreaterThan(pausedProgress)
   })
 
+  test('approval prompts stay stable at a checkpoint and reseed on resume', () => {
+    let state = hire()
+    const id = taskWith(state, 1).id
+    state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
+    const firstPrompt = taskWith(state, id).approvalPrompt
+    expect(firstPrompt).toBeString()
+
+    let ticks = 0
+    while (taskWith(state, id).status !== 'approval' && ticks < 6) {
+      state = gameReducer(state, { type: 'tick', seconds: 1 })
+      ticks += 1
+    }
+    expect(taskWith(state, id).approvalPrompt).toBe(firstPrompt)
+
+    const resumed = gameReducer(state, { type: 'approve-task', id, approved: true })
+    expect(taskWith(resumed, id).approvalPrompt).toBeString()
+
+    let replay = hire()
+    replay = gameReducer(replay, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
+    replay = gameReducer(replay, { type: 'tick', seconds: ticks })
+    const replayed = gameReducer(replay, { type: 'approve-task', id, approved: true })
+    expect(taskWith(replayed, id).approvalPrompt).toBe(taskWith(resumed, id).approvalPrompt)
+  })
+
   test('spent tokens remain spent until the hundred-second refill boundary', () => {
     const hired = hire()
     const task = taskWith(hired, 1)
@@ -228,6 +252,7 @@ describe('terminal upgrades and concurrent work', () => {
     expect(state.money).toBe(0)
     expect(state.terminals[0]?.yolo).toBe(true)
     expect(taskWith(state, id).status).toBe('working')
+    expect(taskWith(state, id).approvalPrompt).toBeNull()
     expect(state.tokens).toBe(chargedTokens)
 
     const paused = taskWith(state, id).progress

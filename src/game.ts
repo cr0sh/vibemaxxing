@@ -31,6 +31,7 @@ export type WorkTask = {
   artifactName: string
   terminalId: TerminalId | null
   slot: number | null
+  approvalPrompt: string | null
 }
 
 export type GameState = {
@@ -137,6 +138,19 @@ const taskBlueprints: readonly Pick<WorkTask, 'title' | 'description' | 'artifac
   },
 ]
 
+const APPROVAL_PROMPTS: readonly string[] = [
+  'Apply the generated patch?',
+  'Run the test suite?',
+  'Execute the build?',
+  'Update the lockfile?',
+  'Run the migration?',
+  'Remove unused files?',
+  'Retry the failed command?',
+  'Run the formatter?',
+  'Update the configuration?',
+  'Commit the changes?',
+]
+
 function normalizeSeed(seed: number): number {
   if (!Number.isFinite(seed)) {
     return 1
@@ -156,6 +170,12 @@ function nextRandom(rng: number): readonly [number, number] {
 function drawInteger(rng: number, minimum: number, maximum: number): readonly [number, number] {
   const [next, unit] = nextRandom(rng)
   return [next, minimum + Math.floor(unit * (maximum - minimum + 1))]
+}
+
+function drawApprovalCheckpoint(rng: number): readonly [number, number, string] {
+  const [delayRng, approvalDelay] = drawInteger(rng, 1, 5)
+  const [nextRng, promptIndex] = drawInteger(delayRng, 0, APPROVAL_PROMPTS.length - 1)
+  return [nextRng, approvalDelay, APPROVAL_PROMPTS[promptIndex] ?? APPROVAL_PROMPTS[0] ?? '']
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -186,6 +206,7 @@ function createTask(state: GameState, elapsed: number): readonly [WorkTask, numb
       artifactName: blueprint.artifactName,
       terminalId: null,
       slot: null,
+      approvalPrompt: null
     },
     nextRng,
   ]
@@ -264,7 +285,7 @@ function advanceTask(task: WorkTask, elapsed: number, terminals: readonly Termin
 
   const progress = Math.min(task.difficulty, task.progress + 1)
   if (progress >= task.difficulty) {
-    return { ...task, progress, status: 'artifact', nextApprovalAt: 0 }
+    return { ...task, progress, status: 'artifact', nextApprovalAt: 0, approvalPrompt: null }
   }
 
   const yolo = task.terminalId !== null && terminals.some(
@@ -530,10 +551,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const yolo = terminal.yolo
       let nextRng = state.rng
       let nextApprovalAt = 0
+      let nextApprovalPrompt: string | null = null
       if (!yolo) {
-        const drawn = drawInteger(state.rng, 1, 5)
+        const drawn = drawApprovalCheckpoint(state.rng)
         nextRng = drawn[0]
         nextApprovalAt = state.elapsed + drawn[1]
+        nextApprovalPrompt = drawn[2]
       }
 
       return {
@@ -547,6 +570,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               startedAt: state.elapsed,
               status: 'working',
               nextApprovalAt,
+              approvalPrompt: nextApprovalPrompt,
             }
           : candidate),
         rng: nextRng,
@@ -586,12 +610,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return {
           ...state,
           tasks: state.tasks.map((candidate, index) => index === taskIndex
-            ? { ...candidate, status: 'working', nextApprovalAt: 0 }
+            ? { ...candidate, status: 'working', nextApprovalAt: 0, approvalPrompt: null }
             : candidate),
         }
       }
 
-      const [nextRng, approvalDelay] = drawInteger(state.rng, 1, 5)
+      const [nextRng, approvalDelay, approvalPrompt] = drawApprovalCheckpoint(state.rng)
       return {
         ...state,
         tasks: state.tasks.map((candidate, index) => index === taskIndex
@@ -599,6 +623,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               ...candidate,
               status: 'working',
               nextApprovalAt: state.elapsed + approvalDelay,
+              approvalPrompt,
             }
           : candidate),
         rng: nextRng,
@@ -678,9 +703,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         terminals: state.terminals.map((terminal) => terminal.id === action.terminalId
           ? { ...terminal, yolo: true }
           : terminal),
-        tasks: state.tasks.map((task) => task.terminalId === action.terminalId &&
-          (task.status === 'approval' || task.status === 'blocked')
-          ? { ...task, status: 'working', nextApprovalAt: 0 }
+        tasks: state.tasks.map((task) => task.terminalId === action.terminalId
+          ? {
+              ...task,
+              status: task.status === 'approval' || task.status === 'blocked' ? 'working' : task.status,
+              nextApprovalAt: 0,
+              approvalPrompt: null,
+            }
           : task),
       }
     }
