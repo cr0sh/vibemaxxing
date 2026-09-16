@@ -12,7 +12,7 @@ The flow of the game is:
 - The player is an SWE. Starts from have a job
   - The probability of job offer is 1% at start
   - The user should submit a form to apply, fields reset to blank after each submission(deliberate friction)
-  - After 5 submissions, there will be a autocomplete button next to the submit
+  - After 3 manual submissions, there will be a autocomplete button next to the submit
     button to ease the user
 - You've got hired to *INSERT RANDOM COMPANY NAME HERE FROM A LIST*
   - You now have two windows. Messenger(slack-like purple theme) and Terminal

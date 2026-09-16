@@ -186,7 +186,7 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
   }
 
   const fillSample = () => {
-    if (state.stage !== 'applying' || state.submissions < 5 || applicationSamples.length === 0) return
+    if (state.stage !== 'applying' || state.submissions < 3 || applicationSamples.length === 0) return
 
     cancelAutofill()
     const poolSize = applicationSamples.length
@@ -299,7 +299,7 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                       <button className="primary-button" type="submit" disabled={state.energy < 3 || isAutofilling}>
                         Submit application <span aria-hidden="true">↗</span>
                       </button>
-                      {state.submissions >= 5 && (
+                      {state.submissions >= 3 && (
                         <button className="secondary-button" type="button" onClick={fillSample}>
                           <span aria-hidden="true">✦</span> Auto-fill application
                         </button>
