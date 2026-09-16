@@ -8,10 +8,10 @@
   justify-content: center;
   min-height: 1.75rem;
   padding: 0.25rem 0.65rem;
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border: 1px solid #563394;
   border-radius: 999px;
-  color: inherit;
-  background: color-mix(in srgb, Canvas 88%, currentColor 12%);
+  color: #fff;
+  background: #6843b7;
   box-shadow: 0 0.2rem 0.6rem color-mix(in srgb, CanvasText 20%, transparent);
   cursor: pointer;
   font: inherit;
@@ -22,11 +22,11 @@
 }
 
 .unread-indicator:hover {
-  background: color-mix(in srgb, Canvas 78%, currentColor 22%);
+  background: #563394;
 }
 
 .unread-indicator:focus-visible {
-  outline: 2px solid currentColor;
+  outline: 2px solid #7954f6;
   outline-offset: 2px;
 }
 
