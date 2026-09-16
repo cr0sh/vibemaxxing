@@ -81,7 +81,8 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
   )
   const [isAutofilling, setIsAutofilling] = useState(false)
   const [defeatDismissed, setDefeatDismissed] = useState(false)
-  const defeatAutoFront = state.stage === 'lost' && hasEmployment && !defeatDismissed
+  const [defeatClaimed, setDefeatClaimed] = useState(false)
+  const defeatAutoFront = state.stage === 'lost' && !defeatDismissed && !defeatClaimed
   const isWindowActive = (id: WindowId): boolean => defeatAutoFront ? id === 'defeat' : activeWindow === id
   const fillTimer = useRef<number | null>(null)
   const fillRun = useRef(0)
@@ -115,11 +116,21 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
           : state.stage === 'lost'
             ? ['defeat']
             : []
-
   const openWindow = (id: WindowId) => {
     setWindows((current) => ({ ...current, [id]: true }))
-    if (id === 'defeat') setDefeatDismissed(false)
+    if (id === 'defeat') {
+      setDefeatDismissed(false)
+      setDefeatClaimed(true)
+    } else if (defeatAutoFront) {
+      setDefeatClaimed(true)
+    }
     setActiveWindow(id)
+  }
+
+  const focusDefeat = () => {
+    setDefeatClaimed(true)
+    setActiveWindow('defeat')
+    if (hasEmployment) setWindows((current) => ({ ...current, messenger: true }))
   }
 
   const minimizeWindow = (id: WindowId) => {
@@ -128,7 +139,10 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
       [id]: false,
       ...(id === 'defeat' && hasEmployment ? { messenger: true } : {}),
     }))
-    if (id === 'defeat') setDefeatDismissed(true)
+    if (id === 'defeat') {
+      setDefeatDismissed(true)
+      setDefeatClaimed(true)
+    }
     if (activeWindow === id) {
       const remaining = stageWindows.find((windowId) => windowId !== id && windows[windowId])
       if (remaining) setActiveWindow(remaining)
@@ -392,8 +406,8 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                   title="Run ended"
                   active={isWindowActive('defeat')}
                   className="loss-window"
-                  hidden={state.stage !== 'lost' || !hasEmployment || defeatDismissed}
-                  onFocus={() => setActiveWindow('defeat')}
+                  hidden={state.stage !== 'lost' || defeatDismissed}
+                  onFocus={focusDefeat}
                   onMinimize={() => minimizeWindow('defeat')}
                 >
                   <div className="loss-card">
