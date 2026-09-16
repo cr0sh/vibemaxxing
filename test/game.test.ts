@@ -1,10 +1,25 @@
 import { describe, expect, test } from 'bun:test'
-import { gameReducer, initialGame, type GameState } from '../src/game'
+import {
+  gameReducer,
+  initialGame,
+  MAX_TOKENS,
+  type GameState,
+  type WorkTask,
+  upgradePrice,
+} from '../src/game'
 
 function hire(seed = 12345): GameState {
   const started = gameReducer(initialGame, { type: 'start', seed })
   const offered = gameReducer(started, { type: 'submit', roll: 0, companyIndex: 0 })
   return gameReducer(offered, { type: 'accept' })
+}
+
+function taskWith(state: GameState, id: number): WorkTask {
+  const task = state.tasks.find((candidate) => candidate.id === id)
+  if (task === undefined) {
+    throw new Error(`Task ${id} was not found`)
+  }
+  return task
 }
 
 describe('job applications', () => {
@@ -38,7 +53,13 @@ describe('job applications', () => {
 describe('employment transitions', () => {
   test('background elapsed time behaves like individual ticks', () => {
     const hired = hire()
-    const working = gameReducer(hired, { type: 'start-task', id: hired.task!.id })
+    const task = taskWith(hired, 1)
+    const working = gameReducer(hired, {
+      type: 'start-task',
+      id: task.id,
+      terminalId: 'terminal',
+      slot: 0,
+    })
     const batch = gameReducer(working, { type: 'tick', seconds: 20 })
     let individual = working
     for (let second = 0; second < 20; second++) {
@@ -50,18 +71,19 @@ describe('employment transitions', () => {
 
   test('duplicate task starts and deliveries cannot spend or award twice', () => {
     let state = hire()
-    const id = state.task!.id
-    const tokenCost = 10000 * state.task!.difficulty
-    state = gameReducer(state, { type: 'start-task', id })
-    state = gameReducer(state, { type: 'start-task', id })
-    expect(state.tokens).toBe(1000000 - tokenCost)
-    for (let second = 0; second < 60 && state.task?.status !== 'artifact'; second++) {
-      if (state.task?.status === 'approval' || state.task?.status === 'blocked') {
+    const id = taskWith(state, 1).id
+    const tokenCost = 10000 * taskWith(state, id).difficulty
+    state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
+    state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
+    expect(state.tokens).toBe(MAX_TOKENS - tokenCost)
+    for (let second = 0; second < 60 && taskWith(state, id).status !== 'artifact'; second++) {
+      const task = taskWith(state, id)
+      if (task.status === 'approval' || task.status === 'blocked') {
         state = gameReducer(state, { type: 'approve-task', id, approved: true })
       }
       state = gameReducer(state, { type: 'tick', seconds: 1 })
     }
-    expect(state.task?.status).toBe('artifact')
+    expect(taskWith(state, id).status).toBe('artifact')
     state = gameReducer(state, { type: 'deliver-task', id })
     expect(state.completedTasks).toBe(1)
     const delivered = state
@@ -73,35 +95,151 @@ describe('employment transitions', () => {
 
   test('declined commands pause work and can be explicitly resumed', () => {
     let state = hire()
-    const id = state.task!.id
-    state = gameReducer(state, { type: 'start-task', id })
-    for (let second = 0; second < 6 && state.task?.status !== 'approval'; second++) {
+    const id = taskWith(state, 1).id
+    state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
+    for (let second = 0; second < 6 && taskWith(state, id).status !== 'approval'; second++) {
       state = gameReducer(state, { type: 'tick', seconds: 1 })
     }
-    expect(state.task?.status).toBe('approval')
+    expect(taskWith(state, id).status).toBe('approval')
     state = gameReducer(state, { type: 'approve-task', id, approved: false })
-    expect(state.task?.status).toBe('blocked')
-    const pausedProgress = state.task!.progress
+    expect(taskWith(state, id).status).toBe('blocked')
+    const pausedProgress = taskWith(state, id).progress
     state = gameReducer(state, { type: 'tick', seconds: 2 })
-    expect(state.task?.progress).toBe(pausedProgress)
+    expect(taskWith(state, id).progress).toBe(pausedProgress)
     state = gameReducer(state, { type: 'approve-task', id, approved: true })
     state = gameReducer(state, { type: 'tick', seconds: 1 })
-    expect(state.task!.progress).toBeGreaterThan(pausedProgress)
+    expect(taskWith(state, id).progress).toBeGreaterThan(pausedProgress)
   })
 
   test('spent tokens remain spent until the hundred-second refill boundary', () => {
     const hired = hire()
-    const working = gameReducer(hired, { type: 'start-task', id: hired.task!.id })
+    const task = taskWith(hired, 1)
+    const working = gameReducer(hired, {
+      type: 'start-task',
+      id: task.id,
+      terminalId: 'terminal',
+      slot: 0,
+    })
     expect(gameReducer(working, { type: 'tick', seconds: 1 }).tokens).toBe(working.tokens)
-    const beforeRefill = { ...working, elapsed: 99, task: null, nextTaskAt: 120, nextPingAt: 150 }
+    const beforeRefill = {
+      ...working,
+      elapsed: 99,
+      tasks: [],
+      nextTaskAt: 120,
+      nextPingAt: 150,
+    }
     const refilled = gameReducer(beforeRefill, { type: 'tick', seconds: 1 })
-    expect(refilled.tokens).toBe(1000000)
+    expect(refilled.tokens).toBe(MAX_TOKENS)
   })
 
   test('missing a task deadline ends employment and stops wages', () => {
     const hired = hire()
-    const lost = gameReducer(hired, { type: 'tick', seconds: Math.ceil(hired.task!.deadlineAt) + 1 })
+    const task = taskWith(hired, 1)
+    const lost = gameReducer(hired, { type: 'tick', seconds: Math.ceil(task.deadlineAt) + 1 })
     expect(lost.stage).toBe('lost')
     expect(gameReducer(lost, { type: 'tick', seconds: 100 }).money).toBe(lost.money)
+  })
+})
+
+describe('terminal upgrades and concurrent work', () => {
+  test('rejects an occupied slot without charging a second task', () => {
+    let state = hire()
+    state = {
+      ...state,
+      tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
+      nextPingAt: 0,
+      money: 100,
+    }
+    state = gameReducer(state, { type: 'tick', seconds: 120 })
+    const first = taskWith(state, 1)
+    const second = taskWith(state, 2)
+    state = gameReducer(state, {
+      type: 'start-task',
+      id: first.id,
+      terminalId: 'terminal',
+      slot: 0,
+    })
+    const before = state.tokens
+    const occupied = gameReducer(state, {
+      type: 'start-task',
+      id: second.id,
+      terminalId: 'terminal',
+      slot: 0,
+    })
+    expect(occupied.tokens).toBe(before)
+    expect(taskWith(occupied, second.id).status).toBe('assigned')
+    expect(taskWith(occupied, second.id).terminalId).toBeNull()
+  })
+
+  test('upgrade purchases are atomic, affordable, and non-repeatable', () => {
+    let state = hire()
+    expect(upgradePrice(state, 'split', 'terminal')).toBe(20)
+    expect(upgradePrice(state, 'yolo', 'terminal')).toBe(42)
+    expect(upgradePrice(state, 'terminal', 'terminal')).toBe(100)
+    expect(gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })).toEqual(state)
+
+    state = { ...state, money: 20 }
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })
+    expect(state.money).toBe(0)
+    expect(state.terminals[0]?.slots).toBe(2)
+    expect(upgradePrice(state, 'split', 'terminal')).toBe(40)
+    expect(gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' }).money).toBe(0)
+  })
+
+  test('YOLO resumes paused work and bypasses future approval prompts without another token charge', () => {
+    let state = hire()
+    const id = taskWith(state, 1).id
+    state = {
+      ...state,
+      money: 42,
+      nextPingAt: 0,
+      tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
+    }
+    state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
+    const chargedTokens = state.tokens
+    for (let second = 0; second < 6 && taskWith(state, id).status !== 'approval'; second++) {
+      state = gameReducer(state, { type: 'tick', seconds: 1 })
+    }
+    expect(taskWith(state, id).status).toBe('approval')
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'terminal' })
+    expect(state.money).toBe(0)
+    expect(state.terminals[0]?.yolo).toBe(true)
+    expect(taskWith(state, id).status).toBe('working')
+    expect(state.tokens).toBe(chargedTokens)
+
+    const paused = taskWith(state, id).progress
+    state = gameReducer(state, { type: 'tick', seconds: 3 })
+    expect(taskWith(state, id).progress).toBeGreaterThan(paused)
+    expect(taskWith(state, id).status).not.toBe('approval')
+  })
+
+  test('jobs in separate terminals progress during the same tick', () => {
+    let state = hire()
+    state = {
+      ...state,
+      money: 100,
+      nextPingAt: 0,
+      tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
+    }
+    state = gameReducer(state, { type: 'tick', seconds: 120 })
+    const first = taskWith(state, 1)
+    const second = taskWith(state, 2)
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'terminal', terminalId: 'terminal' })
+    state = gameReducer(state, {
+      type: 'start-task',
+      id: first.id,
+      terminalId: 'terminal',
+      slot: 0,
+    })
+    state = gameReducer(state, {
+      type: 'start-task',
+      id: second.id,
+      terminalId: 'terminal-2',
+      slot: 0,
+    })
+    const before = state.tasks.map((task) => task.progress)
+    state = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(state.tasks.find((task) => task.id === first.id)?.progress).toBe(before[0]! + 1)
+    expect(state.tasks.find((task) => task.id === second.id)?.progress).toBe(before[1]! + 1)
   })
 })
