@@ -592,6 +592,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         (task.status !== 'approval' && task.status !== 'blocked')
       ) {
         return state
+
       }
 
       if (!action.approved) {

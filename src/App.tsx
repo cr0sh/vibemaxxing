@@ -5,17 +5,18 @@ import {
   gameReducer,
   initialGame,
   type Application,
-  type GameAction,
   type GameState,
   type Stage,
+  type TerminalId,
 } from './game'
 import { applicationSamples } from './applicationSamples'
 import { MessengerContent, TerminalContent } from './Employment'
+import { ShopContent } from './Shop'
 import { WindowFrame, WindowWorkspace } from './DesktopWindows'
 import { ResourceCounter } from './ResourceCounter'
 import './App.css'
 
-type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal'
+type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'shop' | 'defeat'
 type WindowState = Record<WindowId, boolean>
 
 const emptyApplication = (): Application => ({
@@ -29,6 +30,7 @@ const fillCharacterIntervals = {
   email: 34 / 3,
   pitch: 14 / 3,
 } as const
+
 const fillFrameDelay = 16
 
 function App() {
@@ -55,20 +57,26 @@ function App() {
   return (
     <div className={`app-shell stage-${state.stage}`}>
       <DesktopWidgets state={state} now={now} />
-      <Desktop key={state.stage} state={state} dispatch={dispatch} />
+      <Desktop key={state.stage === 'hired' || state.stage === 'lost' ? 'employment' : state.stage} state={state} dispatch={dispatch} />
     </div>
   )
 }
 
 function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<GameAction> }) {
-  const [application, setApplication] = useState<Application>(emptyApplication)
+  const hasEmploymentRef = useRef(state.stage === 'hired')
+  const hasEmployment = state.stage === 'hired' || (state.stage === 'lost' && hasEmploymentRef.current)
   const [windows, setWindows] = useState<WindowState>(() => ({
-    apply: state.stage === 'applying' || state.stage === 'lost',
+    apply: state.stage === 'applying',
     offer: state.stage === 'offer',
     messenger: state.stage === 'hired',
     terminal: state.stage === 'hired',
+    'terminal-2': false,
+    shop: false,
+    defeat: state.stage === 'lost',
   }))
-  const [activeWindow, setActiveWindow] = useState<WindowId>(state.stage === 'hired' ? 'messenger' : state.stage === 'offer' ? 'offer' : 'apply')
+  const [activeWindow, setActiveWindow] = useState<WindowId>(
+    state.stage === 'lost' ? 'defeat' : state.stage === 'hired' ? 'messenger' : state.stage === 'offer' ? 'offer' : 'apply',
+  )
   const [isAutofilling, setIsAutofilling] = useState(false)
   const fillTimer = useRef<number | null>(null)
   const fillRun = useRef(0)
@@ -88,17 +96,29 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
       fillRun.current += 1
     }
   }, [state.stage])
+  useEffect(() => {
+    if (state.stage === 'hired') {
+      hasEmploymentRef.current = true
+    }
+    if (state.stage === 'lost' && hasEmploymentRef.current) {
+      setWindows((current) => ({ ...current, defeat: true }))
+      setActiveWindow('defeat')
+    }
+  }, [state.stage])
+
 
   const currentCompany = state.company ?? companies[0] ?? 'Prompt & Circumstance'
+  const terminalIds: TerminalId[] = hasEmployment ? state.terminals.map((terminal) => terminal.id) : []
   const stageWindows: WindowId[] =
-    state.stage === 'applying' || state.stage === 'lost'
+    state.stage === 'applying'
       ? ['apply']
       : state.stage === 'offer'
         ? ['offer']
-        : state.stage === 'hired'
-          ? ['messenger', 'terminal']
-          : []
-
+        : hasEmployment
+          ? ['messenger', ...terminalIds, 'shop', ...(state.stage === 'lost' ? ['defeat' as const] : [])]
+          : state.stage === 'lost'
+            ? ['defeat']
+            : []
 
   const openWindow = (id: WindowId) => {
     setWindows((current) => ({ ...current, [id]: true }))
@@ -112,6 +132,7 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
       if (remaining) setActiveWindow(remaining)
     }
   }
+
 
   const beginGame = () => {
     cancelAutofill()
@@ -308,27 +329,8 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                 </WindowFrame>
               )}
 
-              {state.stage === 'lost' && (
-                <WindowFrame
-                  id="apply"
-                  icon="⚠️"
-                  title="Session ended"
-                  active={activeWindow === 'apply'}
-                  className="loss-window"
-                  hidden={!windows.apply}
-                  onFocus={() => setActiveWindow('apply')}
-                  onMinimize={() => minimizeWindow('apply')}
-                >
-                  <div className="loss-card">
-                    <span className="loss-icon" aria-hidden="true">⌁</span>
-                    <h2>Session ended</h2>
-                    <p>{state.failure ?? 'The deadline passed before the artifact arrived.'}</p>
-                    <button className="primary-button" type="button" onClick={retryGame}>Retry</button>
-                  </div>
-                </WindowFrame>
-              )}
 
-              {state.stage === 'hired' && (
+              {hasEmployment && (
                 <>
                   <WindowFrame
                     id="messenger"
@@ -341,23 +343,64 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
                     onFocus={() => setActiveWindow('messenger')}
                     onMinimize={() => minimizeWindow('messenger')}
                   >
-                    <MessengerContent state={state} dispatch={dispatch} onOpenTerminal={() => openWindow('terminal')} />
+                    <MessengerContent state={state} dispatch={dispatch} />
                   </WindowFrame>
 
+                  {state.terminals.map((terminal) => (
+                    <WindowFrame
+                      key={terminal.id}
+                      id={terminal.id}
+                      icon="🖥️"
+                      title={terminal.id === 'terminal' ? 'Terminal' : 'Terminal 2'}
+                      active={activeWindow === terminal.id}
+                      className={`terminal-window-frame ${terminal.yolo ? 'terminal-window-yolo' : ''}`}
+                      contentLayout="fill"
+                      hidden={!windows[terminal.id]}
+                      onFocus={() => setActiveWindow(terminal.id)}
+                      onMinimize={() => minimizeWindow(terminal.id)}
+                    >
+                      <TerminalContent
+                        state={state}
+                        dispatch={dispatch}
+                        terminalId={terminal.id}
+                        onOpenMessenger={() => openWindow('messenger')}
+                      />
+                    </WindowFrame>
+                  ))}
+
                   <WindowFrame
-                    id="terminal"
-                    icon="🖥️"
-                    title="Terminal"
-                    active={activeWindow === 'terminal'}
-                    className="terminal-window-frame"
+                    id="shop"
+                    icon="🛍️"
+                    title="Shop"
+                    active={activeWindow === 'shop'}
+                    className="shop-window-frame"
                     contentLayout="fill"
-                    hidden={!windows.terminal}
-                    onFocus={() => setActiveWindow('terminal')}
-                    onMinimize={() => minimizeWindow('terminal')}
+                    hidden={!windows.shop}
+                    onFocus={() => setActiveWindow('shop')}
+                    onMinimize={() => minimizeWindow('shop')}
                   >
-                    <TerminalContent state={state} dispatch={dispatch} onOpenMessenger={() => openWindow('messenger')} />
+                    <ShopContent state={state} dispatch={dispatch} />
                   </WindowFrame>
                 </>
+              )}
+              {state.stage === 'lost' && (
+                <WindowFrame
+                  id="defeat"
+                  icon="⚠️"
+                  title="Run ended"
+                  active={activeWindow === 'defeat'}
+                  className="loss-window"
+                  hidden={!windows.defeat}
+                  onFocus={() => setActiveWindow('defeat')}
+                  onMinimize={() => minimizeWindow('defeat')}
+                >
+                  <div className="loss-card">
+                    <span className="loss-icon" aria-hidden="true">⌁</span>
+                    <h2>Run ended</h2>
+                    <p>{state.failure ?? 'The deadline passed before the artifact arrived.'}</p>
+                    <button className="primary-button" type="button" onClick={retryGame}>Retry</button>
+                  </div>
+                </WindowFrame>
               )}
             </WindowWorkspace>
           </div>
@@ -380,12 +423,18 @@ function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<Gam
         <footer className="dock-area">
           <nav className="dock" aria-label="Desktop windows">
             {stageWindows.map((id) => {
-              const item = {
-                apply: { icon: state.stage === 'lost' ? '⚠️' : '📨', label: state.stage === 'lost' ? 'Session ended' : 'Applications' },
-                offer: { icon: '📬', label: 'Offer' },
-                messenger: { icon: '💬', label: 'Messenger' },
-                terminal: { icon: '🖥️', label: 'Terminal' },
-              }[id]
+              const item =
+                id === 'apply'
+                  ? { icon: '📨', label: 'Applications' }
+                  : id === 'offer'
+                    ? { icon: '📬', label: 'Offer' }
+                    : id === 'messenger'
+                      ? { icon: '💬', label: 'Messenger' }
+                      : id === 'shop'
+                        ? { icon: '🛍️', label: 'Shop' }
+                        : id === 'defeat'
+                          ? { icon: '⚠️', label: 'Run ended' }
+                          : { icon: '🖥️', label: id === 'terminal' ? 'Terminal' : 'Terminal 2' }
               const isOpen = windows[id]
               return (
                 <button

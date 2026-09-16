@@ -291,3 +291,106 @@ describe('terminal upgrades and concurrent work', () => {
     expect(state.tasks.find((task) => task.id === second.id)?.progress).toBe(before[1]! + 1)
   })
 })
+
+describe('terminal upgrades and concurrent work', () => {
+  test('rejects an occupied slot without charging a second task', () => {
+    let state = hire()
+    state = {
+      ...state,
+      tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
+      nextPingAt: 0,
+      money: 100,
+    }
+    state = gameReducer(state, { type: 'tick', seconds: 120 })
+    const first = taskWith(state, 1)
+    const second = taskWith(state, 2)
+    state = gameReducer(state, {
+      type: 'start-task',
+      id: first.id,
+      terminalId: 'terminal',
+      slot: 0,
+    })
+    const before = state.tokens
+    const occupied = gameReducer(state, {
+      type: 'start-task',
+      id: second.id,
+      terminalId: 'terminal',
+      slot: 0,
+    })
+    expect(occupied.tokens).toBe(before)
+    expect(taskWith(occupied, second.id).status).toBe('assigned')
+    expect(taskWith(occupied, second.id).terminalId).toBeNull()
+  })
+
+  test('upgrade purchases are atomic, affordable, and non-repeatable', () => {
+    let state = hire()
+    expect(upgradePrice(state, 'split', 'terminal')).toBe(20)
+    expect(upgradePrice(state, 'yolo', 'terminal')).toBe(42)
+    expect(upgradePrice(state, 'terminal', 'terminal')).toBe(100)
+    expect(gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })).toEqual(state)
+
+    state = { ...state, money: 20 }
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })
+    expect(state.money).toBe(0)
+    expect(state.terminals[0]?.slots).toBe(2)
+    expect(upgradePrice(state, 'split', 'terminal')).toBe(40)
+    expect(gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' }).money).toBe(0)
+  })
+
+  test('YOLO resumes paused work and bypasses future approval prompts without another token charge', () => {
+    let state = hire()
+    const id = taskWith(state, 1).id
+    state = {
+      ...state,
+      money: 42,
+      nextPingAt: 0,
+      tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
+    }
+    state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
+    const chargedTokens = state.tokens
+    for (let second = 0; second < 6 && taskWith(state, id).status !== 'approval'; second++) {
+      state = gameReducer(state, { type: 'tick', seconds: 1 })
+    }
+    expect(taskWith(state, id).status).toBe('approval')
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'terminal' })
+    expect(state.money).toBe(0)
+    expect(state.terminals[0]?.yolo).toBe(true)
+    expect(taskWith(state, id).status).toBe('working')
+    expect(state.tokens).toBe(chargedTokens)
+
+    const paused = taskWith(state, id).progress
+    state = gameReducer(state, { type: 'tick', seconds: 3 })
+    expect(taskWith(state, id).progress).toBeGreaterThan(paused)
+    expect(taskWith(state, id).status).not.toBe('approval')
+  })
+
+  test('jobs in separate terminals progress during the same tick', () => {
+    let state = hire()
+    state = {
+      ...state,
+      money: 100,
+      nextPingAt: 0,
+      tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
+    }
+    state = gameReducer(state, { type: 'tick', seconds: 120 })
+    const first = taskWith(state, 1)
+    const second = taskWith(state, 2)
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'terminal', terminalId: 'terminal' })
+    state = gameReducer(state, {
+      type: 'start-task',
+      id: first.id,
+      terminalId: 'terminal',
+      slot: 0,
+    })
+    state = gameReducer(state, {
+      type: 'start-task',
+      id: second.id,
+      terminalId: 'terminal-2',
+      slot: 0,
+    })
+    const before = state.tasks.map((task) => task.progress)
+    state = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(state.tasks.find((task) => task.id === first.id)?.progress).toBe(before[0]! + 1)
+    expect(state.tasks.find((task) => task.id === second.id)?.progress).toBe(before[1]! + 1)
+  })
+})
