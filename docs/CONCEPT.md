@@ -46,8 +46,8 @@ The flow of the game is:
   value is updated based on the observed speed of player's resolving.
 - After solving first five tasks, the boss will enable "incentivized mode" and
   tell the player with the message. Then each tasks will have the dollar based reward (with cash bag emoji). The reward depreciates by 10% per 10 seconds, until it reaches the 5% of its initial value. The deadline system still counts.
-- Each solved tasks spend tokens worth `10000 * difficulty`. Tokens are max 1M
-  in inventory, and refilled to 1M every 100 seconds. The refill timer should be
+- Each solved tasks spend tokens worth `10000 * difficulty`. Tokens start at 10M and are capped at 10M
+  in inventory, and refilled to 10M every 100 seconds. The refill timer should be
   shown. Also a purchase button is shown next, which purchases 100K tokens at
   \$10.
 

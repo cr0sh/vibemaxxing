@@ -79,7 +79,7 @@ export const companies: readonly string[] = [
 ]
 
 const MAX_ENERGY = 100
-export const MAX_TOKENS = 1_000_000
+export const MAX_TOKENS = 10_000_000
 const TOKEN_TASK_COST = 10_000
 export const TOKEN_PURCHASE_AMOUNT = 100_000
 export const TOKEN_PURCHASE_COST = 10

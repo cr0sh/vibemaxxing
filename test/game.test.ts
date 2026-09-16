@@ -3,6 +3,8 @@ import {
   gameReducer,
   initialGame,
   MAX_TOKENS,
+  TOKEN_PURCHASE_AMOUNT,
+  TOKEN_PURCHASE_COST,
   type GameState,
   type WorkTask,
   upgradePrice,
@@ -132,6 +134,22 @@ describe('employment transitions', () => {
     expect(refilled.tokens).toBe(MAX_TOKENS)
   })
 
+  test('starts at the ten-million token cap and token purchases remain capped', () => {
+    const hired = hire()
+    expect(hired.tokens).toBe(MAX_TOKENS)
+    const nearCap = {
+      ...hired,
+      money: TOKEN_PURCHASE_COST,
+      tokens: MAX_TOKENS - TOKEN_PURCHASE_AMOUNT + 1,
+      tasks: [],
+      nextTaskAt: 120,
+      nextPingAt: 0,
+    }
+    const purchased = gameReducer(nearCap, { type: 'buy-tokens' })
+    expect(purchased.money).toBe(0)
+    expect(purchased.tokens).toBe(MAX_TOKENS)
+
+  })
   test('missing a task deadline preserves firing evidence and stops wages', () => {
     const hired = hire()
     const task = taskWith(hired, 1)
