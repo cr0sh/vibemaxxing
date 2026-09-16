@@ -40,7 +40,7 @@ function particleCount(delta: number) {
   if (!(delta > 0)) return 0
   if (!Number.isFinite(delta)) return maximumParticles
 
-  return Math.min(maximumParticles, Math.max(minimumParticles, 3 + Math.ceil(Math.log10(delta + 1) * 3.4)))
+  return Math.min(maximumParticles, Math.max(minimumParticles, 3 + Math.ceil(Math.log10(delta + 1) * 3.3)))
 }
 
 function noise(seed: number) {

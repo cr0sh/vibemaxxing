@@ -1115,7 +1115,7 @@ textarea:focus-visible {
 
   .new-game-button {
     padding: 0.38rem 0.45rem;
-    font-size: min(calc(0.56rem * 1.15), calc(0.56rem + 2pt));
+    font-size: min(calc(0.56rem * 1.4375), calc(0.7rem + 2.5pt));
   }
 
   .window-chrome {
@@ -1274,11 +1274,11 @@ textarea:focus-visible {
 
 .widget-label {
   margin-bottom: 0.34rem;
-  font-size: min(calc(0.54rem * 1.15), calc(0.54rem + 2pt));
+  font-size: min(calc(0.54rem * 1.4375), calc(0.675rem + 2.5pt));
 }
 
 .resource-values {
-  font-size: min(calc(0.63rem * 1.15), calc(0.63rem + 2pt));
+  font-size: min(calc(0.63rem * 1.4375), calc(0.7875rem + 2.5pt));
 }
 
 .resource-widget-icon {
@@ -1287,7 +1287,7 @@ textarea:focus-visible {
 
 .new-game-button {
   padding: 0.58rem 0.82rem;
-  font-size: min(calc(0.65rem * 1.15), calc(0.65rem + 2pt));
+  font-size: min(calc(0.65rem * 1.4375), calc(0.8125rem + 2.5pt));
 }
 
 .window-title {
@@ -1434,11 +1434,11 @@ textarea:focus-visible {
 
   .widget-label {
     margin-bottom: 0.2rem;
-    font-size: 0.51rem;
+    font-size: 0.6375rem;
   }
 
   .resource-values {
-    font-size: min(calc(0.53rem * 1.15), calc(0.53rem + 2pt));
+    font-size: min(calc(0.53rem * 1.4375), calc(0.6625rem + 2.5pt));
   }
 
   .ready-screen {
