@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { DragEvent, Dispatch } from 'react'
 import {
   MAX_TOKENS,
@@ -35,15 +35,12 @@ const terminalLabel = (terminalId: TerminalId): string => terminalId === 'termin
 export function ShopContent({ state, dispatch }: ShopProps) {
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
 
-  useEffect(() => {
-    if (!state.terminals.some((terminal) => terminal.id === targetTerminal)) {
-      setTargetTerminal(state.terminals[0]?.id ?? 'terminal')
-    }
-  }, [state.terminals, targetTerminal])
-
+  const selectedTargetTerminal = state.terminals.some((terminal) => terminal.id === targetTerminal)
+    ? targetTerminal
+    : state.terminals[0]?.id ?? 'terminal'
   const canBuyTokens = state.stage === 'hired' && state.money >= TOKEN_PURCHASE_COST && state.tokens < MAX_TOKENS
   const selectedUpgradeTarget = (upgrade: TerminalUpgrade): TerminalId =>
-    upgrade === 'terminal' ? 'terminal' : targetTerminal
+    upgrade === 'terminal' ? 'terminal' : selectedTargetTerminal
 
   const buyTokens = () => {
     if (canBuyTokens) dispatch({ type: 'buy-tokens' })
@@ -89,7 +86,7 @@ export function ShopContent({ state, dispatch }: ShopProps) {
         <label htmlFor="shop-target-terminal">Install on</label>
         <select
           id="shop-target-terminal"
-          value={targetTerminal}
+          value={selectedTargetTerminal}
           disabled={state.stage !== 'hired'}
           onChange={(event) => setTargetTerminal(event.currentTarget.value as TerminalId)}
         >
