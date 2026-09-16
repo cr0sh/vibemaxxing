@@ -65,7 +65,7 @@ function App() {
         state={state}
         dispatch={dispatch}
         isDevPaused={isDevPaused}
-        onToggleDevPause={() => setIsDevPaused((current) => !current)}
+        onDevPauseChange={setIsDevPaused}
       />
     </div>
   )
@@ -75,12 +75,12 @@ function Desktop({
   state,
   dispatch,
   isDevPaused,
-  onToggleDevPause,
+  onDevPauseChange,
 }: {
   state: GameState
   dispatch: Dispatch<GameAction>
   isDevPaused: boolean
-  onToggleDevPause: () => void
+  onDevPauseChange: (paused: boolean) => void
 }) {
   const [application, setApplication] = useState<Application>(emptyApplication)
   const hasEmployment =
@@ -171,14 +171,14 @@ function Desktop({
 
   const beginGame = () => {
     cancelAutofill()
-    setIsDevPaused(false)
+    onDevPauseChange(false)
     setApplication(emptyApplication())
     dispatch({ type: 'start', seed: Math.floor(Math.random() * 0x7fffffff) })
   }
 
   const retryGame = () => {
     cancelAutofill()
-    setIsDevPaused(false)
+    onDevPauseChange(false)
     setApplication(emptyApplication())
     dispatch({ type: 'reset' })
   }
@@ -261,7 +261,7 @@ function Desktop({
 
   const handleDevJump = (stage: Stage) => {
     cancelAutofill()
-    setIsDevPaused(false)
+    onDevPauseChange(false)
     setApplication(emptyApplication())
     dispatch({ type: 'dev-jump', stage })
   }
@@ -448,7 +448,7 @@ function Desktop({
           <details className="dev-tools">
             <summary>Dev</summary>
             <div className="dev-controls">
-              <button type="button" aria-pressed={isDevPaused} onClick={onToggleDevPause}>
+              <button type="button" aria-pressed={isDevPaused} onClick={() => onDevPauseChange(!isDevPaused)}>
                 {isDevPaused ? 'Resume timer' : 'Pause timer'}
               </button>
               <button type="button" onClick={() => dispatch({ type: 'tick', seconds: 10 })}>Advance 10s</button>
