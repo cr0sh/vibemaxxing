@@ -10,7 +10,7 @@ import {
   type TerminalUpgrade,
   upgradePrice,
 } from './game'
-import { useDragDropSource } from './DragDropHints'
+import { useDragDropSource } from './DragDropHintsContext'
 import './Shop.css'
 
 type ShopProps = {
