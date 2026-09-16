@@ -248,8 +248,9 @@ describe('terminal upgrades and concurrent work', () => {
       state = gameReducer(state, { type: 'tick', seconds: 1 })
     }
     expect(taskWith(state, id).status).toBe('approval')
+    const moneyBeforeYolo = state.money
     state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'terminal' })
-    expect(state.money).toBe(0)
+    expect(state.money).toBe(moneyBeforeYolo - 42)
     expect(state.terminals[0]?.yolo).toBe(true)
     expect(taskWith(state, id).status).toBe('working')
     expect(taskWith(state, id).approvalPrompt).toBeNull()
