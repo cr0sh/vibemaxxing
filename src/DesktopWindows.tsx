@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
+import { DragDropHintsProvider } from './DragDropHints'
 import './DesktopWindows.css'
 
 type Point = { x: number; y: number }
@@ -67,9 +68,11 @@ export function WindowWorkspace({ className = '', children }: { className?: stri
   }, [])
 
   return (
-    <WorkspaceContext.Provider value={{ size, order, register, unregister, raise }}>
-      <div ref={elementRef} className={`windows ${className}`}>{children}</div>
-    </WorkspaceContext.Provider>
+    <DragDropHintsProvider>
+      <WorkspaceContext.Provider value={{ size, order, register, unregister, raise }}>
+        <div ref={elementRef} className={`windows ${className}`}>{children}</div>
+      </WorkspaceContext.Provider>
+    </DragDropHintsProvider>
   )
 }
 

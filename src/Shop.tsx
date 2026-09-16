@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { DragEvent, Dispatch } from 'react'
+import type { Dispatch } from 'react'
 import {
   MAX_TOKENS,
   TOKEN_PURCHASE_AMOUNT,
@@ -10,6 +10,7 @@ import {
   type TerminalUpgrade,
   upgradePrice,
 } from './game'
+import { useDragDropSource } from './DragDropHints'
 import './Shop.css'
 
 type ShopProps = {
@@ -31,6 +32,67 @@ const upgradeProducts: readonly UpgradeProduct[] = [
 ]
 
 const terminalLabel = (terminalId: TerminalId): string => terminalId === 'terminal' ? 'Terminal' : 'Terminal 2'
+function UpgradeProductCard({
+  product,
+  state,
+  dispatch,
+  targetTerminal,
+}: {
+  product: UpgradeProduct
+  state: GameState
+  dispatch: Dispatch<GameAction>
+  targetTerminal: TerminalId
+}) {
+  const { upgrade, icon, title, detail } = product
+  const target = upgrade === 'terminal' ? 'terminal' : targetTerminal
+  const price = upgradePrice(state, upgrade, target)
+  const canInstall = price !== null && state.money >= price
+  const dragSource = useDragDropSource({ kind: 'upgrade', id: upgrade }, canInstall)
+  const installUpgrade = () => {
+    if (price === null || state.money < price) return
+    dispatch({ type: 'buy-upgrade', upgrade, terminalId: target })
+  }
+  let buttonLabel = `$${price ?? 0}`
+  if (state.stage !== 'hired') buttonLabel = 'Unavailable'
+  else if (price === null) {
+    if (upgrade === 'split') buttonLabel = 'Maximum panes'
+    else if (upgrade === 'yolo') buttonLabel = 'Installed'
+    else buttonLabel = 'Two terminals max'
+  } else if (state.money < price) {
+    buttonLabel = `Need $${price}`
+  }
+
+  return (
+    <article
+      className={`shop-product shop-upgrade-product ${canInstall ? '' : 'shop-product-unavailable'}`}
+      draggable={canInstall}
+      tabIndex={canInstall ? 0 : undefined}
+      onFocus={dragSource.onFocus}
+      onBlur={dragSource.onBlur}
+      onMouseEnter={dragSource.onMouseEnter}
+      onMouseLeave={dragSource.onMouseLeave}
+      onKeyDown={dragSource.onKeyDown}
+      onDragStart={(event) => {
+        if (!canInstall) return
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('application/x-vibemaxxer-upgrade', upgrade)
+        event.dataTransfer.setData('text/plain', upgrade)
+        dragSource.onDragStart(event)
+      }}
+      onDragEnd={dragSource.onDragEnd}
+      aria-label={`${title} upgrade`}
+    >
+      <span className="shop-product-icon" aria-hidden="true">{icon}</span>
+      <div className="shop-product-copy">
+        <h3>{title}</h3>
+        <p>{detail}</p>
+      </div>
+      <button className="shop-buy-button" type="button" onClick={installUpgrade} disabled={!canInstall}>
+        {buttonLabel}
+      </button>
+    </article>
+  )
+}
 
 export function ShopContent({ state, dispatch }: ShopProps) {
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
@@ -39,48 +101,14 @@ export function ShopContent({ state, dispatch }: ShopProps) {
     ? targetTerminal
     : state.terminals[0]?.id ?? 'terminal'
   const canBuyTokens = state.stage === 'hired' && state.money >= TOKEN_PURCHASE_COST && state.tokens < MAX_TOKENS
-  const selectedUpgradeTarget = (upgrade: TerminalUpgrade): TerminalId =>
-    upgrade === 'terminal' ? 'terminal' : selectedTargetTerminal
 
   const buyTokens = () => {
     if (canBuyTokens) dispatch({ type: 'buy-tokens' })
   }
 
-  const installUpgrade = (upgrade: TerminalUpgrade) => {
-    const target = selectedUpgradeTarget(upgrade)
-    const price = upgradePrice(state, upgrade, target)
-    if (price === null || state.money < price) return
-    dispatch({ type: 'buy-upgrade', upgrade, terminalId: target })
-  }
-
-  const handleUpgradeDragStart = (event: DragEvent<HTMLElement>, upgrade: TerminalUpgrade) => {
-    const price = upgradePrice(state, upgrade, selectedUpgradeTarget(upgrade))
-    if (price === null || state.money < price) return
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('application/x-vibemaxxer-upgrade', upgrade)
-    event.dataTransfer.setData('text/plain', upgrade)
-  }
-
-  const productState = (upgrade: TerminalUpgrade, price: number | null): string => {
-    if (state.stage !== 'hired') return 'Unavailable'
-    if (price === null) {
-      if (upgrade === 'split') return 'Maximum panes'
-      if (upgrade === 'yolo') return 'Installed'
-      return 'Two terminals max'
-    }
-    if (state.money < price) return `Need $${price}`
-    return `$${price}`
-  }
 
   return (
     <div className="shop-app">
-      <header className="shop-header">
-        <div>
-          <h2>Shop</h2>
-          <p className="shop-money">$ {state.money.toLocaleString()} available</p>
-        </div>
-        <span className="shop-balance" aria-label={`${state.tokens.toLocaleString()} tokens`}>◇ {state.tokens.toLocaleString()}</span>
-      </header>
 
       <div className="shop-target-row">
         <label htmlFor="shop-target-terminal">Install on</label>
@@ -92,9 +120,8 @@ export function ShopContent({ state, dispatch }: ShopProps) {
         >
           {state.terminals.map((terminal) => <option key={terminal.id} value={terminal.id}>{terminalLabel(terminal.id)}</option>)}
         </select>
-        <span>Drag an upgrade onto a terminal agent pane.</span>
+        <span>Drag an upgrade onto a Terminal window.</span>
       </div>
-
       <div className="shop-products">
         <article
           className={`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`}
@@ -110,28 +137,15 @@ export function ShopContent({ state, dispatch }: ShopProps) {
           </button>
         </article>
 
-        {upgradeProducts.map(({ upgrade, icon, title, detail }) => {
-          const price = upgradePrice(state, upgrade, selectedUpgradeTarget(upgrade))
-          const canInstall = price !== null && state.money >= price
-          return (
-            <article
-              className={`shop-product shop-upgrade-product ${canInstall ? '' : 'shop-product-unavailable'}`}
-              key={upgrade}
-              draggable={canInstall}
-              onDragStart={(event) => handleUpgradeDragStart(event, upgrade)}
-              aria-label={`${title} upgrade`}
-            >
-              <span className="shop-product-icon" aria-hidden="true">{icon}</span>
-              <div className="shop-product-copy">
-                <h3>{title}</h3>
-                <p>{detail}</p>
-              </div>
-              <button className="shop-buy-button" type="button" onClick={() => installUpgrade(upgrade)} disabled={!canInstall}>
-                {productState(upgrade, price)}
-              </button>
-            </article>
-          )
-        })}
+        {upgradeProducts.map((product) => (
+          <UpgradeProductCard
+            key={product.upgrade}
+            product={product}
+            state={state}
+            dispatch={dispatch}
+            targetTerminal={selectedTargetTerminal}
+          />
+        ))}
       </div>
     </div>
   )
