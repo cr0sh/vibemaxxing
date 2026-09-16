@@ -1451,7 +1451,7 @@ textarea:focus-visible {
   }
 
   .paid-resources {
-    --paid-card-width: 6rem;
+    --paid-card-width: 7.25rem;
     --paid-card-gap: 0.28rem;
   }
 }
