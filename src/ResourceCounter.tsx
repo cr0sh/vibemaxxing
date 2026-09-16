@@ -153,96 +153,102 @@ export function ResourceCounter({ value, prefix = '' }: { value: number; prefix?
     const direction = value >= oldTarget ? 'up' : 'down'
     const animation = ++sequence.current
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
+    let setupRequest = 0
     let request = 0
     let followRequest = 0
     let burstTimer = 0
 
     previousTarget.current = value
-    setBurst(null)
 
-    if (!motion.matches && delta > 0) {
-      const widget = widgetRef.current?.closest<HTMLElement>('.resource-widget') ?? widgetRef.current
-      const rect = widget?.getBoundingClientRect()
+    const setupAnimation = () => {
+      if (sequence.current !== animation) return
 
-      if (rect && rect.width > 0 && rect.height > 0) {
-        const initialLeft = rect.left
-        const initialTop = rect.top
-        const initialWidth = rect.width
-        const initialHeight = rect.height
+      setBurst(null)
 
-        setBurst({
-          id: animation,
-          direction,
-          left: initialLeft,
-          top: initialTop,
-          width: initialWidth,
-          height: initialHeight,
-          particles: createParticles(particleCount(delta), initialWidth, initialHeight, animation),
-        })
+      if (!motion.matches && delta > 0) {
+        const widget = widgetRef.current?.closest<HTMLElement>('.resource-widget') ?? widgetRef.current
+        const rect = widget?.getBoundingClientRect()
 
-        let lastLeft = initialLeft
-        let lastTop = initialTop
-        let lastWidth = initialWidth
-        let lastHeight = initialHeight
-        const followStartedAt = performance.now()
-        const followWidget = (now: number) => {
-          if (sequence.current !== animation) return
+        if (rect && rect.width > 0 && rect.height > 0) {
+          const initialLeft = rect.left
+          const initialTop = rect.top
+          const initialWidth = rect.width
+          const initialHeight = rect.height
 
-          const currentWidget = widgetRef.current?.closest<HTMLElement>('.resource-widget') ?? widgetRef.current
-          const currentRect = currentWidget?.getBoundingClientRect()
-          const overlay = burstRef.current
+          setBurst({
+            id: animation,
+            direction,
+            left: initialLeft,
+            top: initialTop,
+            width: initialWidth,
+            height: initialHeight,
+            particles: createParticles(particleCount(delta), initialWidth, initialHeight, animation),
+          })
 
-          if (overlay && currentRect && currentRect.width > 0 && currentRect.height > 0) {
-            if (currentRect.left !== lastLeft || currentRect.top !== lastTop) {
-              overlay.style.transform = `translate3d(${currentRect.left - initialLeft}px, ${currentRect.top - initialTop}px, 0)`
-              lastLeft = currentRect.left
-              lastTop = currentRect.top
+          let lastLeft = initialLeft
+          let lastTop = initialTop
+          let lastWidth = initialWidth
+          let lastHeight = initialHeight
+          const followStartedAt = performance.now()
+          const followWidget = (now: number) => {
+            if (sequence.current !== animation) return
+
+            const currentWidget = widgetRef.current?.closest<HTMLElement>('.resource-widget') ?? widgetRef.current
+            const currentRect = currentWidget?.getBoundingClientRect()
+            const overlay = burstRef.current
+
+            if (overlay && currentRect && currentRect.width > 0 && currentRect.height > 0) {
+              if (currentRect.left !== lastLeft || currentRect.top !== lastTop) {
+                overlay.style.transform = `translate3d(${currentRect.left - initialLeft}px, ${currentRect.top - initialTop}px, 0)`
+                lastLeft = currentRect.left
+                lastTop = currentRect.top
+              }
+              if (currentRect.width !== lastWidth) {
+                overlay.style.width = `${currentRect.width}px`
+                lastWidth = currentRect.width
+              }
+              if (currentRect.height !== lastHeight) {
+                overlay.style.height = `${currentRect.height}px`
+                lastHeight = currentRect.height
+              }
             }
-            if (currentRect.width !== lastWidth) {
-              overlay.style.width = `${currentRect.width}px`
-              lastWidth = currentRect.width
-            }
-            if (currentRect.height !== lastHeight) {
-              overlay.style.height = `${currentRect.height}px`
-              lastHeight = currentRect.height
-            }
+
+            if (now - followStartedAt < duration) followRequest = window.requestAnimationFrame(followWidget)
           }
 
-          if (now - followStartedAt < duration) followRequest = window.requestAnimationFrame(followWidget)
+          followRequest = window.requestAnimationFrame(followWidget)
+          burstTimer = window.setTimeout(() => {
+            setBurst((current) => (current?.id === animation ? null : current))
+          }, duration)
         }
-
-        followRequest = window.requestAnimationFrame(followWidget)
-        burstTimer = window.setTimeout(() => {
-          setBurst((current) => (current?.id === animation ? null : current))
-        }, duration)
       }
-    }
 
-    if (motion.matches || from === value) {
-      displayed.current = value
-      setFrame((current) => (current.value === value && !current.active ? current : { value, active: false }))
-      return () => {
-        window.cancelAnimationFrame(followRequest)
-        window.clearTimeout(burstTimer)
+      if (motion.matches || from === value) {
+        displayed.current = value
+        setFrame((current) => (current.value === value && !current.active ? current : { value, active: false }))
+        return
       }
+
+      const startedAt = performance.now()
+      const advance = (now: number) => {
+        const progress = Math.min(1, (now - startedAt) / duration)
+        const eased = 1 - (1 - progress) ** 3
+        const nextValue = progress === 1 ? value : Math.round(from + (value - from) * eased)
+        const active = progress < 1
+        displayed.current = nextValue
+        setFrame((current) => {
+          if (sequence.current !== animation || (current.value === nextValue && current.active === active)) return current
+          return { value: nextValue, active }
+        })
+        if (active) request = window.requestAnimationFrame(advance)
+      }
+
+      request = window.requestAnimationFrame(advance)
     }
 
-    const startedAt = performance.now()
-    const advance = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / duration)
-      const eased = 1 - (1 - progress) ** 3
-      const nextValue = progress === 1 ? value : Math.round(from + (value - from) * eased)
-      const active = progress < 1
-      displayed.current = nextValue
-      setFrame((current) => {
-        if (sequence.current !== animation || (current.value === nextValue && current.active === active)) return current
-        return { value: nextValue, active }
-      })
-      if (active) request = window.requestAnimationFrame(advance)
-    }
-
-    request = window.requestAnimationFrame(advance)
+    setupRequest = window.requestAnimationFrame(setupAnimation)
     return () => {
+      window.cancelAnimationFrame(setupRequest)
       window.cancelAnimationFrame(request)
       window.cancelAnimationFrame(followRequest)
       window.clearTimeout(burstTimer)
