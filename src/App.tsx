@@ -24,20 +24,11 @@ const emptyApplication = (): Application => ({
   pitch: '',
 })
 
-const initialWindows: WindowState = {
-  apply: false,
-  offer: false,
-  messenger: false,
-  terminal: false,
-}
-
 const fillFields: ApplicationField[] = ['name', 'email', 'pitch']
 
 function App() {
   const [state, dispatch] = useReducer(gameReducer, initialGame)
   const [now, setNow] = useState(() => new Date())
-  const latestState = useRef(state)
-  latestState.current = state
 
   useEffect(() => {
     let lastTickAt = Date.now()
@@ -47,28 +38,36 @@ function App() {
       const elapsedSeconds = Math.floor((currentTime - lastTickAt) / 1000)
       if (elapsedSeconds > 0) {
         lastTickAt += elapsedSeconds * 1000
-        if (latestState.current.stage === 'hired') {
+        if (state.stage === 'hired') {
           dispatch({ type: 'tick', seconds: elapsedSeconds })
         }
       }
     }, 1000)
 
     return () => window.clearInterval(timer)
-  }, [dispatch])
+  }, [state.stage])
 
-  return <Desktop state={state} dispatch={dispatch} now={now} />
+  return (
+    <div className={`app-shell stage-${state.stage}`}>
+      <DesktopWidgets state={state} now={now} />
+      <Desktop key={state.stage} state={state} dispatch={dispatch} />
+    </div>
+  )
 }
 
-function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatch<GameAction>; now: Date }) {
+function Desktop({ state, dispatch }: { state: GameState; dispatch: Dispatch<GameAction> }) {
   const [application, setApplication] = useState<Application>(emptyApplication)
-  const [windows, setWindows] = useState<WindowState>(initialWindows)
-  const [activeWindow, setActiveWindow] = useState<WindowId>('apply')
+  const [windows, setWindows] = useState<WindowState>(() => ({
+    apply: state.stage === 'applying' || state.stage === 'lost',
+    offer: state.stage === 'offer',
+    messenger: state.stage === 'hired',
+    terminal: state.stage === 'hired',
+  }))
+  const [activeWindow, setActiveWindow] = useState<WindowId>(state.stage === 'hired' ? 'messenger' : state.stage === 'offer' ? 'offer' : 'apply')
   const [isAutofilling, setIsAutofilling] = useState(false)
   const fillTimer = useRef<number | null>(null)
   const fillRun = useRef(0)
   const lastSample = useRef<number | null>(null)
-  const latestState = useRef(state)
-  latestState.current = state
   const cancelAutofill = () => {
     if (fillTimer.current !== null) {
       window.clearTimeout(fillTimer.current)
@@ -83,27 +82,7 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
       if (fillTimer.current !== null) window.clearTimeout(fillTimer.current)
       fillRun.current += 1
     }
-  }, [])
-
-  useEffect(() => {
-    cancelAutofill()
-    setApplication(emptyApplication())
-
-    if (state.stage === 'ready') {
-      setWindows(initialWindows)
-      setActiveWindow('apply')
-    } else if (state.stage === 'applying' || state.stage === 'lost') {
-      setWindows((current) => ({ ...current, apply: true, offer: false, messenger: false, terminal: false }))
-      setActiveWindow('apply')
-    } else if (state.stage === 'offer') {
-      setWindows((current) => ({ ...current, apply: false, offer: true, messenger: false, terminal: false }))
-      setActiveWindow('offer')
-    } else {
-      setWindows((current) => ({ ...current, apply: false, offer: false, messenger: true, terminal: true }))
-      setActiveWindow((current) => current === 'terminal' ? current : 'messenger')
-    }
   }, [state.stage])
-
 
   const currentCompany = state.company ?? companies[0] ?? 'Prompt & Circumstance'
   const stageWindows: WindowId[] =
@@ -114,11 +93,7 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
         : state.stage === 'hired'
           ? ['messenger', 'terminal']
           : []
-  const timeLabel = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-  const dateLabel = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-  const monthLabel = now.toLocaleDateString([], { month: 'short' }).toUpperCase()
-  const weekdayLabel = now.toLocaleDateString([], { weekday: 'short' }).toUpperCase()
-  const showPaidResources = state.stage === 'hired' || (state.stage === 'lost' && state.company !== null)
+
 
   const openWindow = (id: WindowId) => {
     setWindows((current) => ({ ...current, [id]: true }))
@@ -154,7 +129,7 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
       event.currentTarget.reportValidity()
       return
     }
-    if (state.energy < 3) return
+    if (state.energy < 3 || isAutofilling) return
 
     cancelAutofill()
     dispatch({
@@ -165,22 +140,20 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
     setApplication(emptyApplication())
   }
 
-  const updateApplication =
-    (field: ApplicationField) =>
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      cancelAutofill()
-      const value = event.currentTarget.value
-      setApplication((current) => ({ ...current, [field]: value }))
-    }
+  const updateApplication = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    cancelAutofill()
+    const { name, value } = event.currentTarget
+    setApplication((current) => ({ ...current, [name]: value }))
+  }
 
   const fillSample = () => {
     if (state.stage !== 'applying' || state.submissions < 5 || applicationSamples.length === 0) return
 
     cancelAutofill()
-    const candidates = applicationSamples
-      .map((sample, index) => ({ sample, index }))
-      .filter(({ index }) => index !== lastSample.current)
-    const picked = candidates[Math.floor(Math.random() * candidates.length)] ?? { sample: applicationSamples[0], index: 0 }
+    const poolSize = applicationSamples.length
+    let index = Math.floor(Math.random() * (poolSize - (lastSample.current === null ? 0 : 1)))
+    if (lastSample.current !== null && index >= lastSample.current) index += 1
+    const picked = { sample: applicationSamples[index], index }
     lastSample.current = picked.index
     const sample = picked.sample
     const run = fillRun.current
@@ -198,7 +171,7 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
     let characterIndex = 0
 
     const advance = () => {
-      if (run !== fillRun.current || latestState.current.stage !== 'applying') return
+      if (run !== fillRun.current) return
       const field = fillFields[fieldIndex]
       if (!field) {
         fillTimer.current = null
@@ -229,56 +202,16 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
   }
 
   return (
-    <div className={`app-shell stage-${state.stage}`}>
+    <>
       <main className="desktop-area">
         <div className="desktop-orbit desktop-orbit-one" aria-hidden="true" />
         <div className="desktop-orbit desktop-orbit-two" aria-hidden="true" />
         <div className="desktop-grid" aria-hidden="true" />
 
-        <section className={`widget-band ${showPaidResources ? 'widget-band-paid' : ''}`} aria-label="Desktop widgets">
-          <div className="widget-cluster">
-            <time className="clock-widget" dateTime={now.toISOString()} aria-label={`Local time ${timeLabel}`}>
-              <span className="clock-icon" aria-hidden="true">◷</span>
-              <span>{timeLabel}</span>
-            </time>
-            <time className="date-widget" dateTime={now.toISOString()} aria-label={dateLabel}>
-              <span className="calendar-month">{monthLabel}</span>
-              <strong>{now.getDate()}</strong>
-              <span className="calendar-weekday">{weekdayLabel}</span>
-            </time>
-            {showPaidResources && (
-              <>
-                <div className="resource-widget resource-widget-money" aria-label={`Money ${state.money} dollars`}>
-                  <span className="resource-widget-icon" aria-hidden="true">$</span>
-                  <div>
-                    <span className="widget-label">Money</span>
-                    <span className="resource-values"><strong>${state.money.toLocaleString()}</strong></span>
-                  </div>
-                </div>
-                <div className="resource-widget resource-widget-tokens" aria-label={`Tokens ${state.tokens}`}>
-                  <span className="resource-widget-icon" aria-hidden="true">◇</span>
-                  <div>
-                    <span className="widget-label">Tokens</span>
-                    <span className="resource-values"><strong>{state.tokens.toLocaleString()}</strong></span>
-                  </div>
-                </div>
-              </>
-            )}
-            <div className="resource-widget resource-widget-energy" aria-label={`Energy ${state.energy}`}>
-              <span className="resource-widget-icon" aria-hidden="true">⚡</span>
-              <div>
-                <span className="widget-label">Energy</span>
-                <span className="resource-values"><strong>{state.energy}</strong></span>
-              </div>
-            </div>
-          </div>
-        </section>
+
 
         {state.stage === 'ready' ? (
-          <section className="ready-screen" aria-labelledby="ready-heading">
-            <span className="ready-kicker">A new workday awaits</span>
-            <h1 id="ready-heading">Find your next role</h1>
-            <p>Start with 100 energy. Make the right impression.</p>
+          <section className="ready-screen" aria-label="Start game">
             <button className="new-game-button ready-start" type="button" onClick={beginGame}>New game</button>
           </section>
         ) : (
@@ -297,7 +230,6 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
                 >
                   <div className="window-heading-row">
                     <div>
-                      <p className="company-label">Open application queue</p>
                       <h2>Job application</h2>
                     </div>
                     <div className="submission-stamp" aria-label={`${state.submissions} submissions`}>
@@ -309,16 +241,16 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
                     <div className="field-grid">
                       <label className="field-label">
                         <span>Your name</span>
-                        <input name="name" value={application.name} onChange={updateApplication('name')} required autoComplete="name" placeholder="Your name" />
+                        <input name="name" value={application.name} onChange={updateApplication} required autoComplete="name" placeholder="Your name" />
                       </label>
                       <label className="field-label">
                         <span>Email address</span>
-                        <input name="email" type="email" value={application.email} onChange={updateApplication('email')} required autoComplete="email" placeholder="you@example.com" />
+                        <input name="email" type="email" value={application.email} onChange={updateApplication} required autoComplete="email" placeholder="you@example.com" />
                       </label>
                     </div>
                     <label className="field-label">
                       <span>One-paragraph pitch</span>
-                      <textarea name="pitch" value={application.pitch} onChange={updateApplication('pitch')} required rows={4} placeholder="A short description of your work" />
+                      <textarea name="pitch" value={application.pitch} onChange={updateApplication} required rows={4} placeholder="A short description of your work" />
                     </label>
                     <div className="form-actions">
                       <button className="primary-button" type="submit" disabled={state.energy < 3 || isAutofilling}>
@@ -331,10 +263,6 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
                       )}
                     </div>
                   </form>
-                  <div className="application-footnote">
-                    <span className="cost-badge">3 energy per submission</span>
-                    <span>{state.energy} energy remaining</span>
-                  </div>
                   {state.lastResult === 'rejected' && (
                     <p className="feedback feedback-rejected" role="status" aria-live="polite" key={state.submissions}>
                       <span aria-hidden="true">⊘</span> Application not selected. Try again.
@@ -357,7 +285,6 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
                   <div className="offer-hero">
                     <span className="offer-spark" aria-hidden="true">✦</span>
                     <div>
-                      <p className="company-label">A reply worth opening</p>
                       <h2>Offer received</h2>
                     </div>
                   </div>
@@ -388,8 +315,7 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
                 >
                   <div className="loss-card">
                     <span className="loss-icon" aria-hidden="true">⌁</span>
-                    <p className="company-label">The desktop went quiet</p>
-                    <h2>Assignment missed</h2>
+                    <h2>Session ended</h2>
                     <p>{state.failure ?? 'The deadline passed before the artifact arrived.'}</p>
                     <button className="primary-button" type="button" onClick={retryGame}>Retry</button>
                   </div>
@@ -471,7 +397,55 @@ function Desktop({ state, dispatch, now }: { state: GameState; dispatch: Dispatc
           </nav>
         </footer>
       )}
-    </div>
+    </>
+  )
+}
+
+function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
+  const timeLabel = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const dateLabel = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  const monthLabel = now.toLocaleDateString([], { month: 'short' }).toUpperCase()
+  const weekdayLabel = now.toLocaleDateString([], { weekday: 'short' }).toUpperCase()
+  const showPaidResources = state.stage === 'hired' || (state.stage === 'lost' && state.company !== null)
+  return (
+        <section className={`widget-band ${showPaidResources ? 'widget-band-paid' : ''}`} aria-label="Desktop widgets">
+          <div className="widget-cluster">
+            <time className="clock-widget" dateTime={now.toISOString()} aria-label={`Local time ${timeLabel}`}>
+              <span className="clock-icon" aria-hidden="true">◷</span>
+              <span>{timeLabel}</span>
+            </time>
+            <time className="date-widget" dateTime={now.toISOString()} aria-label={dateLabel}>
+              <span className="calendar-month">{monthLabel}</span>
+              <strong>{now.getDate()}</strong>
+              <span className="calendar-weekday">{weekdayLabel}</span>
+            </time>
+            <div className={`paid-resources ${showPaidResources ? 'paid-resources-visible' : ''}`} aria-hidden={!showPaidResources}>
+              <div className="paid-resources-inner">
+                <div className="resource-widget resource-widget-money" aria-label={`Money ${state.money} dollars`}>
+                  <span className="resource-widget-icon" aria-hidden="true">$</span>
+                  <div>
+                    <span className="widget-label">Money</span>
+                    <span className="resource-values"><strong>${state.money.toLocaleString()}</strong></span>
+                  </div>
+                </div>
+                <div className="resource-widget resource-widget-tokens" aria-label={`Tokens ${state.tokens}`}>
+                  <span className="resource-widget-icon" aria-hidden="true">◇</span>
+                  <div>
+                    <span className="widget-label">Tokens</span>
+                    <span className="resource-values"><strong>{state.tokens.toLocaleString()}</strong></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="resource-widget resource-widget-energy" aria-label={`Energy ${state.energy}`}>
+              <span className="resource-widget-icon" aria-hidden="true">⚡</span>
+              <div>
+                <span className="widget-label">Energy</span>
+                <span className="resource-values"><strong>{state.energy}</strong></span>
+              </div>
+            </div>
+          </div>
+        </section>
   )
 }
 

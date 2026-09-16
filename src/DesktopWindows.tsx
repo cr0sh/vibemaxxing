@@ -16,8 +16,8 @@ const WorkspaceContext = createContext<WorkspaceState | null>(null)
 const windowDefaults: Record<string, Size & Point> = {
   apply: { width: 650, height: 540, x: 0.5, y: 0.17 },
   offer: { width: 620, height: 440, x: 0.5, y: 0.22 },
-  messenger: { width: 570, height: 440, x: 0.12, y: 0.1 },
-  terminal: { width: 470, height: 360, x: 0.72, y: 0.3 },
+  messenger: { width: 570, height: 560, x: 0.12, y: 0.1 },
+  terminal: { width: 470, height: 500, x: 0.72, y: 0.3 },
 }
 const defaultWindow = { width: 520, height: 380, x: 0.5, y: 0.16 }
 const arrowDirections: Record<string, Point> = {

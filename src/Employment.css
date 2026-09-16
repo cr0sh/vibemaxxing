@@ -3,14 +3,14 @@
   position: relative;
   min-width: 0;
   color: #f4efff;
-  font-size: calc(1em + min(2pt, 15%));
 }
 
-.employment-messenger .messenger-sidebar,
-.employment-messenger .chat-pane,
-.employment-terminal .terminal-output,
+.employment-terminal .terminal-output {
+  font-size: min(calc(0.68rem * 1.15), calc(0.68rem + 2pt));
+}
+
 .employment-terminal .terminal-topline {
-  font-size: calc(1em + min(2pt, 15%));
+  font-size: min(calc(0.63rem * 1.15), calc(0.63rem + 2pt));
 }
 
 .employment-messenger .chat-pane {
@@ -33,39 +33,39 @@
   text-align: right;
 }
 .employment-messenger .messenger-team {
-  font-size: calc(1rem + min(2pt, 15%));
+  font-size: min(calc(1rem * 1.15), calc(1rem + 2pt));
 }
 
 .employment-messenger .sidebar-heading {
-  font-size: calc(0.57rem + min(2pt, 15%));
+  font-size: min(calc(0.57rem * 1.15), calc(0.57rem + 2pt));
 }
 
 .employment-messenger .channel {
-  font-size: calc(0.71rem + min(2pt, 15%));
+  font-size: min(calc(0.71rem * 1.15), calc(0.71rem + 2pt));
 }
 
 .employment-messenger .chat-header div > span {
-  font-size: calc(0.62rem + min(2pt, 15%));
+  font-size: min(calc(0.62rem * 1.15), calc(0.62rem + 2pt));
 }
 
 .employment-messenger .welcome-banner {
-  font-size: calc(0.72rem + min(2pt, 15%));
+  font-size: min(calc(0.72rem * 1.15), calc(0.72rem + 2pt));
 }
 
 .employment-messenger .message-body {
-  font-size: calc(0.78rem + min(2pt, 15%));
+  font-size: min(calc(0.78rem * 1.15), calc(0.78rem + 2pt));
 }
 
 .employment-messenger .message-meta strong {
-  font-size: calc(0.73rem + min(2pt, 15%));
+  font-size: min(calc(0.73rem * 1.15), calc(0.73rem + 2pt));
 }
 
 .employment-messenger .message-meta span {
-  font-size: calc(0.61rem + min(2pt, 15%));
+  font-size: min(calc(0.61rem * 1.15), calc(0.61rem + 2pt));
 }
 
 .employment-messenger .message-reaction {
-  font-size: calc(0.67rem + min(2pt, 15%));
+  font-size: min(calc(0.67rem * 1.15), calc(0.67rem + 2pt));
 }
 
 .employment-messenger .chat-messages {

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DragEvent, Dispatch } from 'react'
 import type { GameAction, GameState, WorkTask } from './game'
 import './Employment.css'
@@ -145,6 +145,9 @@ function ArtifactAttachment({ task, elapsed, onDeliver }: { task: WorkTask; elap
 export function MessengerContent({ state, dispatch, onOpenTerminal }: MessengerProps) {
   const [reactionBurst, setReactionBurst] = useState(0)
   const reactionTimer = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (reactionTimer.current !== null) window.clearTimeout(reactionTimer.current)
+  }, [])
   const task = state.task
   const hasPing = state.pingDeadline !== null
   const pingRemaining = hasPing ? (state.pingDeadline ?? state.elapsed) - state.elapsed : 0
@@ -164,10 +167,6 @@ export function MessengerContent({ state, dispatch, onOpenTerminal }: MessengerP
     onOpenTerminal()
   }
 
-  const deliverArtifact = () => {
-    if (!task || task.status !== 'artifact') return
-    dispatch({ type: 'deliver-task', id: task.id })
-  }
 
   const handleArtifactDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -240,8 +239,7 @@ export function MessengerContent({ state, dispatch, onOpenTerminal }: MessengerP
               <div className="avatar boss-avatar" aria-hidden="true">B</div>
               <div className="message-body">
                 <div className="message-meta"><strong>agent-shell</strong><span>just now</span></div>
-                <p>The work is packaged. Drag the artifact back here, or deliver it with the button.</p>
-                <ArtifactAttachment task={task} elapsed={state.elapsed} onDeliver={deliverArtifact} />
+                <p>Waiting for <strong>{task.artifactName}</strong> from Terminal.</p>
               </div>
             </div>
           )}
@@ -388,10 +386,7 @@ export function TerminalContent({ state, dispatch, onOpenMessenger }: TerminalPr
 
             {task.status === 'artifact' && (
               <div className="employment-terminal-action-block">
-                <p className="terminal-muted">Finished artifact: <strong>{task.artifactName}</strong></p>
-                <button className="employment-terminal-button employment-deliver-button" type="button" onClick={deliverArtifact}>
-                  Deliver artifact <span aria-hidden="true">↗</span>
-                </button>
+                <ArtifactAttachment task={task} elapsed={state.elapsed} onDeliver={deliverArtifact} />
               </div>
             )}
           </>
