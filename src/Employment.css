@@ -230,6 +230,12 @@
   font-size: 1.35rem;
 }
 
+.employment-attachment-icon svg {
+  display: block;
+  width: 1em;
+  height: 1em;
+}
+
 .employment-artifact-attachment .employment-attachment-icon {
   border-color: rgba(135, 230, 180, 0.46);
   color: #9ff4c2;
@@ -766,8 +772,7 @@
   line-height: 1.25;
 }
 
-.employment-level-badge,
-.employment-terminal-level {
+.employment-level-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -945,8 +950,7 @@
 }
 
 .employment-delivery-meta span + span::before,
-.employment-failed-summary span + span::before,
-.employment-attempt-meta span + span::before {
+.employment-failed-summary span + span::before {
   margin-right: 0.7rem;
   color: #776693;
   content: '·';
@@ -1014,49 +1018,9 @@
   background: rgba(157, 65, 76, 0.8);
 }
 
-.employment-terminal-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.55rem 0.8rem;
-  border-bottom: 1px solid rgba(145, 126, 179, 0.26);
-  background: rgba(55, 35, 87, 0.3);
-}
-
-.employment-terminal-banner > div {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-width: 0;
-}
-
-.employment-terminal-banner strong {
-  overflow: hidden;
-  color: #eadfff;
-  font-size: 0.7rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.employment-terminal-banner-note {
-  flex: 0 0 auto;
-  color: #baaed0;
-  font-size: 0.63rem;
-}
-
 @media (max-width: 620px) {
   .employment-team-status {
     margin-bottom: 0.7rem;
-  }
-
-  .employment-terminal-banner {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .employment-terminal-banner-note {
-    margin-left: 2.45rem;
   }
 
   .employment-attachment-title-row,

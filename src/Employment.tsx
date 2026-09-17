@@ -156,7 +156,11 @@ function TaskAttachment({
       onDragEnd={dragSource.onDragEnd}
       aria-label={`${kindLabel}: ${task.title}`}
     >
-      <div className="employment-attachment-icon" aria-hidden="true">⌘</div>
+      <div className="employment-attachment-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+          <path d="M8 8V5.5A2.5 2.5 0 1 0 5.5 8H18.5A2.5 2.5 0 1 0 16 5.5V18.5A2.5 2.5 0 1 0 18.5 16H5.5A2.5 2.5 0 1 0 8 18.5V8" />
+        </svg>
+      </div>
       <div className="employment-attachment-copy">
         <div className="employment-attachment-title-row">
           <strong>{task.title}</strong>
@@ -238,7 +242,11 @@ function ArtifactAttachment({
       onDragEnd={dragSource.onDragEnd}
       aria-label={`Artifact ${task.artifactName}`}
     >
-      <div className="employment-attachment-icon" aria-hidden="true">◇</div>
+      <div className="employment-attachment-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" focusable="false">
+          <path d="M12 3 21 12 12 21 3 12Z" />
+        </svg>
+      </div>
       <div className="employment-attachment-copy">
         <strong>{task.artifactName}</strong>
         <span>{archived ? 'Delivered artifact' : 'Ready for delivery'}</span>
@@ -246,8 +254,6 @@ function ArtifactAttachment({
           <span>{archived ? 'Delivered' : 'Artifact ready'}</span>
           <span>{archived ? 'Complete' : taskProgressLabel(task)}</span>
           {!archived && <span>{taskDeadline(task, elapsed)}</span>}
-          {task.model !== null && <span>{taskModelLabel(task)}</span>}
-          {task.fastMode && <span>{taskSpeedLabel(task)}</span>}
         </div>
       </div>
     </div>
@@ -673,7 +679,6 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
   }
   const progress = task ? Math.min(100, Math.max(0, (task.progress / Math.max(1, task.difficulty)) * 100)) : 0
   const retryCost = task ? taskTokenCost(task, fastMode) : 0
-  const modelLabel = task?.model === null || task === undefined ? 'Basic model' : taskModelLabel(task)
 
   return (
     <section
@@ -713,11 +718,11 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
             <span>{taskProgressLabel(task)}</span>
             <span>deadline {taskDeadline(task, state.elapsed)}</span>
           </div>
-          <div className="employment-attempt-meta">
-            <span>{modelLabel}</span>
-            <span>{taskSpeedLabel(task)}</span>
-            {task.status !== 'failed' && task.baseReward > 0 && <span><span aria-hidden="true">💰</span> {formatMoney(taskReward(task, state.elapsed))} now</span>}
-          </div>
+          {task.status !== 'failed' && task.baseReward > 0 && (
+            <div className="employment-attempt-meta">
+              <span><span aria-hidden="true">💰</span> {formatMoney(taskReward(task, state.elapsed))} now</span>
+            </div>
+          )}
 
           {task.status === 'approval' && !yolo && (
             <div className="employment-terminal-action-block employment-approval-block">
@@ -836,13 +841,6 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
       <div className="terminal-topline">
         <span><span className="terminal-dot" aria-hidden="true" /> agent-shell</span>
         <span>{terminalId}{yolo ? ' · YOLO' : ''}</span>
-      </div>
-      <div className="employment-terminal-banner">
-        <div>
-          <span className="employment-terminal-level">Level {state.level}</span>
-          <strong>{state.level === 4 ? 'Architecture track' : 'Delivery track'}</strong>
-        </div>
-        <span className="employment-terminal-banner-note">{terminal?.fastMode ? 'Fast mode on' : 'Standard pace'}</span>
       </div>
       <div className={`terminal-output employment-terminal-lanes panes-${slots}`} aria-label={`${terminalId} status`}>
         {Array.from({ length: slots }, (_, slot) => (
