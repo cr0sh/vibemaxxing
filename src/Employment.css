@@ -348,30 +348,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.employment-extra-work {
-  display: grid;
-  gap: 0.65rem;
-  border: 1px solid #daccf2;
-  border-radius: 0.65rem;
-  padding: 0.85rem;
-  background: #f2edff;
-  color: #5b417d;
-  font-size: 0.78rem;
-}
-
-.employment-extra-work p {
-  margin: 0;
-  line-height: 1.45;
-}
-
-.employment-extra-work > span {
-  font-size: 0.72rem;
-  line-height: 1.4;
-}
-
-.employment-extra-work .employment-inline-button {
-  background: #684395;
-}
 
 .employment-delivery-reward {
   color: #397448;
@@ -404,8 +380,9 @@
 .employment-terminal .terminal-output {
   flex: 1 1 auto;
   min-width: 0;
-  overflow: auto;
-  padding-bottom: 1rem;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
 }
 
 .employment-terminal .terminal-output > p {
@@ -515,24 +492,58 @@
 
 .employment-terminal-lanes {
   display: grid;
-  align-content: start;
-  gap: 0.65rem;
-  padding: 0.75rem 0.85rem 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-content: stretch;
+  min-width: 0;
+  min-height: 0;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.employment-terminal-lanes.panes-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.employment-terminal-lanes.panes-3,
+.employment-terminal-lanes.panes-4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr)) auto;
+}
+
+.employment-terminal-lanes.panes-3 > .employment-terminal-lane:nth-child(3) {
+  grid-column: 1 / -1;
 }
 
 .employment-terminal-lane {
   position: relative;
+  display: flex;
   min-width: 0;
-  min-height: 7.5rem;
+  min-height: 0;
+  flex-direction: column;
   padding: 0.68rem;
-  overflow: hidden;
-  border: 1px solid rgba(144, 124, 190, 0.38);
-  border-radius: 0.62rem;
-  background: rgba(25, 16, 51, 0.52);
-}
-.employment-terminal-lanes.panes-1 > .employment-terminal-lane:not(:has(.employment-lane-task)) {
-  border-color: transparent;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 0;
+  border-radius: 0;
   background: transparent;
+}
+
+.employment-terminal-lanes.panes-2 > .employment-terminal-lane:first-child,
+.employment-terminal-lanes.panes-3 > .employment-terminal-lane:first-child,
+.employment-terminal-lanes.panes-4 > .employment-terminal-lane:nth-child(odd) {
+  border-inline-end: 1px solid rgba(144, 124, 190, 0.62);
+}
+
+.employment-terminal-lanes.panes-3 > .employment-terminal-lane:nth-child(-n + 2),
+.employment-terminal-lanes.panes-4 > .employment-terminal-lane:nth-child(-n + 2) {
+  border-block-end: 1px solid rgba(144, 124, 190, 0.62);
+}
+
+.employment-terminal-lanes > .terminal-cursor {
+  grid-column: 1 / -1;
+  padding: 0.42rem 0.85rem 0.68rem;
 }
 
 .employment-lane-heading {
@@ -575,38 +586,71 @@
   width: 100%;
   margin-top: 0.72rem;
 }
-
-.employment-lane-task .employment-terminal-action-block {
-  width: 100%;
-  margin-top: 0.75rem;
-  padding: 0.68rem;
-}
-
-.employment-lane-task .employment-attachment {
-  width: 100%;
-}
-
 .employment-terminal-yolo {
   border-radius: 0.7rem;
-  animation: employment-terminal-rainbow 4s linear infinite;
+  box-shadow:
+    0 0 0 3px #ff267f,
+    0 0 0 5px rgba(255, 38, 127, 0.54),
+    0 0 1.6rem rgba(255, 38, 127, 0.9),
+    0 0 3.6rem rgba(255, 38, 127, 0.58),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.62);
+  animation-name: employment-terminal-rainbow;
+  animation-duration: 3.2s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
 }
 
 @keyframes employment-terminal-rainbow {
-  0% { box-shadow: 0 0 0 2px rgba(255, 97, 155, 0.78), 0 0 1.5rem rgba(255, 97, 155, 0.24); }
-  33% { box-shadow: 0 0 0 2px rgba(103, 228, 255, 0.78), 0 0 1.5rem rgba(103, 228, 255, 0.24); }
-  66% { box-shadow: 0 0 0 2px rgba(181, 123, 255, 0.78), 0 0 1.5rem rgba(181, 123, 255, 0.24); }
-  100% { box-shadow: 0 0 0 2px rgba(255, 97, 155, 0.78), 0 0 1.5rem rgba(255, 97, 155, 0.24); }
+  0% {
+    box-shadow:
+      0 0 0 3px #ff267f,
+      0 0 0 5px rgba(255, 38, 127, 0.58),
+      0 0 1.6rem rgba(255, 38, 127, 0.94),
+      0 0 3.6rem rgba(255, 38, 127, 0.62),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.66);
+  }
+
+  25% {
+    box-shadow:
+      0 0 0 3px #ff8a1f,
+      0 0 0 5px rgba(255, 138, 31, 0.58),
+      0 0 1.6rem rgba(255, 138, 31, 0.94),
+      0 0 3.6rem rgba(255, 138, 31, 0.62),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.66);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 3px #c72dff,
+      0 0 0 5px rgba(199, 45, 255, 0.58),
+      0 0 1.6rem rgba(199, 45, 255, 0.94),
+      0 0 3.6rem rgba(199, 45, 255, 0.62),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.66);
+  }
+
+  75% {
+    box-shadow:
+      0 0 0 3px #2cf5ff,
+      0 0 0 5px rgba(44, 245, 255, 0.58),
+      0 0 1.6rem rgba(44, 245, 255, 0.94),
+      0 0 3.6rem rgba(44, 245, 255, 0.62),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.66);
+  }
+
+  100% {
+    box-shadow:
+      0 0 0 3px #ff267f,
+      0 0 0 5px rgba(255, 38, 127, 0.58),
+      0 0 1.6rem rgba(255, 38, 127, 0.94),
+      0 0 3.6rem rgba(255, 38, 127, 0.62),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.66);
+  }
 }
 
 .employment-drop-active {
   outline: 2px dashed rgba(163, 225, 255, 0.82);
   outline-offset: -0.5rem;
 }
-
-.window.terminal-window-yolo {
-  animation: employment-terminal-rainbow 4s linear infinite;
-}
-
 
 @media (max-width: 620px) {
   .employment-attachment {
@@ -628,6 +672,38 @@
     min-height: 350px;
   }
 
+  .employment-terminal-lanes.panes-2 {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr)) auto;
+  }
+
+  .employment-terminal-lanes.panes-3 {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(3, minmax(0, 1fr)) auto;
+  }
+
+  .employment-terminal-lanes.panes-4 {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(4, minmax(0, 1fr)) auto;
+  }
+
+  .employment-terminal-lanes.panes-3 > .employment-terminal-lane:nth-child(3) {
+    grid-column: auto;
+  }
+
+  .employment-terminal-lanes.panes-2 > .employment-terminal-lane,
+  .employment-terminal-lanes.panes-3 > .employment-terminal-lane,
+  .employment-terminal-lanes.panes-4 > .employment-terminal-lane {
+    border-inline-end: 0;
+    border-block-end: 1px solid rgba(144, 124, 190, 0.62);
+  }
+
+  .employment-terminal-lanes.panes-2 > .employment-terminal-lane:last-of-type,
+  .employment-terminal-lanes.panes-3 > .employment-terminal-lane:last-of-type,
+  .employment-terminal-lanes.panes-4 > .employment-terminal-lane:last-of-type {
+    border-block-end: 0;
+  }
+
   .employment-button-row > * {
     flex: 1 1 100%;
   }
@@ -636,10 +712,28 @@
 @media (prefers-reduced-motion: reduce) {
   .employment-messenger *,
   .employment-terminal *,
-  .window.terminal-window-yolo,
   .employment-terminal-yolo {
     animation: none !important;
   }
+
+  .window.terminal-window-yolo {
+    border-color: #ff76b8 !important;
+    box-shadow:
+      0 0 0 3px #ff267f,
+      0 0 0 6px rgba(255, 38, 127, 0.72),
+      0 0 1.9rem rgba(255, 38, 127, 0.92),
+      var(--shadow-window) !important;
+  }
+
+  .employment-terminal-yolo {
+    box-shadow:
+      0 0 0 3px #ff267f,
+      0 0 0 5px rgba(255, 38, 127, 0.62),
+      0 0 1.6rem rgba(255, 38, 127, 0.98),
+      0 0 3.6rem rgba(255, 38, 127, 0.7),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.7) !important;
+  }
+
   .employment-messenger *::before,
   .employment-terminal *::before,
   .employment-messenger *::after,
