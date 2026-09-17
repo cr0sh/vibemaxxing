@@ -432,6 +432,27 @@
   background: rgba(50, 31, 83, 0.4);
 }
 
+.employment-terminal-action-block:has(> .employment-artifact-attachment) {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.employment-terminal-lane .employment-artifact-attachment {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0.65rem;
+}
+
+.employment-terminal-lane .employment-artifact-attachment .employment-attachment-icon {
+  display: none;
+}
+
+.employment-terminal-lane .employment-artifact-attachment .employment-inline-button {
+  grid-column: 1;
+  max-width: 100%;
+  white-space: normal;
+}
+
 .employment-terminal-action-block p {
   margin: 0;
   line-height: 1.45;
@@ -586,8 +607,8 @@
   width: 100%;
   margin-top: 0.72rem;
 }
-.employment-terminal-yolo {
-  border-radius: 0.7rem;
+.window.terminal-window-yolo {
+  border: 3px solid #ff267f;
   box-shadow:
     0 0 0 3px #ff267f,
     0 0 0 5px rgba(255, 38, 127, 0.54),
@@ -602,6 +623,7 @@
 
 @keyframes employment-terminal-rainbow {
   0% {
+    border-color: #ff267f;
     box-shadow:
       0 0 0 3px #ff267f,
       0 0 0 5px rgba(255, 38, 127, 0.58),
@@ -611,6 +633,7 @@
   }
 
   25% {
+    border-color: #ff8a1f;
     box-shadow:
       0 0 0 3px #ff8a1f,
       0 0 0 5px rgba(255, 138, 31, 0.58),
@@ -620,6 +643,7 @@
   }
 
   50% {
+    border-color: #c72dff;
     box-shadow:
       0 0 0 3px #c72dff,
       0 0 0 5px rgba(199, 45, 255, 0.58),
@@ -629,6 +653,7 @@
   }
 
   75% {
+    border-color: #2cf5ff;
     box-shadow:
       0 0 0 3px #2cf5ff,
       0 0 0 5px rgba(44, 245, 255, 0.58),
@@ -638,6 +663,7 @@
   }
 
   100% {
+    border-color: #ff267f;
     box-shadow:
       0 0 0 3px #ff267f,
       0 0 0 5px rgba(255, 38, 127, 0.58),
@@ -712,7 +738,7 @@
 @media (prefers-reduced-motion: reduce) {
   .employment-messenger *,
   .employment-terminal *,
-  .employment-terminal-yolo {
+  .window.terminal-window-yolo {
     animation: none !important;
   }
 
@@ -725,14 +751,6 @@
       var(--shadow-window) !important;
   }
 
-  .employment-terminal-yolo {
-    box-shadow:
-      0 0 0 3px #ff267f,
-      0 0 0 5px rgba(255, 38, 127, 0.62),
-      0 0 1.6rem rgba(255, 38, 127, 0.98),
-      0 0 3.6rem rgba(255, 38, 127, 0.7),
-      inset 0 0 0 1px rgba(255, 255, 255, 0.7) !important;
-  }
 
   .employment-messenger *::before,
   .employment-terminal *::before,
