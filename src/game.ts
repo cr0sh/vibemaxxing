@@ -115,14 +115,6 @@ export function taskReward(task: Pick<WorkTask, 'difficulty'>): number {
   return TASK_REWARD_PER_DIFFICULTY * task.difficulty
 }
 
-export function assignmentTokenShortfall(state: GameState): number {
-  const reserved = state.tasks.reduce(
-    (total, task) => total + (task.status === 'assigned' ? taskTokenCost(task) : 0),
-    0,
-  )
-  return Math.max(0, reserved - state.tokens)
-}
-
 export function tokenPurchaseAmount(tokens: number, packs: TokenPackCount): number {
   return Math.max(0, Math.min(TOKEN_PURCHASE_AMOUNT * packs, MAX_TOKENS - tokens))
 }

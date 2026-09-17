@@ -226,6 +226,7 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
     onHover: () => focusDropWindow(messengerRef.current),
   })
   const pingRemaining = hasPing ? (state.pingDeadline ?? state.elapsed) - state.elapsed : 0
+  const nextPingRemaining = Math.max(0, state.nextPingAt - state.elapsed)
 
   const reactToWelcome = () => {
     dispatch({ type: 'welcome-react' })
