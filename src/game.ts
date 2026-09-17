@@ -842,9 +842,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const completedTasks = state.completedTasks + 1
       const remainingTasks = state.tasks.filter((candidate) => candidate.id !== action.id)
       const nextTaskAt = remainingTasks.length === 0
-        ? state.nextTaskAt > state.elapsed
-          ? Math.min(state.nextTaskAt, state.elapsed + 5)
-          : state.elapsed + 5
+        ? Math.min(state.nextTaskAt, state.elapsed + 5)
         : state.nextTaskAt
 
       return appendMessage({
