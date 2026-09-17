@@ -431,7 +431,6 @@ function Desktop({
                         state={state}
                         dispatch={dispatch}
                         terminalId={terminal.id}
-                        onOpenMessenger={() => openWindow('messenger')}
                       />
                     </WindowFrame>
                   ))}
