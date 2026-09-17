@@ -127,8 +127,11 @@ describe('employment transitions', () => {
     expect(taskWith(state, id).status).toBe('artifact')
     const reward = taskReward(taskWith(state, id), state.elapsed)
     const moneyBeforeDelivery = state.money
-    const artifactMessages = state.messages.filter((message) => message.type === 'artifact')
-    expect(artifactMessages).toHaveLength(1)
+    const assignmentMessage = state.messages.find((message) => message.type === 'assignment' && message.task.id === id)
+    if (assignmentMessage === undefined || assignmentMessage.type !== 'assignment') {
+      throw new Error('The completed assignment message was missing')
+    }
+    expect(assignmentMessage.artifact).toMatchObject({ id, status: 'artifact' })
     state = gameReducer(state, { type: 'deliver-task', id })
     expect(state.completedTasks).toBe(1)
     expect(state.money).toBe(moneyBeforeDelivery + reward)
@@ -142,12 +145,13 @@ describe('employment transitions', () => {
     expect(state.messages).toEqual(delivered.messages)
   })
 
-  test('employment messages append assignment, artifact, and delivery records without rewriting snapshots', () => {
+  test('employment messages keep assignment snapshots and attach completed artifacts in place', () => {
     let state = hire()
     const assignment = state.messages.find((message) => message.type === 'assignment')
     if (assignment === undefined || assignment.type !== 'assignment') {
       throw new Error('The initial assignment message was missing')
     }
+    expect(assignment.artifact).toBeNull()
     const assignmentSnapshot = structuredClone(assignment.task)
     const id = assignment.task.id
     state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
@@ -159,19 +163,26 @@ describe('employment transitions', () => {
       }
       state = gameReducer(state, { type: 'tick', seconds: 1 })
     }
-    const artifact = state.messages.find((message) => message.type === 'artifact')
-    if (artifact === undefined || artifact.type !== 'artifact') {
-      throw new Error('The artifact message was missing')
+    const readyAssignment = state.messages.find((message) => message.id === assignment.id)
+    if (readyAssignment === undefined || readyAssignment.type !== 'assignment' || readyAssignment.artifact === null) {
+      throw new Error('The completed assignment artifact was missing')
     }
-    expect(state.messages.map((message) => message.type)).toEqual(['welcome', 'assignment', 'artifact'])
-    expect(state.messages.find((message) => message.id === assignment.id)).toMatchObject({
-      type: 'assignment',
-      task: assignmentSnapshot,
+    expect(state.messages.map((message) => message.type)).toEqual(['welcome', 'assignment'])
+    expect(readyAssignment.task).toEqual(assignmentSnapshot)
+    expect(readyAssignment.artifact).toMatchObject({
+      id,
+      artifactName: assignmentSnapshot.artifactName,
+      status: 'artifact',
     })
     const completedTask = taskWith(state, id)
     state = gameReducer(state, { type: 'deliver-task', id })
-    expect(state.messages.map((message) => message.type)).toEqual(['welcome', 'assignment', 'artifact', 'delivery'])
-    expect(artifact.task.status).toBe('artifact')
+    expect(state.messages.map((message) => message.type)).toEqual(['welcome', 'assignment', 'delivery'])
+    const archivedAssignment = state.messages.find((message) => message.id === assignment.id)
+    if (archivedAssignment === undefined || archivedAssignment.type !== 'assignment') {
+      throw new Error('The archived assignment message was missing')
+    }
+    expect(archivedAssignment.task).toEqual(assignmentSnapshot)
+    expect(archivedAssignment.artifact).toEqual(readyAssignment.artifact)
     const delivery = state.messages.find((message) => message.type === 'delivery')
     if (delivery === undefined || delivery.type !== 'delivery') {
       throw new Error('The delivery message was missing')

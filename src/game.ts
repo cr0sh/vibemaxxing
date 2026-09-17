@@ -76,8 +76,7 @@ export type EmploymentTaskSnapshot = Pick<
 
 export type EmploymentMessage =
   | { id: string; type: 'welcome'; elapsed: number }
-  | { id: string; type: 'assignment'; elapsed: number; task: EmploymentTaskSnapshot }
-  | { id: string; type: 'artifact'; elapsed: number; task: EmploymentTaskSnapshot }
+  | { id: string; type: 'assignment'; elapsed: number; task: EmploymentTaskSnapshot; artifact: EmploymentTaskSnapshot | null }
   | {
       id: string
       type: 'delivery'
@@ -402,6 +401,17 @@ function appendMessage(state: GameState, message: EmploymentMessage): GameState 
   return { ...state, messages: [...state.messages, message] }
 }
 
+function updateAssignmentArtifact(state: GameState, task: WorkTask): GameState {
+  return {
+    ...state,
+    messages: state.messages.map((message) => (
+      message.type === 'assignment' && message.task.id === task.id
+        ? { ...message, artifact: snapshotTask(task) }
+        : message
+    )),
+  }
+}
+
 
 const PRIMARY_TERMINAL: TerminalState = {
   id: 'terminal',
@@ -461,6 +471,7 @@ function issueAvailableAssignments(state: GameState): GameState {
     type: 'assignment',
     elapsed: current.elapsed,
     task: snapshotTask(task),
+    artifact: null,
   })
 }
 export function canFundTaskAttempt(
@@ -709,12 +720,7 @@ function tickHired(state: GameState, seconds: number): GameState {
       const before = previousTasks[index]
       const after = advancedTasks[index]
       if (before?.status !== 'artifact' && after?.status === 'artifact') {
-        current = appendMessage(current, {
-          id: `artifact-${after.id}`,
-          type: 'artifact',
-          elapsed: current.elapsed,
-          task: snapshotTask(after),
-        })
+        current = updateAssignmentArtifact(current, after)
       }
       if (before?.status !== 'failed' && after?.status === 'failed') {
         current = appendMessage(current, {
