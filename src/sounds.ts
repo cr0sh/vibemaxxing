@@ -19,12 +19,15 @@ type VoiceSpec = {
 const MIN_GAIN = 0.0001
 const ATTACK_SECONDS = 0.008
 const RELEASE_SECONDS = 0.045
-const MAX_ACTIVE_VOICES = 12
+const MAX_ACTIVE_VOICES = 8
+
+// The click gain is intentionally louder, while this cap keeps the worst-case
+// sum of overlapping voice gains below full scale during rapid input.
 
 // Keep the individual voices quiet: the game can layer a transfer motif over a
 // click without making either interaction feel harsh.
 const CLICK_VOICES: readonly VoiceSpec[] = [
-  { frequency: 620, startOffset: 0, duration: 0.07, volume: 0.035, type: 'sine' },
+  { frequency: 620, startOffset: 0, duration: 0.07, volume: 0.0875, type: 'sine' },
 ]
 
 const TASK_TRANSFER_VOICES: readonly VoiceSpec[] = [
@@ -51,6 +54,43 @@ const MILESTONE_VOICES: readonly VoiceSpec[] = [
 let audioContext: AudioContext | null = null
 let audioUnavailable = false
 const activeVoices = new Set<ActiveVoice>()
+const SOUND_MUTED_STORAGE_KEY = 'vibemaxxer:sound-muted'
+let soundsMuted = false
+let soundsMutedInitialized = false
+
+function loadSoundsMutedPreference(): void {
+  if (soundsMutedInitialized) return
+  soundsMutedInitialized = true
+
+  if (typeof window === 'undefined') return
+  try {
+    soundsMuted = window.localStorage.getItem(SOUND_MUTED_STORAGE_KEY) === 'true'
+  } catch {
+    // Audio preference storage is optional; retain the in-memory default.
+  }
+}
+
+export function getSoundsMuted(): boolean {
+  loadSoundsMutedPreference()
+  return soundsMuted
+}
+
+export function setSoundsMuted(muted: boolean): void {
+  soundsMutedInitialized = true
+  soundsMuted = muted
+  if (muted) stopActiveVoices()
+
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(SOUND_MUTED_STORAGE_KEY, String(muted))
+  } catch {
+    // Keep the preference in memory when storage is unavailable.
+  }
+}
+
+function stopActiveVoices(): void {
+  for (const voice of activeVoices) disposeVoice(voice)
+}
 
 function getAudioContextConstructor(): AudioContextConstructor | null {
   if (typeof window === 'undefined') return null
@@ -67,6 +107,7 @@ function getAudioContextConstructor(): AudioContextConstructor | null {
 }
 
 function getAudioContext(): AudioContext | null {
+  if (getSoundsMuted()) return null
   if (audioContext || audioUnavailable) return audioContext
 
   const AudioContextClass = getAudioContextConstructor()
@@ -102,6 +143,7 @@ function resumeAudioContext(context: AudioContext): void {
 // AudioContext until useInteractionSounds has observed a real user gesture.
 export function unlockAudio(): void {
   try {
+    if (getSoundsMuted()) return
     const context = getAudioContext()
     if (!context || context.state === 'closed') return
     resumeAudioContext(context)
@@ -197,6 +239,7 @@ function voicesForCue(cue: SoundCue): readonly VoiceSpec[] {
 
 export function playSound(cue: SoundCue): void {
   try {
+    if (getSoundsMuted()) return
     const context = audioContext
     if (!context || context.state === 'closed') return
 
