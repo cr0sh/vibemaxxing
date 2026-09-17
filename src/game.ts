@@ -5,6 +5,7 @@ export type Application = {
 }
 
 export type Stage = 'ready' | 'applying' | 'offer' | 'hired' | 'lost'
+export type DevJumpTarget = Stage | 'tiro'
 
 export type TaskStatus = 'assigned' | 'working' | 'approval' | 'blocked' | 'artifact' | 'failed'
 
@@ -137,7 +138,7 @@ export type GameAction =
   | { type: 'submit'; roll: number; companyIndex: number }
   | { type: 'accept' }
   | { type: 'reset' }
-  | { type: 'dev-jump'; stage: Stage }
+  | { type: 'dev-jump'; stage: DevJumpTarget }
   | { type: 'tick'; seconds: number }
   | { type: 'welcome-react' }
   | { type: 'acknowledge-ping' }
@@ -185,6 +186,7 @@ const SECONDARY_PRICE_MULTIPLIER = 2
 const ADDITIONAL_TERMINAL_PRICE = 1_000
 const WATERCOOLER_THRESHOLD = MAX_TOKENS * 0.2
 const SOCIAL_LOTTERY_DELAY = 5
+const TIRO_PREVIEW_TOKENS = 1_900_000
 
 export function taskTokenCost(task: Pick<WorkTask, 'difficulty'>, fastMode = false): number {
   return TOKEN_TASK_COST * task.difficulty * (fastMode ? 2 : 1)
@@ -855,6 +857,25 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'dev-jump': {
       if (action.stage === 'ready') {
         return initialGame
+      }
+
+      if (action.stage === 'tiro') {
+        const company =
+          state.company !== null && companies.includes(state.company)
+            ? state.company
+            : companies[0] ?? null
+        const freshHired = createHiredState({
+          ...initialGame,
+          company,
+          elapsed: 0,
+          tokens: TIRO_PREVIEW_TOKENS,
+          rng: normalizeSeed(state.rng),
+        })
+        return gameReducer({
+          ...freshHired,
+          watercoolerUnlocked: true,
+          watercoolerRead: true,
+        }, { type: 'install-social' })
       }
 
       if (action.stage === 'applying') {
