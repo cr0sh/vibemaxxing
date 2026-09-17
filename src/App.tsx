@@ -229,6 +229,12 @@ function Desktop({
     })
   }, [stageWindowKey])
 
+  useEffect(() => {
+    if (stageWindows.includes(activeWindow)) return
+    const fallback = stageWindows.find((id) => windows[id]) ?? stageWindows[0]
+    if (fallback !== undefined) setActiveWindow(fallback)
+  }, [stageWindowKey, activeWindow, windows])
+
   const revisions: RevisionMap = {
     messenger: [
       state.messages.map((message) => `${message.id}:${message.type}`).join(','),
