@@ -12,6 +12,9 @@ export type TerminalId = 'terminal' | 'terminal-2'
 
 export type TerminalUpgrade = 'split' | 'yolo' | 'terminal'
 
+export const TOKEN_PACK_COUNTS = [1, 5, 10] as const
+export type TokenPackCount = (typeof TOKEN_PACK_COUNTS)[number]
+
 export type TerminalState = {
   id: TerminalId
   slots: number
@@ -23,6 +26,7 @@ export type WorkTask = {
   title: string
   description: string
   difficulty: number
+  optional: boolean
   deadlineAt: number
   startedAt: number | null
   status: TaskStatus
@@ -52,6 +56,7 @@ export type GameState = {
   welcomeReacted: boolean
   lastDelivery: string | null
   failure: string | null
+  lastReward: number
   expectation: number
   rng: number
 }
@@ -65,10 +70,11 @@ export type GameAction =
   | { type: 'tick'; seconds: number }
   | { type: 'welcome-react' }
   | { type: 'acknowledge-ping' }
+  | { type: 'request-task' }
   | { type: 'start-task'; id: number; terminalId: TerminalId; slot: number }
   | { type: 'approve-task'; id: number; approved: boolean }
   | { type: 'deliver-task'; id: number }
-  | { type: 'buy-tokens' }
+  | { type: 'buy-tokens'; packs: TokenPackCount }
   | { type: 'buy-upgrade'; upgrade: TerminalUpgrade; terminalId: TerminalId }
 
 export const companies: readonly string[] = [
@@ -81,10 +87,12 @@ export const companies: readonly string[] = [
 
 const MAX_ENERGY = 100
 export const MAX_TOKENS = 10_000_000
-const TOKEN_TASK_COST = 10_000
+const TOKEN_TASK_COST = 100_000
 export const TOKEN_PURCHASE_AMOUNT = 100_000
 export const TOKEN_PURCHASE_COST = 10
-const TASK_INTERVAL = 120
+const TASK_COOLDOWN = 5
+const MAX_TASK_DIFFICULTY = 12
+const TASK_REWARD_PER_DIFFICULTY = 5
 const MIN_EXPECTATION = 0.05
 const MAX_EXPECTATION = 1
 const UINT_RANGE = 4_294_967_296
@@ -94,6 +102,39 @@ const SPLIT_PRICES: readonly number[] = [20, 40, 100]
 const YOLO_PRICE = 42
 const SECONDARY_PRICE_MULTIPLIER = 2
 const ADDITIONAL_TERMINAL_PRICE = 100
+
+export function taskTokenCost(task: WorkTask): number {
+  return TOKEN_TASK_COST * task.difficulty
+}
+
+export function taskReward(task: WorkTask): number {
+  return TASK_REWARD_PER_DIFFICULTY * task.difficulty
+}
+
+export function assignmentTokenShortfall(state: GameState): number {
+  let reserve = TOKEN_TASK_COST * MAX_TASK_DIFFICULTY
+  for (const task of state.tasks) {
+    if (task.status === 'assigned') reserve += taskTokenCost(task)
+  }
+  return Math.max(0, reserve - state.tokens)
+}
+
+export function extraTaskCapacity(state: GameState): number {
+  let capacity = -1 // Keep one pane available for the required assignment.
+  for (const terminal of state.terminals) capacity += terminal.slots
+  for (const task of state.tasks) {
+    if (task.optional) capacity -= 1
+  }
+  return Math.max(0, capacity)
+}
+
+export function tokenPurchaseAmount(tokens: number, packs: TokenPackCount): number {
+  return Math.max(0, Math.min(TOKEN_PURCHASE_AMOUNT * packs, MAX_TOKENS - tokens))
+}
+
+export function tokenPurchaseCost(amount: number): number {
+  return Math.ceil(amount * TOKEN_PURCHASE_COST * 100 / TOKEN_PURCHASE_AMOUNT) / 100
+}
 
 const taskBlueprints: readonly Pick<WorkTask, 'title' | 'description' | 'artifactName'>[] = [
   {
@@ -187,9 +228,9 @@ function deadlineFor(difficulty: number, expectation: number, elapsed: number): 
   return elapsed + (1.5 * difficulty) / safeExpectation
 }
 
-function createTask(state: GameState, elapsed: number): readonly [WorkTask, number] {
+function createTask(state: GameState, elapsed: number, optional = false): readonly [WorkTask, number] {
   const [blueprintRng, blueprintIndex] = drawInteger(state.rng, 0, taskBlueprints.length - 1)
-  const [nextRng, difficulty] = drawInteger(blueprintRng, 6, 12)
+  const [nextRng, difficulty] = drawInteger(blueprintRng, 6, MAX_TASK_DIFFICULTY)
   const blueprint = taskBlueprints[blueprintIndex] ?? taskBlueprints[0]
 
   return [
@@ -198,6 +239,7 @@ function createTask(state: GameState, elapsed: number): readonly [WorkTask, numb
       title: blueprint.title,
       description: blueprint.description,
       difficulty,
+      optional,
       deadlineAt: deadlineFor(difficulty, state.expectation, elapsed),
       startedAt: null,
       status: 'assigned',
@@ -228,11 +270,12 @@ function createHiredState(state: GameState): GameState {
     energy: MAX_ENERGY,
     tasks: [task],
     terminals: [{ ...PRIMARY_TERMINAL }],
-    nextTaskAt: state.elapsed + TASK_INTERVAL,
+    nextTaskAt: 0,
     nextPingAt: state.elapsed + pingDelay,
     pingDeadline: null,
     welcomeReacted: false,
     lastDelivery: null,
+    lastReward: 0,
     failure: null,
     expectation,
     rng: nextRng,
@@ -264,6 +307,7 @@ export const initialGame: GameState = {
   pingDeadline: null,
   welcomeReacted: false,
   lastDelivery: null,
+  lastReward: 0,
   failure: null,
   expectation: 0.2,
   rng: 1,
@@ -329,12 +373,12 @@ function tickHired(state: GameState, seconds: number): GameState {
       tasks: current.tasks.map((task) => advanceTask(task, current.elapsed, current.terminals)),
     }
 
-    if (current.nextTaskAt > 0 && current.elapsed >= current.nextTaskAt) {
+    if (current.nextTaskAt > 0 && current.elapsed >= current.nextTaskAt && assignmentTokenShortfall(current) === 0) {
       const [task, nextRng] = createTask(current, current.elapsed)
       current = {
         ...current,
         tasks: [...current.tasks, task],
-        nextTaskAt: current.nextTaskAt + TASK_INTERVAL,
+        nextTaskAt: 0,
         rng: nextRng,
       }
     }
@@ -522,6 +566,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ? { ...state, pingDeadline: null }
         : state
 
+    case 'request-task': {
+      if (state.stage !== 'hired' || extraTaskCapacity(state) === 0 || assignmentTokenShortfall(state) > 0) {
+        return state
+      }
+      const [task, nextRng] = createTask(state, state.elapsed, true)
+      return { ...state, tasks: [...state.tasks, task], rng: nextRng }
+    }
+
     case 'start-task': {
       if (
         state.stage !== 'hired' ||
@@ -547,7 +599,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return state
       }
 
-      const cost = TOKEN_TASK_COST * task.difficulty
+      const cost = taskTokenCost(task)
       if (!Number.isFinite(cost) || cost < 0 || state.tokens < cost) {
         return state
       }
@@ -656,24 +708,26 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         tasks: state.tasks.filter((candidate) => candidate.id !== action.id),
         completedTasks: state.completedTasks + 1,
+        money: state.money + taskReward(task),
+        nextTaskAt: task.optional ? state.nextTaskAt : state.elapsed + TASK_COOLDOWN,
         lastDelivery: task.artifactName,
+        lastReward: taskReward(task),
         expectation,
       }
     }
 
     case 'buy-tokens': {
-      if (
-        state.stage !== 'hired' ||
-        state.money < TOKEN_PURCHASE_COST ||
-        state.tokens >= MAX_TOKENS
-      ) {
+      if (!TOKEN_PACK_COUNTS.includes(action.packs)) return state
+      const amount = tokenPurchaseAmount(state.tokens, action.packs)
+      const cost = tokenPurchaseCost(amount)
+      if (state.stage !== 'hired' || state.money < cost || amount === 0) {
         return state
       }
 
       return {
         ...state,
-        money: state.money - TOKEN_PURCHASE_COST,
-        tokens: Math.min(MAX_TOKENS, state.tokens + TOKEN_PURCHASE_AMOUNT),
+        money: Math.round((state.money - cost) * 100) / 100,
+        tokens: state.tokens + amount,
       }
     }
 

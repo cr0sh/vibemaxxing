@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DragEvent, Dispatch } from 'react'
-import { MAX_TOKENS, type GameAction, type GameState, type TerminalId, type WorkTask, upgradePrice } from './game'
+import { MAX_TOKENS, assignmentTokenShortfall, extraTaskCapacity, taskReward, taskTokenCost, type GameAction, type GameState, type TerminalId, type WorkTask, upgradePrice } from './game'
 import { DragDropHint } from './DragDropHints'
 import { useDragDropHints, useDragDropSource, useDragDropTarget } from './DragDropHintsContext'
 import { UnreadIndicator } from './UnreadIndicator'
@@ -18,6 +18,8 @@ type TerminalProps = {
   terminalId: TerminalId
   onOpenMessenger: () => void
 }
+
+const compactTokens = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
 
 const formatSeconds = (seconds: number): string => {
   const safeSeconds = Math.max(0, Math.ceil(seconds))
@@ -65,7 +67,6 @@ const taskDeadline = (task: WorkTask, elapsed: number): string => {
   const remaining = task.deadlineAt - elapsed
   return remaining <= 0 ? 'Deadline passed' : `${formatSeconds(remaining)} left`
 }
-const taskCost = (task: WorkTask): number => 10_000 * task.difficulty
 
 function findIdleTerminalSlot(tasks: readonly WorkTask[], terminalId: TerminalId, slotCount: number): number | null {
   for (let slot = 0; slot < slotCount; slot += 1) {
@@ -90,7 +91,7 @@ function TaskAttachment({
   availableTokens: number
 }) {
   const isAssigned = task.status === 'assigned' && task.terminalId === null && task.slot === null
-  const canAfford = availableTokens >= taskCost(task)
+  const canAfford = availableTokens >= taskTokenCost(task)
   const canStart = state.stage === 'hired' && isAssigned && canAfford
   const dragSource = useDragDropSource({ kind: 'task', id: String(task.id) }, canStart)
   return (
@@ -119,6 +120,7 @@ function TaskAttachment({
       <div className="employment-attachment-copy">
         <strong>{task.title}</strong>
         <span>{task.description}</span>
+        <span>{task.optional ? 'Extra' : 'Required'} · ${taskReward(task)} bonus · {compactTokens.format(taskTokenCost(task))} tokens</span>
         <div className="employment-attachment-meta">
           <span>{taskStatusLabel(task)}</span>
           <span>{taskProgressLabel(task)}</span>
@@ -166,7 +168,7 @@ function ArtifactAttachment({
       <div className="employment-attachment-icon" aria-hidden="true">◇</div>
       <div className="employment-attachment-copy">
         <strong>{task.artifactName}</strong>
-        <span>Generated artifact · ready for delivery</span>
+        <span>Ready for delivery · ${taskReward(task)} bonus</span>
         <div className="employment-attachment-meta">
           <span>Artifact ready</span>
           <span>{taskProgressLabel(task)}</span>
@@ -226,6 +228,9 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
   const pingRemaining = hasPing ? (state.pingDeadline ?? state.elapsed) - state.elapsed : 0
   const nextPingRemaining = Math.max(0, state.nextPingAt - state.elapsed)
   const nextTaskRemaining = Math.max(0, state.nextTaskAt - state.elapsed)
+  const extraCapacity = extraTaskCapacity(state)
+  const tokenShortfall = assignmentTokenShortfall(state)
+  const canRequestExtra = state.stage === 'hired' && extraCapacity > 0 && tokenShortfall === 0
 
   const reactToWelcome = () => {
     dispatch({ type: 'welcome-react' })
@@ -345,6 +350,7 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
                 <div className="message-body">
                   <div className="message-meta"><strong>You</strong><span>delivered</span></div>
                   <p>Delivered <strong>{state.lastDelivery}</strong>. Nice work — {state.completedTasks} assignment{state.completedTasks === 1 ? '' : 's'} complete.</p>
+                  <p className="employment-delivery-reward">Earned ${state.lastReward} completion bonus.</p>
                 </div>
               </div>
             )}
@@ -354,10 +360,27 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
                 Next boss check-in in <strong>{formatSeconds(nextPingRemaining)}</strong>
               </p>
             )}
-            {state.tasks.length === 0 && (
+            {state.stage === 'hired' && state.nextTaskAt > 0 && (
               <p className="employment-next-task" role="status" aria-live="polite">
-                Next assignment in <strong>{formatSeconds(nextTaskRemaining)}</strong>
+                {nextTaskRemaining === 0 && tokenShortfall > 0
+                  ? <>Next assignment waits for {compactTokens.format(tokenShortfall)} more tokens. Refill in Shop or wait for the automatic refill.</>
+                  : <>Next required assignment in <strong>{formatSeconds(nextTaskRemaining)}</strong></>}
               </p>
+            )}
+
+            {state.stage === 'hired' && (
+              <section className="employment-extra-work" aria-label="Optional assignments">
+                <strong>Optional parallel work</strong>
+                <p>Take an extra paid job with a spare agent pane. Accepting starts its deadline.</p>
+                <button className="employment-inline-button" type="button" disabled={!canRequestExtra} onClick={() => dispatch({ type: 'request-task' })}>
+                  Request extra assignment
+                </button>
+                <span>{extraCapacity === 0
+                  ? 'No spare assignment slots. Deliver extra work or add capacity in Shop.'
+                  : tokenShortfall > 0
+                    ? `Need ${compactTokens.format(tokenShortfall)} more tokens to fund current and new assignments.`
+                    : `${extraCapacity} extra assignment slot${extraCapacity === 1 ? '' : 's'} available; one pane stays reserved for required work.`}</span>
+              </section>
             )}
 
             {state.stage === 'lost' && (
