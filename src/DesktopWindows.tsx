@@ -105,7 +105,7 @@ interface WindowFrameProps {
 }
 
 type Drag = { pointerId: number; origin: Point; start: Point }
-type Resize = { pointerId: number; origin: Size; start: Point }
+type Resize = { pointerId: number; origin: Size; position: Point; start: Point }
 
 export function WindowFrame({ id, icon, title, active, className = '', contentLayout = 'padded', onFocus, onMinimize, children, hidden = false }: WindowFrameProps) {
   const workspace = useContext(WorkspaceContext)
@@ -134,10 +134,7 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
   }, [id, register, unregister])
 
   useLayoutEffect(() => {
-    if (hidden) {
-      setEntering(true)
-      return
-    }
+    if (hidden) return
     let cancelled = false
     const frame = window.requestAnimationFrame(() => {
       if (!cancelled) setEntering(false)
@@ -196,7 +193,8 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
     event.stopPropagation()
     focus()
     event.currentTarget.focus({ preventScroll: true })
-    resize.current = { pointerId: event.pointerId, origin: size, start: { x: event.clientX, y: event.clientY } }
+    setSavedPosition(position)
+    resize.current = { pointerId: event.pointerId, origin: size, position, start: { x: event.clientX, y: event.clientY } }
     event.currentTarget.setPointerCapture(event.pointerId)
     setResizing(true)
   }
@@ -206,7 +204,7 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
     setSavedSize(clampSize({
       width: current.origin.width + event.clientX - current.start.x,
       height: current.origin.height + event.clientY - current.start.y,
-    }, bounds, minimumSize))
+    }, { width: bounds.width - current.position.x, height: bounds.height - current.position.y }, minimumSize))
   }
   const endResize = (event: PointerEvent<HTMLButtonElement>) => {
     if ((event.type === 'lostpointercapture' && event.target !== event.currentTarget) || resize.current?.pointerId !== event.pointerId) return
@@ -229,7 +227,12 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
     event.stopPropagation()
     const step = event.shiftKey ? 32 : 8
     focus()
-    setSavedSize(clampSize({ width: size.width + direction.x * step, height: size.height + direction.y * step }, bounds, minimumSize))
+    setSavedPosition(position)
+    setSavedSize(clampSize(
+      { width: size.width + direction.x * step, height: size.height + direction.y * step },
+      { width: bounds.width - position.x, height: bounds.height - position.y },
+      minimumSize,
+    ))
   }
 
   return (
@@ -277,7 +280,7 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
           className="window-minimize"
           type="button"
           aria-label={`Minimize ${title} window`}
-          onClick={(event) => { event.stopPropagation(); onMinimize() }}
+          onClick={(event) => { event.stopPropagation(); setEntering(true); onMinimize() }}
         >
           <span aria-hidden="true">−</span>
         </button>
