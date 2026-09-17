@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  companies,
   gameReducer,
   initialGame,
   MAX_TOKENS,
@@ -716,5 +717,100 @@ describe('developer previews', () => {
     expect(beforeLottery.socialPosts.some((post) => post.type === 'lottery')).toBe(false)
     const lottery = gameReducer(beforeLottery, { type: 'tick', seconds: 1 })
     expect(lottery.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(1)
+  })
+})
+ 
+describe('extended engine contracts', () => {
+  test('Spark purchase waits ten seconds and caps late delivery delay', () => {
+    let state = gameReducer(hire(), { type: 'dev-jump', stage: 'market' })
+    state = { ...state, tasks: [], taskQueue: [], nextTaskAt: 1_000 }
+    expect(gameReducer(state, { type: 'buy-spark' })).toBe(state)
+    state = gameReducer(state, { type: 'tick', seconds: 10 })
+    const purchased = gameReducer(state, { type: 'buy-spark' })
+    expect(purchased.sparkPurchasedAt).toBe(10)
+    expect(purchased.sparkDeliveryAt).toBe(25)
+    const late = gameReducer({ ...state, elapsed: 21, money: 20_000 }, { type: 'buy-spark' })
+    expect(late.sparkDeliveryAt).toBe(81)
+    const delivered = gameReducer(purchased, { type: 'tick', seconds: 15 })
+    expect(delivered.terminals.find((terminal) => terminal.id === 'spark')).toMatchObject({
+      id: 'spark',
+      slots: 2,
+      model: 'reasoning',
+      fastMode: false,
+    })
+    expect(delivered.advancedModelAnnouncedAt).toBe(25)
+  })
+
+  test('local Spark attempts cost no cloud tokens and snapshot local settings', () => {
+    let state = gameReducer(hire(), { type: 'dev-jump', stage: 'spark' })
+    const source = hire().tasks[0]!
+    const task: WorkTask = { ...source, id: 701, difficulty: 1, deadlineAt: 100, status: 'assigned' }
+    state = { ...state, tokens: 0, tasks: [task], taskQueue: [], nextTaskAt: 1_000 }
+    const started = gameReducer(state, { type: 'start-task', id: 701, terminalId: 'spark', slot: 0 })
+    expect(started.tokens).toBe(0)
+    expect(taskWith(started, 701)).toMatchObject({ local: true, model: 'reasoning', fastMode: false, attempt: 1 })
+  })
+
+  test('Mercury forwards only when the fee and attempt are fully funded', () => {
+    const source = hire().tasks[0]!
+    const assigned: WorkTask = { ...source, id: 702, difficulty: 1, deadlineAt: 100, status: 'assigned' }
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
+    const underfunded = gameReducer({ ...base, tokens: 399_999, tasks: [assigned], taskQueue: [], nextTaskAt: 1_000 }, { type: 'tick', seconds: 1 })
+    expect(taskWith(underfunded, 702).status).toBe('assigned')
+    const funded = gameReducer({ ...base, tokens: 400_000, tasks: [assigned], taskQueue: [], nextTaskAt: 1_000 }, { type: 'tick', seconds: 1 })
+    expect(taskWith(funded, 702)).toMatchObject({ status: 'working', attempt: 1 })
+    expect(funded.tokens).toBe(0)
+  })
+
+  test('secondary deliveries do not mutate primary employment progress', () => {
+    const hired = hire()
+    const source = hired.tasks[0]!
+    const secondary: WorkTask = { ...source, id: 703, jobId: 'secondary', status: 'artifact', progress: source.difficulty, deadlineAt: 100 }
+    const state: GameState = {
+      ...hired,
+      secondJobUnlocked: true,
+      secondJob: {
+        company: companies[1]!,
+        level: 3,
+        completedTasks: 0,
+        completedArchitectureTasks: 0,
+        nextTaskAt: 1_000,
+        expectation: hired.expectation,
+        welcomeReacted: false,
+        startedAt: 0,
+      },
+      tasks: [...hired.tasks, secondary],
+      nextTaskAt: 1_000,
+    }
+    const delivered = gameReducer(state, { type: 'deliver-task', id: 703 })
+    expect(delivered.completedTasks).toBe(hired.completedTasks)
+    expect(delivered.secondJob?.completedTasks).toBe(1)
+    expect(delivered.messages.find((message) => message.type === 'delivery' && message.task.id === 703)).toMatchObject({ jobId: 'secondary', completedTasks: 1 })
+  })
+ 
+  test('cloud attempts retain their model snapshot after selector changes', () => {
+    const source = hire().tasks[0]!
+    const task: WorkTask = { ...source, id: 704, difficulty: 1, deadlineAt: 100, status: 'assigned' }
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const ready = { ...base, tasks: [task], taskQueue: [], nextTaskAt: 1_000, tokens: 1_000_000 }
+    const started = gameReducer(ready, { type: 'start-task', id: 704, terminalId: 'terminal', slot: 0 })
+    expect(started.tokens).toBe(800_000)
+    expect(taskWith(started, 704)).toMatchObject({ model: 'frontier', local: false })
+    const changed = gameReducer(started, { type: 'set-terminal-model', terminalId: 'terminal', model: 'basic' })
+    expect(taskWith(changed, 704).model).toBe('frontier')
+  })
+
+  test('disabling Mercury keeps manual forwarding free and resumes automatic forwarding when enabled', () => {
+    const source = hire().tasks[0]!
+    const assigned: WorkTask = { ...source, id: 705, difficulty: 1, deadlineAt: 100, status: 'assigned' }
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
+    const disabled = gameReducer(base, { type: 'set-mercury', enabled: false })
+    const waiting = gameReducer({ ...disabled, tokens: 0, tasks: [assigned], taskQueue: [], nextTaskAt: 1_000 }, { type: 'tick', seconds: 1 })
+    expect(taskWith(waiting, 705).status).toBe('assigned')
+    const resumed = gameReducer(waiting, { type: 'set-mercury', enabled: true })
+    expect(taskWith(resumed, 705).status).toBe('assigned')
+    const manuallyStarted = gameReducer(resumed, { type: 'start-task', id: 705, terminalId: 'spark', slot: 0 })
+    expect(taskWith(manuallyStarted, 705).local).toBe(true)
+    expect(manuallyStarted.tokens).toBe(0)
   })
 })
