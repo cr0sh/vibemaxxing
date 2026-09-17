@@ -1,0 +1,273 @@
+.market-app {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1rem;
+  overflow: auto;
+  background: #111c22;
+  color: #edf6f7;
+}
+
+.market-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.market-header h2,
+.market-panel h3,
+.market-chart figcaption {
+  margin: 0;
+}
+
+.market-header h2 {
+  color: #f6fbfb;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+}
+
+.market-current-price {
+  display: grid;
+  gap: 0.08rem;
+  color: #a8c0c4;
+  font-size: 0.66rem;
+  text-align: right;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.market-current-price strong {
+  color: #69dbb5;
+  font-size: 0.95rem;
+  letter-spacing: normal;
+}
+
+.market-balances {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.market-balance {
+  display: grid;
+  min-width: 0;
+  gap: 0.22rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid #2d4950;
+  border-radius: 0.55rem;
+  background: #18282f;
+}
+
+.market-balance span {
+  overflow: hidden;
+  color: #a8c0c4;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.market-balance strong {
+  overflow: hidden;
+  color: #f1fbfa;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-balance small {
+  color: #a8c0c4;
+  font-size: 0.6rem;
+  font-weight: 600;
+}
+
+.market-balance-cash strong {
+  color: #f7e6a5;
+}
+
+.market-balance-usd strong {
+  color: #9fd4ff;
+}
+
+.market-balance-btc strong {
+  color: #69dbb5;
+}
+
+.market-chart {
+  position: relative;
+  display: grid;
+  min-height: 10rem;
+  margin: 0;
+  padding: 0.7rem 0.7rem 0.45rem;
+  border: 1px solid #2d4950;
+  border-radius: 0.62rem;
+  background: #132329;
+}
+
+.market-chart figcaption {
+  color: #b8ced1;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+}
+
+.market-chart-svg {
+  display: block;
+  width: 100%;
+  min-height: 8.1rem;
+  margin-top: 0.2rem;
+  overflow: visible;
+}
+
+.market-chart-grid {
+  stroke: #28434a;
+  stroke-width: 1;
+}
+
+.market-chart-line {
+  fill: none;
+  stroke: #69dbb5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.market-chart-range {
+  display: flex;
+  justify-content: space-between;
+  color: #769197;
+  font-size: 0.62rem;
+}
+
+.market-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 0.65rem;
+}
+
+.market-panel {
+  display: grid;
+  align-content: start;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid #2d4950;
+  border-radius: 0.62rem;
+  background: #18282f;
+}
+
+.market-panel h3 {
+  color: #f1fbfa;
+  font-size: 0.8rem;
+}
+
+.market-form {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.market-form + .market-form,
+.market-sell-form {
+  margin-top: 0.4rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid #2d4950;
+}
+
+.market-form label {
+  color: #d4e4e5;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.market-form label span {
+  color: #8aa5aa;
+  font-weight: 600;
+}
+
+.market-form input {
+  width: 100%;
+  min-height: 2.2rem;
+  box-sizing: border-box;
+  border: 1px solid #517078;
+  border-radius: 0.42rem;
+  padding: 0.42rem 0.55rem;
+  background: #0d181d;
+  color: #f4fbfa;
+  font-size: 0.82rem;
+}
+
+.market-form input:focus-visible {
+  border-color: #69dbb5;
+  outline: 2px solid rgba(105, 219, 181, 0.3);
+  outline-offset: 1px;
+}
+
+.market-form-help {
+  color: #8aa5aa;
+  font-size: 0.64rem;
+}
+
+.market-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.market-form button {
+  min-height: 2.2rem;
+  border: 1px solid #59b998;
+  border-radius: 0.42rem;
+  padding: 0.4rem 0.55rem;
+  background: #226851;
+  color: #f4fffc;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 800;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.market-form button:hover,
+.market-form button:focus-visible {
+  border-color: #b7f8dd;
+  background: #2d876b;
+  transform: translateY(-1px);
+}
+
+.market-form button:disabled {
+  border-color: #3d555a;
+  background: #263b41;
+  color: #7f9599;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 620px) {
+  .market-app {
+    gap: 0.65rem;
+    padding: 0.8rem;
+  }
+
+  .market-balances,
+  .market-panels {
+    grid-template-columns: 1fr;
+  }
+
+  .market-chart {
+    min-height: 9rem;
+  }
+
+  .market-chart-svg {
+    min-height: 7.2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .market-form button {
+    transition-duration: 0.01ms;
+  }
+}
