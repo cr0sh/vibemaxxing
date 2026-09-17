@@ -21,7 +21,7 @@ const windowDefaults: Record<string, Size & Point> = {
   messenger: { width: 570, height: 560, x: 0.12, y: 0.1 },
   terminal: { width: 470, height: 500, x: 0.72, y: 0.3 },
   'terminal-2': { width: 470, height: 500, x: 0.26, y: 0.28 },
-  shop: { width: 520, height: 440, x: 0.5, y: 0.14 },
+  shop: { width: 520, height: 528, x: 0.5, y: 0.14 },
   defeat: { width: 430, height: 330, x: 0.5, y: 0.28 },
 }
 const defaultWindow = { width: 520, height: 380, x: 0.5, y: 0.16 }
