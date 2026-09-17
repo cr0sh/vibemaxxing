@@ -31,6 +31,20 @@ const arrowDirections: Record<string, Point> = {
   ArrowLeft: { x: -1, y: 0 },
   ArrowRight: { x: 1, y: 0 },
 }
+const minimumWindowSize: Size = { width: 280, height: 180 }
+const minimumWindowSizes: Record<string, Size> = {
+  terminal: { width: 280, height: 320 },
+  'terminal-2': { width: 280, height: 320 },
+}
+
+function clampSize(candidate: Size, workspace: Size, minimum = minimumWindowSize): Size {
+  const widthLimit = Math.max(0, workspace.width)
+  const heightLimit = Math.max(0, workspace.height)
+  return {
+    width: widthLimit === 0 ? 0 : Math.min(widthLimit, Math.max(Math.min(minimum.width, widthLimit), Math.max(0, candidate.width))),
+    height: heightLimit === 0 ? 0 : Math.min(heightLimit, Math.max(Math.min(minimum.height, heightLimit), Math.max(0, candidate.height))),
+  }
+}
 
 function clampPosition(point: Point, size: Size, workspace: Size): Point {
   return {
@@ -91,13 +105,16 @@ interface WindowFrameProps {
 }
 
 type Drag = { pointerId: number; origin: Point; start: Point }
+type Resize = { pointerId: number; origin: Size; position: Point; start: Point }
 
 export function WindowFrame({ id, icon, title, active, className = '', contentLayout = 'padded', onFocus, onMinimize, children, hidden = false }: WindowFrameProps) {
   const workspace = useContext(WorkspaceContext)
   if (!workspace) throw new Error('WindowFrame requires a WindowWorkspace')
   const { size: bounds, order, focusRequest, register, unregister, raise } = workspace
   const defaults = windowDefaults[id] ?? defaultWindow
-  const size = { width: Math.min(defaults.width, bounds.width), height: Math.min(defaults.height, bounds.height) }
+  const minimumSize = minimumWindowSizes[id] ?? minimumWindowSize
+  const [savedSize, setSavedSize] = useState<Size | null>(null)
+  const size = clampSize(savedSize ?? defaults, bounds, minimumSize)
   const [savedPosition, setSavedPosition] = useState<Point | null>(null)
   // Derive bounds on resize rather than synchronizing a second copy in an effect.
   const position = clampPosition(savedPosition ?? {
@@ -106,12 +123,27 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
   }, size, bounds)
   const windowRef = useRef<HTMLElement>(null)
   const drag = useRef<Drag | null>(null)
+  const resize = useRef<Resize | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [resizing, setResizing] = useState(false)
+  const [entering, setEntering] = useState(true)
 
   useLayoutEffect(() => {
     register(id)
     return () => unregister(id)
   }, [id, register, unregister])
+
+  useLayoutEffect(() => {
+    if (hidden) return
+    let cancelled = false
+    const frame = window.requestAnimationFrame(() => {
+      if (!cancelled) setEntering(false)
+    })
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(frame)
+    }
+  }, [hidden])
 
   useLayoutEffect(() => {
     if (hidden || !active) return
@@ -133,7 +165,7 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
     onFocus()
   }
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
-    if (!event.isPrimary || event.button !== 0 || drag.current) return
+    if (!event.isPrimary || event.button !== 0 || drag.current || resize.current) return
     event.preventDefault()
     focus()
     event.currentTarget.focus({ preventScroll: true })
@@ -150,9 +182,34 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
     }, size, bounds))
   }
   const endDrag = (event: PointerEvent<HTMLDivElement>) => {
-    if (drag.current?.pointerId !== event.pointerId) return
+    if ((event.type === 'lostpointercapture' && event.target !== event.currentTarget) || drag.current?.pointerId !== event.pointerId) return
     drag.current = null
     setDragging(false)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+  const startResize = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!event.isPrimary || event.button !== 0 || drag.current || resize.current) return
+    event.preventDefault()
+    event.stopPropagation()
+    focus()
+    event.currentTarget.focus({ preventScroll: true })
+    setSavedPosition(position)
+    resize.current = { pointerId: event.pointerId, origin: size, position, start: { x: event.clientX, y: event.clientY } }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setResizing(true)
+  }
+  const moveResize = (event: PointerEvent<HTMLButtonElement>) => {
+    const current = resize.current
+    if (!current || current.pointerId !== event.pointerId) return
+    setSavedSize(clampSize({
+      width: current.origin.width + event.clientX - current.start.x,
+      height: current.origin.height + event.clientY - current.start.y,
+    }, { width: bounds.width - current.position.x, height: bounds.height - current.position.y }, minimumSize))
+  }
+  const endResize = (event: PointerEvent<HTMLButtonElement>) => {
+    if ((event.type === 'lostpointercapture' && event.target !== event.currentTarget) || resize.current?.pointerId !== event.pointerId) return
+    resize.current = null
+    setResizing(false)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
   const moveWithKeys = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -163,17 +220,32 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
     focus()
     setSavedPosition(clampPosition({ x: position.x + direction.x * step, y: position.y + direction.y * step }, size, bounds))
   }
+  const resizeWithKeys = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const direction = arrowDirections[event.key]
+    if (!direction) return
+    event.preventDefault()
+    event.stopPropagation()
+    const step = event.shiftKey ? 32 : 8
+    focus()
+    setSavedPosition(position)
+    setSavedSize(clampSize(
+      { width: size.width + direction.x * step, height: size.height + direction.y * step },
+      { width: bounds.width - position.x, height: bounds.height - position.y },
+      minimumSize,
+    ))
+  }
 
   return (
     <section
       id={`window-${id}`}
       ref={windowRef}
       tabIndex={-1}
-      className={`window ${active ? 'window-active' : ''} ${className}`}
+      className={`window ${active ? 'window-active' : ''} ${entering ? 'window-entering' : ''} ${className}`}
       style={{ width: size.width, height: size.height, left: position.x, top: position.y, zIndex: order.indexOf(id) + 1, visibility: bounds.width && bounds.height ? undefined : 'hidden' }}
       aria-labelledby={`window-heading-${id}`}
       hidden={hidden}
       data-dragging={dragging || undefined}
+      data-resizing={resizing || undefined}
       onPointerDown={focus}
       onFocusCapture={focus}
     >
@@ -208,12 +280,30 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
           className="window-minimize"
           type="button"
           aria-label={`Minimize ${title} window`}
-          onClick={(event) => { event.stopPropagation(); onMinimize() }}
+          onClick={(event) => { event.stopPropagation(); setEntering(true); onMinimize() }}
         >
           <span aria-hidden="true">−</span>
         </button>
       </div>
       <div className={`window-content window-content-${contentLayout}`}>{children}</div>
+      <button
+        className="window-resize-handle"
+        type="button"
+        aria-label={`Resize ${title} window`}
+        aria-describedby={`window-resize-instructions-${id}`}
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+        onKeyDown={resizeWithKeys}
+        onPointerDown={startResize}
+        onPointerMove={moveResize}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+        onLostPointerCapture={endResize}
+      >
+        <span aria-hidden="true" />
+      </button>
+      <span id={`window-resize-instructions-${id}`} className="window-drag-instructions">
+        Drag the lower-right corner to resize. Use arrow keys to resize this window; hold Shift for larger steps.
+      </span>
     </section>
   )
 }
