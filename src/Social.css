@@ -97,11 +97,6 @@
   letter-spacing: 0.04em;
 }
 
-.social-feed-subtitle {
-  margin: 0.16rem 0 0;
-  color: #987f8f;
-  font-size: 0.68rem;
-}
 
 .social-feed {
   position: relative;
@@ -113,8 +108,11 @@
   overflow: auto;
   padding: 0.2rem 1rem 1.2rem;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   scroll-behavior: smooth;
 }
+
 
 .social-post {
   display: grid;
@@ -147,6 +145,27 @@
 .social-post-fast-mode {
   border-color: #c8d7f4;
   background: linear-gradient(145deg, #f9fbff, #f1f6ff);
+}
+.social-post-market,
+.social-post-spark,
+.social-post-spark-delivered,
+.social-post-advanced-model,
+.social-post-mercury,
+.social-post-second-job,
+.social-post-frontier-model {
+  border-color: #c8d7f4;
+  background: linear-gradient(145deg, #f9fbff, #f1f6ff);
+}
+
+.social-post-spark,
+.social-post-spark-delivered {
+  border-color: #9fbde9;
+  background: linear-gradient(145deg, #f5f9ff, #eaf1ff);
+}
+
+.social-post-mercury {
+  border-color: #d3b4df;
+  background: linear-gradient(145deg, #fffaff, #f7f0ff);
 }
 
 .social-post-rail {
@@ -320,9 +339,6 @@
     padding-left: 0.78rem;
   }
 
-  .social-feed-subtitle {
-    max-width: 15rem;
-  }
 
   .social-post {
     grid-template-columns: 2rem minmax(0, 1fr);
