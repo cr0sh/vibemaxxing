@@ -23,21 +23,38 @@ const elapsedLabel = (elapsed: number): string => {
 
 const postHeading = (post: SocialPost): string => {
   switch (post.type) {
-    case 'campaign': return 'A free reset. Back to 10M.'
-    case 'lottery': return 'Like for a free token reset'
-    case 'reset': return 'Token reset applied'
-    case 'model': return 'Tiro Reason is online'
+    case 'campaign': return 'Token reset available'
+    case 'lottery': return 'Like to reset tokens'
+    case 'reset': return 'Tokens reset'
+    case 'model': return 'Tiro Reason online'
     case 'fast-mode': return 'Fast mode unlocked'
+    case 'market': return 'BTC market is open'
+    case 'spark': return 'Mapple Spark announced'
+    case 'spark-delivered': return 'Mapple Spark delivered'
+    case 'advanced-model': return 'Tiro Pro available'
+    case 'mercury': return 'Mercury available'
+    case 'second-job': return 'Second job open'
+    case 'frontier-model': return 'Tiro Max unlocked'
   }
 }
 
 const postKicker = (post: SocialPost): string => {
   switch (post.type) {
-    case 'campaign': return 'TIRO'
-    case 'lottery': return 'TIRO'
-    case 'reset': return 'TIRO'
-    case 'model': return 'TIRO LABS'
-    case 'fast-mode': return 'TIRO LABS'
+    case 'campaign':
+    case 'lottery':
+    case 'reset':
+      return 'TIRO'
+    case 'model':
+    case 'fast-mode':
+    case 'advanced-model':
+    case 'frontier-model':
+      return 'TIRO LABS'
+    case 'market':
+    case 'spark':
+    case 'spark-delivered':
+    case 'mercury':
+    case 'second-job':
+      return 'TIRO'
   }
 }
 
@@ -57,9 +74,8 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
     return (
       <>
         <p className="social-post-copy">
-          Running low? Reset your token balance to 10M right now, on us.
+          Reset your token balance to 10M now. One reset per run.
         </p>
-        <p className="social-post-caption">One free reset per run. Applied immediately, not saved for later.</p>
         <button
           className="social-action social-claim-button"
           type="button"
@@ -68,7 +84,6 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
         >
           {hasClaimedReset ? 'Reset applied' : 'Reset to 10M now'}
         </button>
-        {hasClaimedReset && <p className="social-action-note">Your balance was reset to 10M immediately.</p>}
       </>
     )
   }
@@ -77,10 +92,8 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
     return (
       <>
         <p className="social-post-copy">
-          Out of tokens? Hit Like—we’re topping lucky builders back up to 10M.
-          No luck? Like again. More Likes, more chances to get back to shipping.
+          Like for a chance to refill to 10M. No luck? Like again.
         </p>
-        <p className="social-post-caption">Each Like has a <strong>1% chance</strong> of resetting your balance to 10M immediately.</p>
         <div className="social-lottery-actions">
           <button
             className="social-heart-button"
@@ -109,30 +122,88 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
 
   if (post.type === 'model') {
     return (
-      <>
-        <p className="social-post-copy">
-          Tiro Reason is more reliable, but runs 40% slower than Basic.
-          Your workspace has been upgraded automatically. All new attempts use Tiro Reason.
-        </p>
-        <p className="social-post-caption">More thought. Fewer retries.</p>
-      </>
+      <p className="social-post-copy">
+        Tiro Reason is unlocked. New cloud attempts use it.
+      </p>
+    )
+  }
+
+  if (post.type === 'fast-mode') {
+    return (
+      <p className="social-post-copy">
+        Fast mode: <strong>2× speed · 2× tokens</strong>. Applies to new attempts while enabled.
+        Turn it on in Shop for a cloud terminal.
+      </p>
+    )
+  }
+
+  if (post.type === 'market') {
+    return (
+      <p className="social-post-copy">
+        BTC trading is live. Open Market to trade with your USD balance.
+      </p>
+    )
+  }
+
+  if (post.type === 'spark') {
+    return (
+      <p className="social-post-copy">
+        Mapple Spark opens in Shop 10 seconds after this post · <strong>$15,000</strong>.
+        Local Reason panes use no cloud task tokens.
+      </p>
+    )
+  }
+
+  if (post.type === 'spark-delivered') {
+    return (
+      <p className="social-post-copy">
+        Mapple Spark delivered: two fixed Reason panes. Install YOLO if you want to skip approvals.
+      </p>
+    )
+  }
+
+  if (post.type === 'advanced-model') {
+    return (
+      <p className="social-post-copy">
+        Tiro Pro is in Shop for <strong>$5,000</strong>. Buy it to use Pro for new cloud attempts.
+      </p>
+    )
+  }
+
+  if (post.type === 'mercury') {
+    return (
+      <p className="social-post-copy">
+        Mercury is in Shop for <strong>$8,000</strong>. Automatic handoffs cost 300K tokens each way.
+        It does not approve or retry tasks.
+      </p>
+    )
+  }
+
+  if (post.type === 'second-job') {
+    return (
+      <p className="social-post-copy">
+        A second job is open. Open Applications and submit its form.
+      </p>
     )
   }
 
   return (
-    <>
-      <p className="social-post-copy">
-        Fast mode is unlocked. A terminal set to fast mode spends <strong>2× tokens</strong> for the
-        next attempt and completes it at <strong>2× speed</strong>. The setting applies to the next
-        task attempt you start.
-      </p>
-      <p className="social-post-caption">Open Shop to select a terminal and turn it on.</p>
-    </>
+    <p className="social-post-copy">
+      Tiro Max is available in each cloud terminal’s model menu. It uses <strong>2× tokens</strong>.
+    </p>
   )
 }
 
 function SocialPostCard({ post, state, dispatch }: { post: SocialPost; state: GameState; dispatch: Dispatch<GameAction> }) {
-  const variant = post.type === 'reset' ? 'win' : post.type === 'model' || post.type === 'fast-mode' ? 'spark' : 'default'
+  const variant = post.type === 'reset'
+    ? 'win'
+    : post.type === 'model' ||
+        post.type === 'fast-mode' ||
+        post.type === 'advanced-model' ||
+        post.type === 'frontier-model' ||
+        post.type === 'spark-delivered'
+      ? 'spark'
+      : 'default'
   return (
     <article className={`social-post social-post-${post.type}`} aria-labelledby={`social-post-title-${post.id}`}>
       <div className="social-post-rail" aria-hidden="true">
@@ -175,16 +246,13 @@ export function SocialContent({ state, dispatch }: SocialProps) {
         </div>
       </header>
 
-          <div className="social-feed-toolbar">
-            <div>
-              <p className="social-feed-title">Your timeline</p>
-              <p className="social-feed-subtitle">Token resets and product updates from Tiro.</p>
-            </div>
-            <UnreadIndicator count={unreadCount} onClick={scrollToLatest} />
-          </div>
-          <div className="social-feed" ref={scrollRef} role="log" aria-label="ZZZ timeline" aria-live="polite">
-            {posts.map((post) => <SocialPostCard key={post.id} post={post} state={state} dispatch={dispatch} />)}
-          </div>
+      <div className="social-feed-toolbar">
+        <p className="social-feed-title">Your timeline</p>
+        <UnreadIndicator count={unreadCount} onClick={scrollToLatest} />
+      </div>
+      <div className="social-feed" ref={scrollRef} role="log" aria-label="ZZZ timeline" aria-live="polite">
+        {posts.map((post) => <SocialPostCard key={post.id} post={post} state={state} dispatch={dispatch} />)}
+      </div>
     </section>
   )
 }
