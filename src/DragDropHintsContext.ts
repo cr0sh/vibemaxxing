@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type {
   DragEvent,
   FocusEvent,
@@ -64,7 +64,9 @@ export function useDragDropTarget<T extends HTMLElement>(
 ): void {
   const { registerDropTarget } = useDragDropHints()
   const targetRef = useRef(target)
-  targetRef.current = target
+  useLayoutEffect(() => {
+    targetRef.current = target
+  })
 
   useEffect(() => {
     const element = ref.current

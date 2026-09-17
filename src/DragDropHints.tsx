@@ -72,8 +72,9 @@ export function DragDropHintsProvider({ children }: { children: ReactNode }) {
     let bestZIndex = -Infinity
     let bestPriority = -Infinity
     let bestArea = Infinity
+    const hitElements = document.elementsFromPoint(x, y)
     for (const target of targetsRef.current.values()) {
-      if (!target.element.isConnected || !target.accepts(source)) continue
+      if (!target.element.isConnected || !hitElements.includes(target.element) || !target.accepts(source)) continue
       const bounds = target.element.getBoundingClientRect()
       if (bounds.width <= 0 || bounds.height <= 0 || x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) continue
       const computedZIndex = Number.parseInt(window.getComputedStyle(target.element.closest('.window') ?? target.element).zIndex, 10)
