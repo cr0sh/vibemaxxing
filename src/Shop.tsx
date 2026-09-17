@@ -105,6 +105,11 @@ export function ShopContent({ state, dispatch }: ShopProps) {
   const selectedTargetTerminal = state.terminals.some((terminal) => terminal.id === targetTerminal)
     ? targetTerminal
     : state.terminals[0]?.id ?? 'terminal'
+  const selectedTerminal = state.terminals.find((terminal) => terminal.id === selectedTargetTerminal)
+  const fastModeAvailable =
+    state.stage === 'hired' &&
+    state.fastModeUnlocked &&
+    selectedTerminal !== undefined
   const refillAmount = tokenPurchaseAmount(state.tokens, tokenPacks)
   const refillCost = tokenPurchaseCost(refillAmount)
   const refillPrice = `$${refillCost.toFixed(2)}`
@@ -113,6 +118,15 @@ export function ShopContent({ state, dispatch }: ShopProps) {
   const buyTokens = () => {
     if (canBuyTokens) dispatch({ type: 'buy-tokens', packs: tokenPacks })
   }
+
+  const setFastMode = (enabled: boolean) => {
+    if (!fastModeAvailable) return
+    dispatch({ type: 'set-fast-mode', terminalId: selectedTargetTerminal, enabled })
+  }
+
+  const fastModeLabel = state.stage !== 'hired'
+    ? 'Unavailable'
+    : selectedTerminal?.fastMode ? 'On' : 'Off'
 
 
   return (
@@ -140,6 +154,32 @@ export function ShopContent({ state, dispatch }: ShopProps) {
             targetTerminal={selectedTargetTerminal}
           />
         ))}
+        {state.fastModeUnlocked && (
+        <article
+          className={`shop-product shop-fast-mode-product ${fastModeAvailable ? '' : 'shop-product-unavailable'}`}
+          aria-label="Fast mode"
+        >
+          <span className="shop-product-icon shop-fast-mode-icon" aria-hidden="true">»</span>
+          <div className="shop-product-copy">
+            <h3>Fast mode</h3>
+            <p>
+              The next attempt on the selected terminal runs at 2× speed and costs 2× tokens.
+            </p>
+          </div>
+          <label className="shop-fast-mode-toggle">
+            <span className="shop-fast-mode-toggle-label">{fastModeLabel}</span>
+            <input
+              type="checkbox"
+              checked={selectedTerminal?.fastMode ?? false}
+              disabled={!fastModeAvailable}
+              onChange={(event) => setFastMode(event.currentTarget.checked)}
+              aria-label={`Use fast mode for ${terminalLabel(selectedTargetTerminal)} on the next attempt`}
+            />
+            <span className="shop-toggle-track" aria-hidden="true"><span /></span>
+          </label>
+        </article>
+        )}
+
         <article
           className={`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`}
           aria-label="Token refill"
@@ -164,3 +204,5 @@ export function ShopContent({ state, dispatch }: ShopProps) {
     </div>
   )
 }
+
+

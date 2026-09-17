@@ -125,7 +125,7 @@ describe('employment transitions', () => {
       state = gameReducer(state, { type: 'tick', seconds: 1 })
     }
     expect(taskWith(state, id).status).toBe('artifact')
-    const reward = 5 * taskWith(state, id).difficulty
+    const reward = taskReward(taskWith(state, id), state.elapsed)
     const moneyBeforeDelivery = state.money
     const artifactMessages = state.messages.filter((message) => message.type === 'artifact')
     expect(artifactMessages).toHaveLength(1)
@@ -176,7 +176,8 @@ describe('employment transitions', () => {
     if (delivery === undefined || delivery.type !== 'delivery') {
       throw new Error('The delivery message was missing')
     }
-    expect(delivery.reward).toBe(taskReward(completedTask))
+    expect(delivery.reward).toBe(taskReward(completedTask, state.elapsed))
+    const firstReward = delivery.reward
     const firstHistory = structuredClone(state.messages)
     state = gameReducer(state, { type: 'tick', seconds: 5 })
     const next = state.tasks.find((task) => task.status === 'assigned')
@@ -194,8 +195,8 @@ describe('employment transitions', () => {
       artifact: message.task.artifactName,
       reward: message.reward,
     }))).toEqual([
-      { artifact: completedTask.artifactName, reward: taskReward(completedTask) },
-      { artifact: next.artifactName, reward: taskReward(next) },
+      { artifact: completedTask.artifactName, reward: firstReward },
+      { artifact: next.artifactName, reward: taskReward(next, state.elapsed) },
     ])
   })
 
@@ -480,5 +481,173 @@ describe('hidden boss assignment inventory', () => {
       replay = gameReducer(replay, { type: 'tick', seconds: 1 })
     }
     expect(replay).toEqual(batch)
+  })
+})
+
+describe('extended progression boundaries', () => {
+  test('task rewards decay from assignment and stop at five percent', () => {
+    const task = { baseReward: 45, assignedAt: 10 } as const
+    expect(taskReward(task, 10)).toBe(45)
+    expect(taskReward(task, 19)).toBe(45)
+    expect(taskReward(task, 20)).toBe(40.5)
+    expect(taskReward(task, 29)).toBe(40.5)
+    expect(taskReward(task, 30)).toBe(36)
+    expect(taskReward(task, 109)).toBe(4.5)
+    expect(taskReward(task, 110)).toBe(2.25)
+    expect(taskReward(task, 1_000)).toBe(2.25)
+  })
+
+  test('watercooler unlock uses a strict below-twenty-percent attempt boundary', () => {
+    const hired = hire()
+    const task = taskWith(hired, 1)
+    const exact = gameReducer({
+      ...hired,
+      tokens: 2_100_000,
+      tasks: [{ ...task, difficulty: 1, baseReward: 0 }],
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      nextPingAt: 0,
+    }, { type: 'start-task', id: task.id, terminalId: 'terminal', slot: 0 })
+    expect(exact.tokens).toBe(2_000_000)
+    expect(exact.watercoolerUnlocked).toBe(false)
+
+    const below = gameReducer({
+      ...hired,
+      tokens: 2_100_000,
+      tasks: [{ ...task, difficulty: 2, baseReward: 0 }],
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      nextPingAt: 0,
+    }, { type: 'start-task', id: task.id, terminalId: 'terminal', slot: 0 })
+    expect(below.tokens).toBe(1_900_000)
+    expect(below.watercoolerUnlocked).toBe(true)
+  })
+
+  test('the one-time claim and five-second lottery preserve the refill schedule', () => {
+    let state: GameState = {
+      ...hire(), watercoolerUnlocked: true, tokens: 100,
+      tasks: [], taskQueue: [], nextTaskAt: 1_000, nextPingAt: 0,
+    }
+    state = gameReducer(state, { type: 'install-social' })
+    expect(gameReducer(state, { type: 'like-reset' })).toBe(state)
+    state = gameReducer(state, { type: 'claim-token-reset' })
+    expect(state.tokens).toBe(MAX_TOKENS)
+    const spent = { ...state, tokens: 100 }
+    expect(gameReducer(spent, { type: 'claim-token-reset' })).toBe(spent)
+    state = gameReducer(spent, { type: 'tick', seconds: 4 })
+    expect(state.socialPosts.some((post) => post.type === 'lottery')).toBe(false)
+    state = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(state.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(1)
+
+    // Seeded draws immediately below and above the one-percent boundary.
+    const missed = gameReducer({ ...state, rng: 1962 }, { type: 'like-reset' })
+    expect(missed.tokens).toBe(100)
+    const won = gameReducer({ ...missed, rng: 978 }, { type: 'like-reset' })
+    expect(won.tokens).toBe(MAX_TOKENS)
+    expect(won.socialPosts.filter((post) => post.type === 'reset')).toHaveLength(2)
+    expect(won.socialPosts.find((post) => post.type === 'lottery')?.likes).toBe(2)
+    const waiting = gameReducer({ ...won, tokens: 100 }, { type: 'tick', seconds: 94 })
+    expect(waiting.tokens).toBe(100)
+    const refilled = gameReducer(waiting, { type: 'tick', seconds: 1 })
+    expect(refilled.tokens).toBe(MAX_TOKENS)
+    expect(refilled.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(1)
+  })
+
+  test('architecture frequency rises by delivery count but remains capped at eighty percent', () => {
+    const hired = hire()
+    for (const [rng, completedArchitectureTasks, kind] of [
+      [18, 0, 'standard'], [18, 1, 'architecture'],
+      [69, 8, 'standard'], [69, 9, 'architecture'], [194, 100, 'standard'],
+    ] as const) {
+      const issued = gameReducer({
+        ...hired, rng, level: 4, completedArchitectureTasks,
+        tasks: [], taskQueue: [], nextTaskAt: 0, nextPingAt: 0,
+      }, { type: 'tick', seconds: 1 })
+      expect(issued.tasks[0]?.kind).toBe(kind)
+    }
+  })
+
+  test('architecture gets five times the standard deadline at the same difficulty', () => {
+    const hired = hire()
+    const descriptor = hired.taskQueue[0]!
+    const issued = (architecture: boolean) => gameReducer({
+      ...hired, level: 4, elapsed: 200, tasks: [], nextTaskAt: 0, nextPingAt: 0,
+      taskQueue: [{ ...descriptor, kind: architecture ? 'architecture' : 'standard', complexity: architecture ? 2 : 1 }],
+    }, { type: 'tick', seconds: 1 }).tasks[0]!
+    const standard = issued(false)
+    const architecture = issued(true)
+    expect(architecture.deadlineAt - architecture.assignedAt).toBe(5 * (standard.deadlineAt - standard.assignedAt))
+  })
+
+  test('failed architecture retries charge again and snapshot the next attempt settings', () => {
+    const hired = hire()
+    const task: WorkTask = {
+      ...taskWith(hired, 1),
+      kind: 'architecture',
+      complexity: 2,
+      difficulty: 6,
+      deadlineAt: 100,
+    }
+    let state: GameState = {
+      ...hired,
+      rng: 1,
+      tokens: 2_000_000,
+      tasks: [task],
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      nextPingAt: 0,
+      reasoningUnlocked: true,
+      fastModeUnlocked: true,
+      terminals: [{ ...hired.terminals[0]!, yolo: true }],
+    }
+    state = gameReducer(state, { type: 'start-task', id: task.id, terminalId: 'terminal', slot: 0 })
+    state = gameReducer(state, { type: 'tick', seconds: 6 })
+    expect(taskWith(state, task.id).status).toBe('failed')
+    expect(state.tokens).toBe(1_400_000)
+    state = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(state, task.id).status).toBe('failed')
+    expect(state.tokens).toBe(1_400_000)
+
+    state = gameReducer(state, { type: 'set-model', terminalId: 'terminal', model: 'reasoning' })
+    state = gameReducer(state, { type: 'set-fast-mode', terminalId: 'terminal', enabled: true })
+    state = gameReducer(state, { type: 'retry-task', id: task.id })
+    expect(state.tokens).toBe(200_000)
+    expect(taskWith(state, task.id).deadlineAt).toBe(100)
+
+    state = gameReducer(state, { type: 'set-model', terminalId: 'terminal', model: 'basic' })
+    state = gameReducer(state, { type: 'set-fast-mode', terminalId: 'terminal', enabled: false })
+    state = gameReducer(state, { type: 'tick', seconds: 4 })
+    expect(taskWith(state, task.id).status).toBe('working')
+    state = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(state, task.id).status).toBe('artifact')
+    expect(state.tokens).toBe(200_000)
+    expect(state.messages.filter((message) => message.type === 'attempt-failed')).toHaveLength(1)
+  })
+
+  test('fast starts and failed retries cannot spend another assignment’s reserved tokens', () => {
+    const hired = hire()
+    const first: WorkTask = {
+      ...taskWith(hired, 1), kind: 'architecture', complexity: 2, difficulty: 6, deadlineAt: 100,
+    }
+    let state: GameState = {
+      ...hired,
+      rng: 1,
+      tokens: 1_200_000,
+      tasks: [first, { ...first, id: 2 }],
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      nextPingAt: 0,
+      fastModeUnlocked: true,
+      terminals: [{ ...hired.terminals[0]!, slots: 2, yolo: true, fastMode: true }],
+    }
+    expect(gameReducer(state, { type: 'start-task', id: 1, terminalId: 'terminal', slot: 0 })).toBe(state)
+    state = gameReducer(state, { type: 'set-fast-mode', terminalId: 'terminal', enabled: false })
+    state = gameReducer(state, { type: 'start-task', id: 1, terminalId: 'terminal', slot: 0 })
+    state = gameReducer(state, { type: 'tick', seconds: 6 })
+    expect(taskWith(state, 1).status).toBe('failed')
+    expect(gameReducer(state, { type: 'retry-task', id: 1 })).toBe(state)
+    state = gameReducer(state, { type: 'start-task', id: 2, terminalId: 'terminal', slot: 1 })
+    expect(taskWith(state, 2).status).toBe('working')
+    expect(state.tokens).toBe(0)
   })
 })

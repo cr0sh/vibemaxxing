@@ -13,11 +13,12 @@ import {
 import { applicationSamples } from './applicationSamples'
 import { MessengerContent, TerminalContent } from './Employment'
 import { ShopContent } from './Shop'
+import { SocialContent } from './Social'
 import { WindowFrame, WindowWorkspace } from './DesktopWindows'
 import { ResourceCounter } from './ResourceCounter'
 import './App.css'
 
-type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'shop' | 'defeat'
+type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'shop' | 'social' | 'defeat'
 type WindowState = Record<WindowId, boolean>
 
 const emptyApplication = (): Application => ({
@@ -93,6 +94,7 @@ function Desktop({
     terminal: state.stage === 'hired',
     'terminal-2': false,
     shop: false,
+    social: false,
     defeat: state.stage === 'lost',
   }))
   const [activeWindow, setActiveWindow] = useState<WindowId>(
@@ -132,7 +134,7 @@ function Desktop({
       : state.stage === 'offer'
         ? ['offer']
         : hasEmployment
-          ? ['messenger', ...terminalIds, 'shop', ...(state.stage === 'lost' ? ['defeat' as const] : [])]
+          ? ['messenger', ...terminalIds, 'shop', ...(state.socialInstalledAt !== null ? ['social' as const] : []), ...(state.stage === 'lost' ? ['defeat' as const] : [])]
           : state.stage === 'lost'
             ? ['defeat']
             : []
@@ -393,7 +395,7 @@ function Desktop({
                     onFocus={() => setActiveWindow('messenger')}
                     onMinimize={() => minimizeWindow('messenger')}
                   >
-                    <MessengerContent state={state} dispatch={dispatch} />
+                    <MessengerContent state={state} dispatch={dispatch} onOpenSocial={() => openWindow('social')} />
                   </WindowFrame>
 
                   {state.terminals.map((terminal) => (
@@ -430,6 +432,21 @@ function Desktop({
                   >
                     <ShopContent state={state} dispatch={dispatch} />
                   </WindowFrame>
+                  {state.socialInstalledAt !== null && (
+                    <WindowFrame
+                      id="social"
+                      icon="Z"
+                      title="ZZZ"
+                      active={isWindowActive('social')}
+                      className="social-window-frame"
+                      contentLayout="fill"
+                      hidden={!windows.social}
+                      onFocus={() => setActiveWindow('social')}
+                      onMinimize={() => minimizeWindow('social')}
+                    >
+                      <SocialContent state={state} dispatch={dispatch} />
+                    </WindowFrame>
+                  )}
                 </>
               )}
               {state.stage === 'lost' && (
@@ -484,15 +501,17 @@ function Desktop({
                       ? { icon: '💬', label: 'Messenger' }
                       : id === 'shop'
                         ? { icon: '🛍️', label: 'Shop' }
-                        : id === 'defeat'
-                          ? { icon: '⚠️', label: 'Run ended' }
-                          : { icon: '🖥️', label: id === 'terminal' ? 'Terminal' : 'Terminal 2' }
+                        : id === 'social'
+                          ? { icon: 'Z', label: 'ZZZ' }
+                          : id === 'defeat'
+                            ? { icon: '⚠️', label: 'Run ended' }
+                            : { icon: '🖥️', label: id === 'terminal' ? 'Terminal' : 'Terminal 2' }
               const isOpen = id === 'defeat'
                 ? state.stage === 'lost' && !defeatDismissed
                 : windows[id] || (id === 'messenger' && defeatAutoFront)
               return (
                 <button
-                  className={`dock-item ${isWindowActive(id) ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''} ${!acknowledgedDockWindows.has(id) ? 'dock-item-attention' : ''}`}
+                  className={`dock-item dock-item-${id} ${isWindowActive(id) ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''} ${!acknowledgedDockWindows.has(id) ? 'dock-item-attention' : ''}`}
                   type="button"
                   key={id}
                   onClick={() => activateDock(id)}

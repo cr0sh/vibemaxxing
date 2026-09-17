@@ -155,6 +155,93 @@
   transform: none;
 }
 
+.shop-fast-mode-product {
+  border-color: #836bc0;
+  background: linear-gradient(100deg, #3b266d, #302056);
+}
+
+.shop-fast-mode-icon {
+  color: #f0d8ff;
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.shop-fast-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.48rem;
+  min-height: 2.2rem;
+  cursor: pointer;
+}
+
+.shop-fast-mode-toggle-label {
+  min-width: 2rem;
+  color: #e4d4fa;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.shop-fast-mode-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.shop-toggle-track {
+  display: inline-flex;
+  align-items: center;
+  width: 2.8rem;
+  height: 1.58rem;
+  border: 1px solid #a88fd2;
+  border-radius: 999px;
+  padding: 0.15rem;
+  background: #20123f;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.shop-toggle-track > span {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #b6a2cd;
+  box-shadow: 0 0.1rem 0.24rem rgba(0, 0, 0, 0.24);
+  transition: transform 160ms ease, background-color 160ms ease;
+}
+
+.shop-fast-mode-toggle input:checked + .shop-toggle-track {
+  border-color: #f0d0ff;
+  background: #7651af;
+}
+
+.shop-fast-mode-toggle input:checked + .shop-toggle-track > span {
+  background: #fff;
+  transform: translateX(1.2rem);
+}
+
+.shop-fast-mode-toggle input:focus-visible + .shop-toggle-track {
+  outline: 2px solid #eadbff;
+  outline-offset: 3px;
+}
+
+.shop-fast-mode-toggle input:disabled + .shop-toggle-track {
+  border-color: #5d4a7a;
+  background: #2a1c45;
+  cursor: not-allowed;
+}
+
+.shop-fast-mode-toggle input:disabled + .shop-toggle-track > span {
+  background: #716481;
+}
+
+.shop-fast-mode-toggle:has(input:disabled) {
+  cursor: not-allowed;
+}
+
 @media (max-width: 620px) {
   .shop-app {
     padding: 0.85rem;
