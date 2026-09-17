@@ -85,7 +85,7 @@ function Desktop({
   const [application, setApplication] = useState<Application>(emptyApplication)
   const hasEmployment =
     state.stage === 'hired' ||
-    (state.stage === 'lost' && (state.tasks.length > 0 || state.completedTasks > 0 || state.elapsed > 0 || state.lastDelivery !== null))
+    (state.stage === 'lost' && (state.tasks.length > 0 || state.completedTasks > 0 || state.elapsed > 0))
   const [windows, setWindows] = useState<WindowState>(() => ({
     apply: state.stage === 'applying',
     offer: state.stage === 'offer',
@@ -136,6 +136,25 @@ function Desktop({
           : state.stage === 'lost'
             ? ['defeat']
             : []
+  const [dockAttention, setDockAttention] = useState<Set<WindowId>>(() => new Set(stageWindows))
+  const previousDockWindows = useRef<Set<WindowId> | null>(null)
+  const stageWindowKey = stageWindows.join(',')
+
+  useEffect(() => {
+    const current = stageWindowKey === '' ? [] : (stageWindowKey.split(',') as WindowId[])
+    const previous = previousDockWindows.current
+    previousDockWindows.current = new Set(current)
+    if (previous === null) return
+
+    const newlyAvailable = current.filter((id) => !previous.has(id))
+    if (newlyAvailable.length === 0) return
+
+    setDockAttention((current) => {
+      const next = new Set(current)
+      newlyAvailable.forEach((id) => next.add(id))
+      return next
+    })
+  }, [stageWindowKey])
   const openWindow = (id: WindowId) => {
     setWindows((current) => ({ ...current, [id]: true }))
     if (id === 'defeat') {
@@ -146,6 +165,15 @@ function Desktop({
     }
     setFocusRequest((request) => request + 1)
     setActiveWindow(id)
+  }
+  const activateDock = (id: WindowId) => {
+    setDockAttention((current) => {
+      if (!current.has(id)) return current
+      const next = new Set(current)
+      next.delete(id)
+      return next
+    })
+    openWindow(id)
   }
 
   const focusDefeat = () => {
@@ -483,10 +511,10 @@ function Desktop({
                 : windows[id] || (id === 'messenger' && defeatAutoFront)
               return (
                 <button
-                  className={`dock-item ${isWindowActive(id) ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''}`}
+                  className={`dock-item ${isWindowActive(id) ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''} ${dockAttention.has(id) ? 'dock-item-attention' : ''}`}
                   type="button"
                   key={id}
-                  onClick={() => openWindow(id)}
+                  onClick={() => activateDock(id)}
                   aria-label={`${isOpen ? 'Focus' : 'Open'} ${item.label} window`}
                   aria-pressed={isWindowActive(id) && isOpen}
                 >
