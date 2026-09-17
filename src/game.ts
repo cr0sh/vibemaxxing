@@ -89,7 +89,6 @@ export type EmploymentMessage =
   | { id: string; type: 'incentives'; elapsed: number }
   | { id: string; type: 'promotion'; elapsed: number }
   | { id: string; type: 'attempt-failed'; elapsed: number; task: EmploymentTaskSnapshot }
-  | { id: string; type: 'ping'; elapsed: number; deadlineAt: number; acknowledged: boolean }
   | { id: string; type: 'firing'; elapsed: number; failure: string }
 
 export type SocialPost = {
@@ -124,8 +123,6 @@ export type GameState = {
   socialPosts: SocialPost[]
   nextTaskId: number
   nextTaskAt: number
-  nextPingAt: number
-  pingDeadline: number | null
   welcomeReacted: boolean
   messages: EmploymentMessage[]
   failure: string | null
@@ -141,7 +138,6 @@ export type GameAction =
   | { type: 'dev-jump'; stage: DevJumpTarget }
   | { type: 'tick'; seconds: number }
   | { type: 'welcome-react' }
-  | { type: 'acknowledge-ping' }
   | { type: 'start-task'; id: number; terminalId: TerminalId; slot: number }
   | { type: 'approve-task'; id: number; approved: boolean }
   | { type: 'deliver-task'; id: number }
@@ -510,8 +506,6 @@ function createHiredState(state: GameState): GameState {
     socialPosts: [],
     nextTaskId: 1,
     nextTaskAt: 0,
-    nextPingAt: state.elapsed,
-    pingDeadline: null,
     welcomeReacted: false,
     messages: [],
     failure: null,
@@ -523,12 +517,7 @@ function createHiredState(state: GameState): GameState {
     elapsed: hired.elapsed,
   })
   const withQueue = refillTaskQueue(welcomed)
-  const [nextRng, pingDelay] = drawInteger(withQueue.rng, 90, 150)
-  return issueAvailableAssignments({
-    ...withQueue,
-    nextPingAt: withQueue.elapsed + pingDelay,
-    rng: nextRng,
-  })
+  return issueAvailableAssignments(withQueue)
 }
 
 function appendSocialPost(state: GameState, post: SocialPost): GameState {
@@ -605,8 +594,6 @@ export const initialGame: GameState = {
   socialPosts: [],
   nextTaskId: 1,
   nextTaskAt: 0,
-  nextPingAt: 0,
-  pingDeadline: null,
   welcomeReacted: false,
   messages: [],
   failure: null,
@@ -705,10 +692,6 @@ function tickHired(state: GameState, seconds: number): GameState {
       return lose(current, 'The task deadline was missed.')
     }
 
-    if (current.pingDeadline !== null && current.elapsed >= current.pingDeadline) {
-      return lose(current, 'The boss ping went unanswered.')
-    }
-
     const previousTasks = current.tasks
     let nextRng = current.rng
     const advancedTasks: WorkTask[] = []
@@ -737,22 +720,6 @@ function tickHired(state: GameState, seconds: number): GameState {
     current = appendLotteryIfDue(current)
     current = issueAvailableAssignments(current)
 
-    if (current.pingDeadline === null && current.nextPingAt > 0 && current.elapsed >= current.nextPingAt) {
-      const [pingRng, pingDelay] = drawInteger(current.rng, 90, 150)
-      const pingDeadline = current.elapsed + 30
-      current = appendMessage({
-        ...current,
-        pingDeadline,
-        nextPingAt: current.elapsed + pingDelay,
-        rng: pingRng,
-      }, {
-        id: `ping-${pingDeadline}`,
-        type: 'ping',
-        elapsed: current.elapsed,
-        deadlineAt: pingDeadline,
-        acknowledged: false,
-      })
-    }
   }
 
   return current
@@ -869,6 +836,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           company,
           elapsed: 0,
           tokens: TIRO_PREVIEW_TOKENS,
+          money: 1_000,
           rng: normalizeSeed(state.rng),
         })
         return gameReducer({
@@ -897,8 +865,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           resetClaimed: false,
           socialPosts: [],
           nextTaskAt: 0,
-          nextPingAt: 0,
-          pingDeadline: null,
           welcomeReacted: false,
           messages: [],
           failure: null,
@@ -926,8 +892,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           socialInstalledAt: null,
           socialPosts: [],
           nextTaskAt: 0,
-          nextPingAt: 0,
-          pingDeadline: null,
           messages: [],
           failure: null,
         }
@@ -953,7 +917,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             ? state.company
             : companies[0] ?? null,
         failure,
-        pingDeadline: null,
       }, {
         id: 'firing',
         type: 'firing',
@@ -969,27 +932,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return state.stage === 'hired'
         ? { ...state, welcomeReacted: !state.welcomeReacted }
         : state
-
-    case 'acknowledge-ping': {
-      if (
-        state.stage !== 'hired' ||
-        state.pingDeadline === null ||
-        state.elapsed > state.pingDeadline
-      ) {
-        return state
-      }
-
-      const pingDeadline = state.pingDeadline
-      return {
-        ...state,
-        pingDeadline: null,
-        messages: state.messages.map((message) => (
-          message.type === 'ping' && message.deadlineAt === pingDeadline
-            ? { ...message, acknowledged: true }
-            : message
-        )),
-      }
-    }
 
     case 'start-task': {
       if (

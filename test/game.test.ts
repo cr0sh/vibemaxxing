@@ -266,7 +266,6 @@ describe('employment transitions', () => {
       elapsed: 99,
       tasks: [],
       nextTaskAt: 120,
-      nextPingAt: 150,
     }
     const refilled = gameReducer(beforeRefill, { type: 'tick', seconds: 1 })
     expect(refilled.tokens).toBe(MAX_TOKENS)
@@ -287,15 +286,26 @@ describe('employment transitions', () => {
   test('missing a task deadline preserves firing evidence and stops wages', () => {
     const hired = hire()
     const task = taskWith(hired, 1)
-    const pingDeadline = task.deadlineAt + 50
-    const context = { ...hired, pingDeadline }
-    const lost = gameReducer(context, { type: 'tick', seconds: Math.ceil(task.deadlineAt) + 1 })
+    const lost = gameReducer(hired, { type: 'tick', seconds: Math.ceil(task.deadlineAt) + 1 })
     expect(lost.stage).toBe('lost')
     expect(lost.tasks).toContainEqual(task)
-    expect(lost.pingDeadline).toBe(pingDeadline)
     expect(lost.messages.at(-1)?.type).toBe('firing')
     expect(gameReducer(lost, { type: 'tick', seconds: 100 })).toEqual(lost)
   })
+  test('task-free employment remains active during extended elapsed time', () => {
+    const longRunning = gameReducer({
+      ...hire(),
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: 1_000_000,
+    }, { type: 'tick', seconds: 10_000 })
+    expect(longRunning.stage).toBe('hired')
+    expect(longRunning.failure).toBeNull()
+    expect(longRunning.elapsed).toBe(10_000)
+    expect(longRunning.money).toBe(10_000)
+    expect(longRunning.tasks).toHaveLength(0)
+  })
+
 })
 
 describe('terminal upgrades and concurrent work', () => {
@@ -304,7 +314,6 @@ describe('terminal upgrades and concurrent work', () => {
     state = {
       ...state,
       tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
-      nextPingAt: 0,
       money: 200,
     }
     state = gameReducer(state, { type: 'tick', seconds: 18 })
@@ -350,7 +359,6 @@ describe('terminal upgrades and concurrent work', () => {
     state = {
       ...state,
       money: 420,
-      nextPingAt: 0,
       tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
     }
     state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
@@ -377,7 +385,6 @@ describe('terminal upgrades and concurrent work', () => {
     let state = hire()
     state = {
       ...state,
-      nextPingAt: 0,
       money: 1_000,
       tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
     }
@@ -517,7 +524,6 @@ describe('extended progression boundaries', () => {
       tasks: [{ ...task, difficulty: 1, baseReward: 0 }],
       taskQueue: [],
       nextTaskAt: 1_000,
-      nextPingAt: 0,
     }, { type: 'start-task', id: task.id, terminalId: 'terminal', slot: 0 })
     expect(exact.tokens).toBe(2_000_000)
     expect(exact.watercoolerUnlocked).toBe(false)
@@ -528,7 +534,6 @@ describe('extended progression boundaries', () => {
       tasks: [{ ...task, difficulty: 2, baseReward: 0 }],
       taskQueue: [],
       nextTaskAt: 1_000,
-      nextPingAt: 0,
     }, { type: 'start-task', id: task.id, terminalId: 'terminal', slot: 0 })
     expect(below.tokens).toBe(1_900_000)
     expect(below.watercoolerUnlocked).toBe(true)
@@ -537,7 +542,7 @@ describe('extended progression boundaries', () => {
   test('the one-time claim and five-second lottery preserve the refill schedule', () => {
     let state: GameState = {
       ...hire(), watercoolerUnlocked: true, tokens: 100,
-      tasks: [], taskQueue: [], nextTaskAt: 1_000, nextPingAt: 0,
+      tasks: [], taskQueue: [], nextTaskAt: 1_000,
     }
     state = gameReducer(state, { type: 'install-social' })
     expect(gameReducer(state, { type: 'like-reset' })).toBe(state)
@@ -572,7 +577,7 @@ describe('extended progression boundaries', () => {
     ] as const) {
       const issued = gameReducer({
         ...hired, rng, level: 4, completedArchitectureTasks,
-        tasks: [], taskQueue: [], nextTaskAt: 0, nextPingAt: 0,
+        tasks: [], taskQueue: [], nextTaskAt: 0,
       }, { type: 'tick', seconds: 1 })
       expect(issued.tasks[0]?.kind).toBe(kind)
     }
@@ -582,7 +587,7 @@ describe('extended progression boundaries', () => {
     const hired = hire()
     const descriptor = hired.taskQueue[0]!
     const issued = (architecture: boolean) => gameReducer({
-      ...hired, level: 4, elapsed: 200, tasks: [], nextTaskAt: 0, nextPingAt: 0,
+      ...hired, level: 4, elapsed: 200, tasks: [], nextTaskAt: 0,
       taskQueue: [{ ...descriptor, kind: architecture ? 'architecture' : 'standard', complexity: architecture ? 2 : 1 }],
     }, { type: 'tick', seconds: 1 }).tasks[0]!
     const standard = issued(false)
@@ -606,7 +611,6 @@ describe('extended progression boundaries', () => {
       tasks: [task],
       taskQueue: [],
       nextTaskAt: 1_000,
-      nextPingAt: 0,
       fastModeUnlocked: true,
       terminals: [{ ...hired.terminals[0]!, yolo: true }],
     }
@@ -648,7 +652,6 @@ describe('extended progression boundaries', () => {
       tasks: [first, { ...first, id: 2 }],
       taskQueue: [],
       nextTaskAt: 1_000,
-      nextPingAt: 0,
       fastModeUnlocked: true,
       terminals: [{ ...hired.terminals[0]!, slots: 2, yolo: true, fastMode: true }],
     }
@@ -665,14 +668,12 @@ describe('extended progression boundaries', () => {
 })
  
 describe('developer previews', () => {
-  test('Tiro replaces a stale loss with a usable campaign and live reset timing', () => {
+  test('Tiro replaces a stale loss with a usable campaign', () => {
     const hired = hire(91)
     const stale = gameReducer({
       ...hired,
       tasks: hired.tasks.map((task) => ({ ...task, deadlineAt: 1 })),
       nextTaskAt: 1_000,
-      nextPingAt: 1,
-      pingDeadline: 1,
     }, { type: 'tick', seconds: 1 })
     expect(stale.stage).toBe('lost')
 
@@ -682,9 +683,8 @@ describe('developer previews', () => {
     expect(tiro.elapsed).toBe(0)
     expect(tiro.energy).toBe(100)
     expect(tiro.tokens).toBe(1_900_000)
-    expect(tiro.money).toBe(0)
+    expect(tiro.money).toBe(1_000)
     expect(tiro.failure).toBeNull()
-    expect(tiro.pingDeadline).toBeNull()
     expect(tiro.resetClaimed).toBe(false)
     expect(tiro.watercoolerUnlocked).toBe(true)
     expect(tiro.watercoolerRead).toBe(true)
@@ -695,6 +695,19 @@ describe('developer previews', () => {
     expect(tiro.socialInstalledAt).toBe(0)
     expect(tiro.socialPosts).toEqual([{ id: 'campaign', type: 'campaign', elapsed: 0, likes: 0 }])
     expect(tiro.tasks.every((task) => task.assignedAt === 0 && task.deadlineAt > 0)).toBe(true)
+    const split = gameReducer(tiro, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })
+    expect(split.money).toBe(800)
+    expect(split.terminals[0]?.slots).toBe(2)
+    const splitAndYolo = gameReducer(split, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'terminal' })
+    expect(splitAndYolo.money).toBe(380)
+    expect(splitAndYolo.terminals[0]?.yolo).toBe(true)
+    const additionalTerminal = gameReducer(tiro, {
+      type: 'buy-upgrade',
+      upgrade: 'terminal',
+      terminalId: 'terminal',
+    })
+    expect(additionalTerminal.money).toBe(0)
+    expect(additionalTerminal.terminals).toHaveLength(2)
 
     const claimed = gameReducer(tiro, { type: 'claim-token-reset' })
     expect(claimed.tokens).toBe(MAX_TOKENS)

@@ -309,7 +309,7 @@ function WatercoolerPane({
         <span className="employment-watercooler-icon" aria-hidden="true">☕</span>
         <div>
           <strong>A quieter corner of vibecorp</strong>
-          <p>Colleagues share the useful stuff here. No boss pings, just a little context between attempts.</p>
+          <p>Colleagues share useful tips and updates between attempts.</p>
         </div>
       </div>
       {state.watercoolerUnlocked ? (
@@ -371,7 +371,6 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
     },
     onHover: () => focusDropWindow(messengerRef.current),
   })
-  const nextPingRemaining = Math.max(0, state.nextPingAt - state.elapsed)
 
   const reactToWelcome = () => {
     dispatch({ type: 'welcome-react' })
@@ -533,27 +532,6 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
       )
     }
 
-    if (message.type === 'ping') {
-      const active = state.stage === 'hired' && state.pingDeadline === message.deadlineAt
-      const remaining = active ? message.deadlineAt - state.elapsed : 0
-      return (
-        <div className="message-row employment-message-entry employment-ping-entry" key={message.id}>
-          <div className="avatar boss-avatar" aria-hidden="true">B</div>
-          <div className="message-body">
-            <div className="message-meta"><strong>boss.exe</strong><span>check-in</span></div>
-            <p>Quick check-in: are you still on this? Please acknowledge before the timer runs out.</p>
-            <button
-              className="employment-check-button"
-              type="button"
-              onClick={() => dispatch({ type: 'acknowledge-ping' })}
-              disabled={!active || remaining <= 0}
-            >
-              <span aria-hidden="true">✅</span> {active ? 'Check in' : message.acknowledged ? 'Acknowledged' : 'No response'} <span className="employment-countdown">{active ? formatSeconds(remaining) : ''}</span>
-            </button>
-          </div>
-        </div>
-      )
-    }
 
     return (
       <div ref={firingRef} className="message-row employment-message-entry employment-firing-entry" key={message.id}>
@@ -605,11 +583,6 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
         <div ref={chatPaneRef} className="chat-scroll-region employment-general-pane" hidden={channel !== 'general'}>
           <div className="chat-messages">
               {state.messages.map(renderGeneralMessage)}
-              {state.stage === 'hired' && state.pingDeadline === null && (
-                <p className="employment-next-ping" role="status" aria-live="polite">
-                  Next boss check-in in <strong>{formatSeconds(nextPingRemaining)}</strong>
-                </p>
-              )}
           </div>
         </div>
         <div className="chat-scroll-region employment-watercooler-wrapper" hidden={channel !== 'watercooler'}>

@@ -18,8 +18,6 @@ The flow of the game is:
 - You've got hired to _INSERT RANDOM COMPANY NAME HERE FROM A LIST_
   - You are an L3 intern engineer.
   - You now have two windows. Messenger(slack-like purple theme) and Terminal
-  - Your boss pings you every 120+-30 seconds with the messenger. You should press "check" emoji
-    reaction in 30 seconds.
   - Your boss gives you tasks (shown like an attachment in the messenger UI).
     This is given right after you are hired, and every 2 minutes. You can
     drag-and-drop this attachment onto terminal.
