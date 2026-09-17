@@ -10,7 +10,7 @@ The player has three resources.
 The flow of the game is:
 
 - The player is an SWE. Starts from have a job
-  - The probability of a job offer is 2% for submissions 1-9, then doubles on each submission: 4% on 10, 8% on 11, 16% on 12, and 32% on 13, reaching 64% on 14 and 100% on 15. A valid random roll is explicitly guaranteed to receive an offer by submission 20.
+  - The probability of job offer is 1% at start
   - The user should submit a form to apply, fields reset to blank after each submission(deliberate friction)
   - After 3 manual submissions, there will be a autocomplete button next to the submit
     button to ease the user
