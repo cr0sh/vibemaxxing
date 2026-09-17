@@ -755,9 +755,9 @@ describe('extended engine contracts', () => {
     const source = hire().tasks[0]!
     const assigned: WorkTask = { ...source, id: 702, difficulty: 1, deadlineAt: 100, status: 'assigned' }
     const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
-    const underfunded = gameReducer({ ...base, tokens: 399_999, tasks: [assigned], taskQueue: [], nextTaskAt: 1_000 }, { type: 'tick', seconds: 1 })
+    const underfunded = gameReducer({ ...base, tokens: 299_999, tasks: [assigned], taskQueue: [], nextTaskAt: 1_000 }, { type: 'tick', seconds: 1 })
     expect(taskWith(underfunded, 702).status).toBe('assigned')
-    const funded = gameReducer({ ...base, tokens: 400_000, tasks: [assigned], taskQueue: [], nextTaskAt: 1_000 }, { type: 'tick', seconds: 1 })
+    const funded = gameReducer({ ...base, tokens: 300_000, tasks: [assigned], taskQueue: [], nextTaskAt: 1_000 }, { type: 'tick', seconds: 1 })
     expect(taskWith(funded, 702)).toMatchObject({ status: 'working', attempt: 1 })
     expect(funded.tokens).toBe(0)
   })
