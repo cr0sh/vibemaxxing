@@ -68,26 +68,30 @@ export function DragDropHintsProvider({ children }: { children: ReactNode }) {
     }
   }, [])
   const findTarget = useCallback((source: DragDropSource, x: number, y: number): RegisteredTarget | null => {
-    let best: { target: RegisteredTarget; priority: number; zIndex: number; area: number } | null = null
+    let best: RegisteredTarget | null = null
+    let bestZIndex = -Infinity
+    let bestPriority = -Infinity
+    let bestArea = Infinity
     for (const target of targetsRef.current.values()) {
       if (!target.element.isConnected || !target.accepts(source)) continue
       const bounds = target.element.getBoundingClientRect()
       if (bounds.width <= 0 || bounds.height <= 0 || x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) continue
       const computedZIndex = Number.parseInt(window.getComputedStyle(target.element.closest('.window') ?? target.element).zIndex, 10)
-      const candidate = {
-        target,
-        priority: target.priority ?? 0,
-        zIndex: Number.isFinite(computedZIndex) ? computedZIndex : 0,
-        area: bounds.width * bounds.height,
-      }
+      const zIndex = Number.isFinite(computedZIndex) ? computedZIndex : 0
+      const priority = target.priority ?? 0
+      const area = bounds.width * bounds.height
       if (
-        !best ||
-        candidate.priority > best.priority ||
-        (candidate.priority === best.priority && candidate.zIndex > best.zIndex) ||
-        (candidate.priority === best.priority && candidate.zIndex === best.zIndex && candidate.area < best.area)
-      ) best = candidate
+        zIndex > bestZIndex ||
+        (zIndex === bestZIndex && priority > bestPriority) ||
+        (zIndex === bestZIndex && priority === bestPriority && area < bestArea)
+      ) {
+        best = target
+        bestZIndex = zIndex
+        bestPriority = priority
+        bestArea = area
+      }
     }
-    return best?.target ?? null
+    return best
   }, [])
   const updateTarget = useCallback((pointer: PointerGesture, x: number, y: number) => {
     const target = findTarget(pointer.source, x, y)
@@ -136,7 +140,12 @@ export function DragDropHintsProvider({ children }: { children: ReactNode }) {
     }
     const handlePointerUp = (event: globalThis.PointerEvent) => finishPointer(event, false)
     const handlePointerCancel = (event: globalThis.PointerEvent) => finishPointer(event, true)
-    const handleLostPointerCapture = (event: globalThis.PointerEvent) => finishPointer(event, true)
+    const handleLostPointerCapture = (event: globalThis.PointerEvent) => {
+      const pointer = pointerRef.current
+      if (pointer && event.target === pointer.element && !pointer.element.hasPointerCapture(event.pointerId)) {
+        finishPointer(event, true)
+      }
+    }
     window.addEventListener('keydown', clearOnEscape)
     window.addEventListener('dragend', clearOnNativeEnd, true)
     window.addEventListener('drop', clearOnNativeEnd, true)

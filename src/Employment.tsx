@@ -3,7 +3,6 @@ import type { DragEvent, Dispatch } from 'react'
 import { MAX_TOKENS, type GameAction, type GameState, type TerminalId, type WorkTask, upgradePrice } from './game'
 import { DragDropHint } from './DragDropHints'
 import { useDragDropHints, useDragDropSource, useDragDropTarget } from './DragDropHintsContext'
-import { useWindowWorkspace } from './DesktopWindows'
 import { UnreadIndicator } from './UnreadIndicator'
 import { useUnreadMessages } from './useUnreadMessages'
 import './Employment.css'
@@ -73,6 +72,10 @@ function findIdleTerminalSlot(tasks: readonly WorkTask[], terminalId: TerminalId
     if (!tasks.some((task) => task.terminalId === terminalId && task.slot === slot)) return slot
   }
   return null
+}
+
+function focusDropWindow(element: HTMLElement | null) {
+  element?.closest<HTMLElement>('.window')?.focus({ preventScroll: true })
 }
 
 function TaskAttachment({
@@ -185,7 +188,6 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
   const chatPaneRef = useRef<HTMLDivElement>(null)
   const messengerRef = useRef<HTMLDivElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
-  const { raise } = useWindowWorkspace()
 
   useEffect(() => () => {
     if (reactionTimer.current !== null) window.clearTimeout(reactionTimer.current)
@@ -219,7 +221,7 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
         dispatch({ type: 'deliver-task', id })
       }
     },
-    onHover: () => raise('messenger'),
+    onHover: () => focusDropWindow(messengerRef.current),
   })
   const pingRemaining = hasPing ? (state.pingDeadline ?? state.elapsed) - state.elapsed : 0
   const nextPingRemaining = Math.max(0, state.nextPingAt - state.elapsed)
@@ -389,7 +391,6 @@ type TerminalLaneProps = {
 function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMessenger }: TerminalLaneProps) {
   const laneRef = useRef<HTMLElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
-  const { raise } = useWindowWorkspace()
   const taskDropVisible = state.stage === 'hired' && !task && isSourceActive('task')
 
   useDragDropTarget(laneRef, {
@@ -403,7 +404,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
         dispatch({ type: 'start-task', id, terminalId, slot })
       }
     },
-    onHover: () => raise(terminalId),
+    onHover: () => focusDropWindow(laneRef.current),
   })
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     if (state.stage !== 'hired') return
@@ -509,7 +510,6 @@ export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }
   const refillIn = 100 - (state.elapsed % 100 || 0)
   const terminalRef = useRef<HTMLDivElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
-  const { raise } = useWindowWorkspace()
   const idleSlot = findIdleTerminalSlot(state.tasks, terminalId, slots)
   const taskDropVisible = state.stage === 'hired' && idleSlot !== null && isSourceActive('task')
   const upgradeDropVisible = state.stage === 'hired' && (['split', 'yolo', 'terminal'] as const).some((upgrade) => (
@@ -544,7 +544,7 @@ export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }
         }
       }
     },
-    onHover: () => raise(terminalId),
+    onHover: () => focusDropWindow(terminalRef.current),
   })
   const handleTerminalDrop = (event: DragEvent<HTMLDivElement>) => {
     if (state.stage !== 'hired') return

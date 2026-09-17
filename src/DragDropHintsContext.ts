@@ -32,15 +32,6 @@ type DragDropTarget = DragDropTargetDefinition & {
   element: HTMLElement
 }
 
-type PointerGesture = {
-  source: DragDropSource
-  pointerId: number
-  startX: number
-  startY: number
-  element: HTMLElement
-  dragging: boolean
-  targetId: string | null
-}
 
 export type DragDropContextValue = DragDropState & {
   beginSource: (source: DragDropSource) => void
@@ -144,7 +135,9 @@ export function useDragDropSource(source: DragDropSource, enabled: boolean) {
     cancelPointerDrag(event.pointerId)
   }, [cancelPointerDrag])
   const onLostPointerCapture = useCallback((event: PointerEvent<HTMLElement>) => {
-    cancelPointerDrag(event.pointerId)
+    if (event.target === event.currentTarget && !event.currentTarget.hasPointerCapture(event.pointerId)) {
+      cancelPointerDrag(event.pointerId)
+    }
   }, [cancelPointerDrag])
   return {
     onFocus,

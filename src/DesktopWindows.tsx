@@ -76,11 +76,6 @@ export function WindowWorkspace({ className = '', focusRequest = 0, children }: 
   )
 }
 
-export function useWindowWorkspace(): WorkspaceState {
-  const workspace = useContext(WorkspaceContext)
-  if (!workspace) throw new Error('useWindowWorkspace requires a WindowWorkspace')
-  return workspace
-}
 
 interface WindowFrameProps {
   id: string
@@ -112,11 +107,21 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
   const windowRef = useRef<HTMLElement>(null)
   const drag = useRef<Drag | null>(null)
   const [dragging, setDragging] = useState(false)
+
+  useLayoutEffect(() => {
+    register(id)
+    return () => unregister(id)
+  }, [id, register, unregister])
+
   useLayoutEffect(() => {
     if (hidden || !active) return
     let cancelled = false
     queueMicrotask(() => {
-      if (!cancelled) raise(id)
+      if (cancelled) return
+      raise(id)
+      if (!windowRef.current?.contains(document.activeElement)) {
+        windowRef.current?.focus({ preventScroll: true })
+      }
     })
     return () => {
       cancelled = true
