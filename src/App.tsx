@@ -10,7 +10,7 @@ import {
   type DevJumpTarget,
   type TerminalId,
 } from './game'
-import { playSound } from './sounds'
+import { getSoundsMuted, playSound, setSoundsMuted } from './sounds'
 import { useInteractionSounds } from './useInteractionSounds'
 import { applicationSamples } from './applicationSamples'
 import { MessengerContent, TerminalContent } from './Employment'
@@ -600,6 +600,14 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
   const monthLabel = now.toLocaleDateString([], { month: 'short' }).toUpperCase()
   const weekdayLabel = now.toLocaleDateString([], { weekday: 'short' }).toUpperCase()
   const showPaidResources = state.stage === 'hired' || (state.stage === 'lost' && state.company !== null)
+  const [soundsMuted, setSoundsMutedState] = useState(() => getSoundsMuted())
+
+  const toggleSounds = () => {
+    const nextMuted = !soundsMuted
+    setSoundsMuted(nextMuted)
+    setSoundsMutedState(nextMuted)
+  }
+
   return (
         <section className={`widget-band ${showPaidResources ? 'widget-band-paid' : ''}`} aria-label="Desktop widgets">
           <div className="widget-cluster">
@@ -637,8 +645,48 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
               <strong>{now.getDate()}</strong>
               <span className="calendar-weekday">{weekdayLabel}</span>
             </time>
+            <button
+              className="sound-toggle"
+              type="button"
+              onClick={toggleSounds}
+              aria-label={soundsMuted ? 'Unmute sounds' : 'Mute sounds'}
+              aria-pressed={soundsMuted}
+              title={soundsMuted ? 'Unmute sounds' : 'Mute sounds'}
+            >
+              <SpeakerIcon muted={soundsMuted} />
+              <span className="sound-toggle-label">{soundsMuted ? 'Unmute' : 'Mute'}</span>
+            </button>
           </div>
         </section>
+  )
+}
+
+function SpeakerIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg
+      className="sound-toggle-icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      focusable="false"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 10v4h4l5 4V6l-5 4H4Z" fill="currentColor" stroke="none" />
+      {muted ? (
+        <>
+          <path d="m16 9 5 6" />
+          <path d="m21 9-5 6" />
+        </>
+      ) : (
+        <>
+          <path d="M16 9.5a4.5 4.5 0 0 1 0 5" />
+          <path d="M18.5 7a8 8 0 0 1 0 10" />
+        </>
+      )}
+    </svg>
   )
 }
 
