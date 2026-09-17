@@ -6,6 +6,9 @@
   gap: 1rem;
   padding: 1.15rem;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
   background: #1d123d;
   color: #f8f1ff;
 }
@@ -34,11 +37,6 @@
   color: #fff;
 }
 
-.shop-target-row > span {
-  grid-column: 1 / -1;
-  color: #c8b8e5;
-  font-size: 0.68rem;
-}
 
 .shop-products {
   display: grid;
@@ -242,7 +240,22 @@
   cursor: not-allowed;
 }
 
+.shop-spark-product {
+  border-color: #78a7e8;
+  background: linear-gradient(105deg, #273d76, #30205a);
+}
+
+.shop-model-product {
+  border-color: #b2c8ef;
+  background: linear-gradient(105deg, #2f3e70, #33205d);
+}
+
+.shop-mercury-product {
+  border-color: #c48fca;
+  background: linear-gradient(105deg, #4b2d5f, #33205d);
+}
 @media (max-width: 620px) {
+
   .shop-app {
     padding: 0.85rem;
   }
