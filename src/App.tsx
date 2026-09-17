@@ -47,7 +47,7 @@ function App() {
   const [now, setNow] = useState(() => new Date())
   const [isDevPaused, setIsDevPaused] = useState(false)
   const [devRemount, setDevRemount] = useState(0)
-  const [devJumpTarget, setDevJumpTarget] = useState<DevJumpTarget | null>(null)
+  const [devOpenTarget, setDevOpenTarget] = useState<DevJumpTarget | null>(null)
   const previousStateRef = useRef(state)
 
   useEffect(() => {
@@ -94,18 +94,22 @@ function App() {
   }, [state.stage, isDevPaused])
 
   const handleDevJump = (target: DevJumpTarget) => {
-    setDevJumpTarget(target)
+    setDevOpenTarget(target)
     setDevRemount((current) => current + 1)
   }
 
   const devOpenWindow: WindowId | null =
-    devJumpTarget === 'tiro' ? 'social' :
-      devJumpTarget === 'market' ? 'market' :
-        devJumpTarget === 'spark' ? 'spark' :
-          devJumpTarget === 'mercury' ? 'shop' :
-            devJumpTarget === 'second-job' ? 'messenger' :
-              devJumpTarget === 'frontier' ? 'terminal' : null
-
+    devOpenTarget === 'ready' ? null :
+      devOpenTarget === 'applying' ? 'apply' :
+        devOpenTarget === 'offer' ? 'offer' :
+          devOpenTarget === 'hired' ? 'messenger' :
+            devOpenTarget === 'lost' ? 'defeat' :
+              devOpenTarget === 'tiro' ? 'social' :
+                devOpenTarget === 'market' ? 'market' :
+                  devOpenTarget === 'spark' ? 'spark' :
+                    devOpenTarget === 'mercury' ? 'shop' :
+                      devOpenTarget === 'second-job' ? 'messenger' :
+                        devOpenTarget === 'frontier' ? 'terminal' : null
   return (
     <div className={`app-shell stage-${state.stage}`}>
       <DesktopWidgets state={state} now={now} />
@@ -117,11 +121,11 @@ function App() {
         onDevPauseChange={setIsDevPaused}
         openWindowOnMount={devOpenWindow}
         onDevJump={handleDevJump}
+        onDevWindowOpened={() => setDevOpenTarget(null)}
       />
     </div>
   )
 }
-
 function Desktop({
   state,
   dispatch,
@@ -129,6 +133,7 @@ function Desktop({
   onDevPauseChange,
   openWindowOnMount,
   onDevJump,
+  onDevWindowOpened,
 }: {
   state: GameState
   dispatch: Dispatch<GameAction>
@@ -136,6 +141,7 @@ function Desktop({
   onDevPauseChange: (paused: boolean) => void
   openWindowOnMount: WindowId | null
   onDevJump: (target: DevJumpTarget) => void
+  onDevWindowOpened: () => void
 }) {
   const [application, setApplication] = useState<Application>(emptyApplication)
   const hasEmployment =
@@ -298,6 +304,7 @@ function Desktop({
     setActiveWindow(openWindowOnMount)
     setAcknowledgedDockWindows((current) => new Set(current).add(openWindowOnMount))
     setFocusRequest((request) => request + 1)
+    onDevWindowOpened()
   }, [openWindowOnMount, stageWindowKey])
 
   const acknowledgeDockWindow = (id: WindowId) => {
