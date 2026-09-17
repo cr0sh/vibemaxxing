@@ -24,7 +24,14 @@ import './App.css'
 
 type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'spark' | 'shop' | 'social' | 'market' | 'defeat'
 type WindowState = Record<WindowId, boolean>
-type RevisionMap = Partial<Record<WindowId, string>>
+type RevisionMap = Partial<Record<WindowId, string | GameState['messages'] | GameState['socialPosts'] | Set<string>>>
+
+function sameRevision(previous: RevisionMap[WindowId], current: RevisionMap[WindowId]): boolean {
+  if (previous === current) return true
+  if (!(previous instanceof Set) || !(current instanceof Set) || previous.size !== current.size) return false
+  for (const event of current) if (!previous.has(event)) return false
+  return true
+}
 
 const emptyApplication = (): Application => ({
   name: '',
@@ -167,7 +174,7 @@ function Desktop({
   const [acknowledgedDockWindows, setAcknowledgedDockWindows] = useState<Set<WindowId>>(
     () => new Set((Object.keys(windows) as WindowId[]).filter((id) => windows[id])),
   )
-  const [activeWindow, setActiveWindow] = useState<WindowId>(() => {
+  const [requestedActiveWindow, setActiveWindow] = useState<WindowId>(() => {
     if (openWindowOnMount) return openWindowOnMount
     if (state.stage === 'lost') return 'defeat'
     if (state.stage === 'hired') return 'messenger'
@@ -179,11 +186,10 @@ function Desktop({
   const [defeatDismissed, setDefeatDismissed] = useState(false)
   const [defeatClaimed, setDefeatClaimed] = useState(false)
   const defeatAutoFront = state.stage === 'lost' && !defeatDismissed && !defeatClaimed
-  const isWindowActive = (id: WindowId): boolean => defeatAutoFront ? id === 'defeat' : activeWindow === id
   const fillTimer = useRef<number | null>(null)
   const fillRun = useRef(0)
   const lastSample = useRef<number | null>(null)
-  const previousRevisionsRef = useRef<RevisionMap>({})
+  const [previousRevisions, setPreviousRevisions] = useState<RevisionMap>({})
   const devWindowOpenedRef = useRef(false)
 
   const cancelAutofill = () => {
@@ -210,7 +216,7 @@ function Desktop({
       ? ['offer']
       : hasEmployment
         ? [
-            ...(secondApplicationAvailable || secondOfferAvailable ? [secondApplicationAvailable ? 'apply' : 'offer'] : []),
+            ...(secondApplicationAvailable ? ['apply' as const] : secondOfferAvailable ? ['offer' as const] : []),
             'messenger',
             ...terminalIds,
             'shop',
@@ -219,34 +225,14 @@ function Desktop({
             ...(state.stage === 'lost' ? ['defeat' as const] : []),
           ]
         : state.stage === 'lost' ? ['defeat'] : []
-  const stageWindowKey = stageWindows.join('|')
-
-  useEffect(() => {
-    setWindows((current) => {
-      let changed = false
-      const next = { ...current }
-      for (const id of stageWindows) {
-        if (!(id in next)) {
-          next[id] = false
-          changed = true
-        }
-      }
-      return changed ? next : current
-    })
-  }, [stageWindowKey])
-
-  useEffect(() => {
-    if (stageWindows.includes(activeWindow)) return
-    const fallback = stageWindows.find((id) => windows[id]) ?? stageWindows[0]
-    if (fallback !== undefined) setActiveWindow(fallback)
-  }, [stageWindowKey, activeWindow, windows])
+  const activeWindow = stageWindows.includes(requestedActiveWindow)
+    ? requestedActiveWindow
+    : stageWindows.find((id) => windows[id]) ?? stageWindows[0] ?? requestedActiveWindow
+  const isWindowActive = (id: WindowId): boolean => defeatAutoFront ? id === 'defeat' : activeWindow === id
 
   const revisions: RevisionMap = {
-    messenger: [
-      state.messages.map((message) => `${message.id}:${message.type}`).join(','),
-      state.tasks.filter((task) => task.status === 'artifact').map((task) => task.id).join(','),
-    ].join('|'),
-    social: state.socialPosts.map((post) => `${post.id}:${post.type}`).join(','),
+    messenger: state.messages,
+    social: state.socialPosts,
     shop: [
       state.fastModeUnlocked,
       state.advancedModelAnnouncedAt !== null,
@@ -263,21 +249,40 @@ function Desktop({
     apply: `${state.stage === 'applying'}|${secondApplicationAvailable}`,
     offer: `${state.stage === 'offer'}|${secondOfferAvailable}`,
     market: state.market === null ? 'unavailable' : 'available',
-    spark: state.terminals.some((terminal) => terminal.id === 'spark') ? 'available' : 'unavailable',
-    terminal: state.terminals.map((terminal) => terminal.id).join(','),
-    'terminal-2': state.terminals.some((terminal) => terminal.id === 'terminal-2') ? 'available' : 'unavailable',
+  }
+  for (const terminal of state.terminals) {
+    const revision = new Set([
+      `setup:${terminal.slots}:${terminal.yolo}:${terminal.model}:${terminal.fastMode}:${terminal.id !== 'spark' && state.frontierModelUnlocked}`,
+    ])
+    for (const task of state.tasks) {
+      if (task.terminalId === terminal.id && (task.status === 'approval' || task.status === 'failed' || task.status === 'artifact')) {
+        revision.add(`${task.id}:${task.attempt}:${task.status}`)
+      }
+    }
+    revisions[terminal.id] = revision
   }
 
-  useEffect(() => {
+  if ((Object.keys(revisions) as WindowId[]).some((id) => !sameRevision(previousRevisions[id], revisions[id]))) {
+    setPreviousRevisions(revisions)
     setAcknowledgedDockWindows((current) => {
       const next = new Set(current)
       let changed = false
       for (const id of stageWindows) {
         const revision = revisions[id]
         if (revision === undefined) continue
-        const previousRevision = previousRevisionsRef.current[id]
+        const previousRevision = previousRevisions[id]
+        let hasUpdate = previousRevision !== undefined && previousRevision !== revision
+        if (revision instanceof Set && previousRevision instanceof Set) {
+          hasUpdate = false
+          for (const event of revision) {
+            if (!previousRevision.has(event)) {
+              hasUpdate = true
+              break
+            }
+          }
+        }
         const isOpen = windows[id] || (id === 'messenger' && defeatAutoFront)
-        if (previousRevision !== undefined && previousRevision !== revision) {
+        if (hasUpdate) {
           if (isWindowActive(id) && isOpen) {
             if (!next.has(id)) {
               next.add(id)
@@ -292,20 +297,20 @@ function Desktop({
           changed = true
         }
       }
-      previousRevisionsRef.current = revisions
       return changed ? next : current
     })
-  }, [stageWindowKey, revisions.messenger, revisions.social, revisions.shop, revisions.apply, revisions.offer, revisions.market, revisions.spark, revisions.terminal, revisions['terminal-2'], windows, activeWindow, defeatAutoFront])
+  }
 
+  const devWindowAvailable = openWindowOnMount !== null && stageWindows.includes(openWindowOnMount)
   useEffect(() => {
-    if (!openWindowOnMount || devWindowOpenedRef.current || !stageWindows.includes(openWindowOnMount)) return
+    if (!openWindowOnMount || devWindowOpenedRef.current || !devWindowAvailable) return
     devWindowOpenedRef.current = true
     setWindows((current) => ({ ...current, [openWindowOnMount]: true }))
     setActiveWindow(openWindowOnMount)
     setAcknowledgedDockWindows((current) => new Set(current).add(openWindowOnMount))
     setFocusRequest((request) => request + 1)
     onDevWindowOpened()
-  }, [openWindowOnMount, stageWindowKey])
+  }, [openWindowOnMount, devWindowAvailable, onDevWindowOpened])
 
   const acknowledgeDockWindow = (id: WindowId) => {
     setAcknowledgedDockWindows((current) => {
@@ -744,11 +749,11 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
       <div className="widget-cluster">
         <div className={`paid-resources ${showPaidResources ? 'paid-resources-visible' : ''}`} aria-hidden={!showPaidResources}>
           <div className="paid-resources-inner">
-            <div className="resource-widget resource-widget-money" aria-label={`Money ${state.money} dollars`}>
+            <div className="resource-widget resource-widget-money" aria-label={`Money ${state.money} dollars`} title={state.money.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}>
               <span className="resource-widget-icon" aria-hidden="true">$</span>
               <div>
                 <span className="widget-label">Money</span>
-                <span className="resource-values"><ResourceCounter value={state.money} prefix="$" /></span>
+                <span className="resource-values"><ResourceCounter value={state.money} prefix="$" formatter={state.money >= 100_000 ? tokenFormatter : undefined} /></span>
               </div>
             </div>
             <div className="resource-widget resource-widget-tokens" aria-label={`Tokens ${state.tokens}`}>

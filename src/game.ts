@@ -4,7 +4,7 @@ import {
   tradeMarket,
   transferMarket,
   type MarketState,
-} from './market'
+} from './trading'
 
 export type Application = {
   name: string
@@ -19,7 +19,7 @@ export type TaskStatus = 'assigned' | 'working' | 'approval' | 'blocked' | 'arti
 export type TerminalId = 'terminal' | 'terminal-2' | 'spark'
 export type TerminalUpgrade = 'split' | 'yolo' | 'terminal'
 
-export const TOKEN_PACK_COUNTS = [1, 5, 10] as const
+export const TOKEN_PACK_COUNTS = [1, 5, 10, 100] as const
 export type TokenPackCount = (typeof TOKEN_PACK_COUNTS)[number]
 
 export type AgentModelId = 'basic' | 'reasoning' | 'advanced' | 'frontier'
@@ -192,14 +192,13 @@ export const MAX_TOKENS = 10_000_000
 const TOKEN_TASK_COST = 100_000
 export const TOKEN_PURCHASE_AMOUNT = 100_000
 export const TOKEN_PURCHASE_COST = 100
-const MAX_TASK_DIFFICULTY = 12
 const TASK_REWARD_PER_DIFFICULTY = 5
 // A shorter cycle preserves the 50-delivery promotion while bringing the first loop near five minutes.
-const BASELINE_TASK_CYCLE_SECONDS = 8
+const BASELINE_TASK_CYCLE_SECONDS = 6
 const INITIAL_WAGE_ONLY_SECONDS = 90
 const AVERAGE_TASK_DIFFICULTY = 9
 const BOSS_BUDGET_ANCHOR = 620
-const MIN_ASSIGNMENT_INTERVAL = 2
+const MIN_ASSIGNMENT_INTERVAL = 3
 const MIN_EXPECTATION = 0.05
 const MAX_EXPECTATION = 1
 const UINT_RANGE = 4_294_967_296
@@ -219,8 +218,8 @@ export const MERCURY_PRICE = 8_000
 const MERCURY_FORWARD_COST = 300_000
 const MARKET_TASK_GATE = 55
 const MARKET_ARCHITECTURE_GATE = 8
-const SECOND_JOB_TASK_GATE = 65
-const FRONTIER_TASK_GATE = 100
+const SECOND_JOB_TASK_GATE = 100
+const FRONTIER_TASK_GATE = 290
 
 export function taskTokenCost(
   task: Pick<WorkTask, 'difficulty'>,
@@ -313,13 +312,14 @@ function bossExpectationAt(elapsed: number): number {
   const ratio = projectedGrossAt(elapsed) / BOSS_BUDGET_ANCHOR
   return clamp(0.2 + 0.8 * ratio / (1 + ratio), MIN_EXPECTATION, MAX_EXPECTATION)
 }
-function assignmentIntervalAt(elapsed: number): number {
+function assignmentIntervalAt(elapsed: number, expanded = false): number {
   const ratio = projectedGrossAt(elapsed) / BOSS_BUDGET_ANCHOR
-  return Math.max(MIN_ASSIGNMENT_INTERVAL, Math.ceil(BASELINE_TASK_CYCLE_SECONDS / (1 + ratio)))
+  return Math.max(expanded ? 5 : MIN_ASSIGNMENT_INTERVAL, Math.ceil(BASELINE_TASK_CYCLE_SECONDS / (1 + ratio)))
 }
-function deadlineFor(difficulty: number, expectation: number, elapsed: number): number {
+function deadlineFor(difficulty: number, expectation: number, elapsed: number, complexity: number): number {
   const safeExpectation = Math.max(MIN_EXPECTATION, Number.isFinite(expectation) ? expectation : 0.2)
-  return elapsed + (1.5 * difficulty) / safeExpectation
+  const executionBudget = difficulty / AGENT_MODELS.reasoning.speed * Math.max(2, complexity) + 8
+  return elapsed + Math.max((1.5 * difficulty) / safeExpectation, executionBudget)
 }
 function roundedProgress(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000
@@ -464,7 +464,8 @@ function updateAssignmentArtifact(state: GameState, task: WorkTask): GameState {
 }
 
 const PRIMARY_TERMINAL: TerminalState = { id: 'terminal', slots: 1, yolo: false, fastMode: false, model: 'basic' }
-function reservedAssignmentTokens(tasks: readonly WorkTask[]): number {
+function reservedAssignmentTokens(tasks: readonly WorkTask[], localAvailable = false): number {
+  if (localAvailable) return 0
   return tasks.reduce((total, task) => total + (task.status === 'assigned' ? taskTokenCost(task, false, 'basic', false) : 0), 0)
 }
 
@@ -488,11 +489,17 @@ export function terminalModel(state: GameState, terminalId: TerminalId): AgentMo
   if (terminalId === 'spark') return 'reasoning'
   const terminal = getTerminal(state, terminalId)
   if (terminal === undefined) return 'basic'
-  if (!state.frontierModelUnlocked) {
-    const models = availableCloudModels(state)
-    return models.at(-1) ?? 'basic'
+  const best: AgentModelId = state.advancedModelUnlocked ? 'advanced' : state.reasoningUnlocked ? 'reasoning' : 'basic'
+  if (!state.frontierModelUnlocked) return best
+  switch (terminal.model) {
+    case 'basic':
+    case 'frontier':
+      return terminal.model
+    case 'reasoning':
+      return state.reasoningUnlocked ? 'reasoning' : best
+    case 'advanced':
+      return state.advancedModelUnlocked ? 'advanced' : best
   }
-  return availableCloudModels(state).includes(terminal.model) ? terminal.model : (availableCloudModels(state).at(-1) ?? 'basic')
 }
 
 export function canFundTaskAttempt(
@@ -514,7 +521,7 @@ export function canFundTaskAttempt(
   } else if (state.reasoningUnlocked) {
     model = 'reasoning'
   }
-  const otherReservations = state.tasks.reduce(
+  const otherReservations = state.terminals?.some((terminal) => terminal.id === 'spark') ? 0 : state.tasks.reduce(
     (total, candidate) => total + (candidate.id !== task.id && candidate.status === 'assigned'
       ? taskTokenCost(candidate, false, 'basic', candidate.local)
       : 0),
@@ -522,7 +529,7 @@ export function canFundTaskAttempt(
   )
   const cost = taskTokenCost(task, fastMode, model, local)
   return Number.isFinite(cost) && cost >= 0 && Number.isFinite(otherReservations) &&
-    Number.isFinite(state.tokens) && state.tokens >= cost + otherReservations
+    Number.isFinite(state.tokens) && state.tokens >= 0 && (local || state.tokens >= cost + otherReservations)
 }
 
 function issueAvailableAssignments(state: GameState): GameState {
@@ -535,13 +542,13 @@ function issueAvailableAssignments(state: GameState): GameState {
   if (dueIndex < 0) return current
   const descriptor = current.taskQueue[dueIndex]
   if (descriptor === undefined) return current
-  const reserved = reservedAssignmentTokens(current.tasks)
+  const reserved = reservedAssignmentTokens(current.tasks, getTerminal(current, 'spark') !== undefined)
   const cost = taskTokenCost(descriptor)
   const hasLocalTerminal = getTerminal(current, 'spark') !== undefined
   if (!Number.isFinite(cost) || (!hasLocalTerminal && current.tokens < reserved + cost) || (hasLocalTerminal && current.tokens < reserved && reserved > 0)) return current
   const job = jobFromState(current, descriptor.jobId)
   if (job === null) return current
-  const normalDeadline = deadlineFor(descriptor.difficulty, job.expectation, current.elapsed)
+  const normalDeadline = deadlineFor(descriptor.difficulty, job.expectation, current.elapsed, descriptor.complexity)
   const task: WorkTask = {
     ...descriptor,
     deadlineAt: descriptor.kind === 'architecture' ? current.elapsed + (normalDeadline - current.elapsed) * 5 : normalDeadline,
@@ -565,7 +572,7 @@ function issueAvailableAssignments(state: GameState): GameState {
     ...current,
     tasks: [...current.tasks, task],
     taskQueue: current.taskQueue.filter((_, index) => index !== dueIndex),
-  }, descriptor.jobId, (jobState) => ({ ...jobState, nextTaskAt: current.elapsed + assignmentIntervalAt(current.elapsed) }))
+  }, descriptor.jobId, (jobState) => ({ ...jobState, nextTaskAt: current.elapsed + assignmentIntervalAt(current.elapsed, current.secondJobUnlocked) }))
   return appendMessage(next, {
     id: `assignment-${task.id}`,
     type: 'assignment',
@@ -755,6 +762,7 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
       status: 'working',
       progress: candidate.status === 'failed' ? 0 : candidate.progress,
       nextApprovalAt,
+      approvalPrompt: nextApprovalPrompt,
     } : candidate),
     rng: nextRng,
   }
@@ -768,7 +776,7 @@ function completeDelivery(state: GameState, task: WorkTask, forwardingCost: numb
   const nextArchitecture = job.completedArchitectureTasks + (task.kind === 'architecture' ? 1 : 0)
   let nextLevel = job.level
   if (nextCompleted >= 50 && nextLevel < 4) nextLevel = 4
-  if (nextCompleted >= 80 && nextLevel < 5) nextLevel = 5
+  if (state.secondJobUnlocked && nextCompleted >= 80 && nextLevel < 5) nextLevel = 5
   const remainingTasks = state.tasks.filter((candidate) => candidate.id !== task.id)
   const updated = withJob({
     ...state,
@@ -793,7 +801,7 @@ function completeDelivery(state: GameState, task: WorkTask, forwardingCost: numb
     completedTasks: nextCompleted,
   })
   if (nextCompleted === 5) delivered = appendMessage(delivered, { id: `${task.jobId}-incentives`, type: 'incentives', jobId: task.jobId, elapsed: state.elapsed })
-  if (nextLevel !== job.level) {
+  if (nextLevel !== job.level && nextLevel !== 3) {
     delivered = appendMessage(delivered, { id: `${task.jobId}-promotion-${nextLevel}`, type: 'promotion', jobId: task.jobId, elapsed: state.elapsed, level: nextLevel })
   }
   if (task.jobId === 'primary') {
@@ -809,30 +817,24 @@ function completeDelivery(state: GameState, task: WorkTask, forwardingCost: numb
 function processMercury(state: GameState): GameState {
   if (!state.mercuryOwned || !state.mercuryEnabled) return state
   let current = state
-  const candidates = current.tasks.filter((task) => task.status === 'assigned').sort((a, b) => a.id - b.id)
+  const artifact = current.tasks.filter((task) => task.status === 'artifact').sort((a, b) => a.deadlineAt - b.deadlineAt)[0]
+  if (artifact !== undefined && current.tokens >= MERCURY_FORWARD_COST) current = completeDelivery(current, artifact, MERCURY_FORWARD_COST)
+  if (current.tokens < MERCURY_FORWARD_COST) return current
+  const candidates = current.tasks.filter((task) => task.status === 'assigned').sort((a, b) => a.deadlineAt - b.deadlineAt)
   for (const task of candidates) {
     const taskIndex = current.tasks.findIndex((candidate) => candidate.id === task.id)
-    if (taskIndex < 0) continue
-    const terminals = [...current.terminals].sort((a, b) => a.id.localeCompare(b.id))
-    let chosen: { terminal: TerminalState; slot: number } | null = null
+    const terminals = [...current.terminals].sort((a, b) => (
+      taskSuccessChance(task, terminalModel(current, b.id)) - taskSuccessChance(task, terminalModel(current, a.id)) ||
+      a.id.localeCompare(b.id)
+    ))
+    const funded = { ...current, tokens: current.tokens - MERCURY_FORWARD_COST }
     for (const terminal of terminals) {
       const slot = firstFreeSlot(current, terminal)
-      if (slot !== null) { chosen = { terminal, slot }; break }
+      if (slot === null) continue
+      const started = startTaskAttempt(funded, taskIndex, terminal.id, slot)
+      if (started !== funded) return started
     }
-    if (chosen === null) continue
-    const local = chosen.terminal.id === 'spark'
-    const fast = local ? false : chosen.terminal.fastMode
-    const model = local ? 'reasoning' : terminalModel(current, chosen.terminal.id)
-    const attemptCost = taskTokenCost(task, fast, model, local)
-    const reservedOthers = reservedAssignmentTokens(current.tasks.filter((candidate) => candidate.id !== task.id))
-    if (!Number.isFinite(attemptCost) || current.tokens < attemptCost + reservedOthers + MERCURY_FORWARD_COST) continue
-    const started = startTaskAttempt(current, taskIndex, chosen.terminal.id, chosen.slot)
-    if (started === current) continue
-    current = { ...started, tokens: started.tokens - MERCURY_FORWARD_COST }
-    break
   }
-  const artifact = current.tasks.filter((task) => task.status === 'artifact').sort((a, b) => a.id - b.id)[0]
-  if (artifact !== undefined && current.tokens >= MERCURY_FORWARD_COST) current = completeDelivery(current, artifact, MERCURY_FORWARD_COST)
   return current
 }
 
@@ -1041,7 +1043,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return {
           ...state,
           money: state.money - price,
-          terminals: [...state.terminals, { id: 'terminal-2', slots: 1, yolo: false, fastMode: false, model: terminalModel(state, 'terminal') }],
+          terminals: [...state.terminals, { id: 'terminal-2', slots: 1, yolo: false, fastMode: false, model: state.advancedModelUnlocked ? 'advanced' : state.reasoningUnlocked ? 'reasoning' : 'basic' }],
         }
       }
       if (action.upgrade === 'split') {

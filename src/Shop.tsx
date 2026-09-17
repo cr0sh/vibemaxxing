@@ -142,9 +142,9 @@ function SparkProduct({ state, dispatch }: ShopProps) {
       : `Paid ${moneyLabel(SPARK_PRICE)} · delivery in ${durationLabel(deliveryAt - state.elapsed)}.`
     buttonLabel = deliveryAt === null ? 'Delivering' : `ETA ${durationLabel(deliveryAt - state.elapsed)}`
   } else if (state.stage !== 'hired') {
-    detail = `${moneyLabel(SPARK_PRICE)} · local Reason terminal.`
+    detail = `${moneyLabel(SPARK_PRICE)} · 2 Reason panes · no cloud task tokens.`
   } else {
-    detail = `${moneyLabel(SPARK_PRICE)} · local Reason terminal.`
+    detail = `${moneyLabel(SPARK_PRICE)} · 2 Reason panes · no cloud task tokens.`
     buttonLabel = state.money >= SPARK_PRICE ? `Buy · ${moneyLabel(SPARK_PRICE)}` : `Need ${moneyLabel(SPARK_PRICE)}`
   }
 
@@ -171,10 +171,10 @@ function AdvancedModelProduct({ state, dispatch }: ShopProps) {
     if (canBuy) dispatch({ type: 'buy-model', model: 'advanced' })
   }
 
-  let detail = `${moneyLabel(ADVANCED_MODEL_PRICE)} · cloud model.`
+  let detail = `${moneyLabel(ADVANCED_MODEL_PRICE)} · handles harder tasks at Reason speed.`
   let buttonLabel = 'Unavailable'
   if (state.advancedModelUnlocked) {
-    detail = 'Owned · new cloud attempts default to Tiro Pro.'
+    detail = 'Handles harder tasks at Reason speed.'
     buttonLabel = 'Owned'
   } else if (state.stage === 'hired' && state.advancedModelAnnouncedAt !== null) {
     buttonLabel = state.money >= ADVANCED_MODEL_PRICE
@@ -215,7 +215,7 @@ function MercuryProduct({ state, dispatch }: ShopProps) {
         <h3>Mercury</h3>
         <p>
           {state.mercuryOwned
-            ? 'Owned · 300K tokens per automatic handoff, both directions. Manual approvals and retries stay available.'
+            ? 'Owned · 300K tokens per automatic handoff, both directions. Mercury does not approve or retry tasks.'
             : `${moneyLabel(MERCURY_PRICE)} · automatic handoffs cost 300K tokens each way.`}
         </p>
       </div>
@@ -335,7 +335,7 @@ export function ShopContent({ state, dispatch }: ShopProps) {
             <label className="shop-pack-size">
               Pack size
               <select value={tokenPacks} disabled={state.stage !== 'hired'} onChange={(event) => setTokenPacks(Number(event.currentTarget.value) as TokenPackCount)}>
-                {TOKEN_PACK_COUNTS.map((packs) => <option key={packs} value={packs}>{(TOKEN_PURCHASE_AMOUNT * packs).toLocaleString()} tokens · ${TOKEN_PURCHASE_COST * packs}</option>)}
+                {TOKEN_PACK_COUNTS.map((packs) => <option key={packs} value={packs}>{packs === 100 ? 'Fill balance · 10M max' : `${(TOKEN_PURCHASE_AMOUNT * packs).toLocaleString()} tokens · $${TOKEN_PURCHASE_COST * packs}`}</option>)}
               </select>
             </label>
             <p>{refillAmount > 0 ? `${refillAmount.toLocaleString()} tokens received · partial packs prorated` : 'Inventory is at the 10M token limit.'}</p>

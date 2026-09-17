@@ -131,8 +131,8 @@ export function MarketContent({ state, dispatch }: MarketProps) {
           {chart.points && <polyline className="market-chart-line" points={chart.points} />}
         </svg>
         <div className="market-chart-range" aria-hidden="true">
-          <span>{formatUsd(chart.min ?? undefined)}</span>
-          <span>{formatUsd(chart.max ?? undefined)}</span>
+          <span>Low {formatUsd(chart.min ?? undefined)}</span>
+          <span>High {formatUsd(chart.max ?? undefined)}</span>
         </div>
       </figure>
 
@@ -160,6 +160,9 @@ export function MarketContent({ state, dispatch }: MarketProps) {
                   dispatch({ type: 'market-transfer', direction: 'withdraw', amount: transferValue })
                 }
               }}>Withdraw USD</button>
+              <button className="market-withdraw-all" type="button" disabled={!canUseMarket || !market || market.usd <= 0} onClick={() => {
+                if (market) dispatch({ type: 'market-transfer', direction: 'withdraw', amount: market.usd })
+              }}>Withdraw all</button>
             </div>
           </form>
         </section>
@@ -192,7 +195,12 @@ export function MarketContent({ state, dispatch }: MarketProps) {
               onChange={(event) => setSellAmount(event.currentTarget.value)}
             />
             <span className="market-form-help">BTC wallet {formatBtc(market?.btc)} BTC</span>
-            <button type="submit" disabled={!canSell}>Sell BTC</button>
+            <div className="market-actions">
+              <button type="submit" disabled={!canSell}>Sell BTC</button>
+              <button type="button" disabled={!canUseMarket || !market || market.btc <= 0} onClick={() => {
+                if (market) dispatch({ type: 'market-trade', side: 'sell', amount: market.btc })
+              }}>Sell all</button>
+            </div>
           </form>
         </section>
       </div>

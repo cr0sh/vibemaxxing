@@ -165,7 +165,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'advanced-model') {
     return (
       <p className="social-post-copy">
-        Tiro Pro is in Shop for <strong>$5,000</strong>. New cloud attempts default to Pro.
+        Tiro Pro is in Shop for <strong>$5,000</strong>. Buy it to use Pro for new cloud attempts.
       </p>
     )
   }
@@ -173,8 +173,8 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'mercury') {
     return (
       <p className="social-post-copy">
-        Mercury is in Shop for <strong>$8,000</strong>. Automatic handoffs cost 300K tokens each way;
-        manual approvals and retries remain available.
+        Mercury is in Shop for <strong>$8,000</strong>. Automatic handoffs cost 300K tokens each way.
+        It does not approve or retry tasks.
       </p>
     )
   }

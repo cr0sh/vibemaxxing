@@ -16,13 +16,13 @@
   gap: 1rem;
 }
 
-.market-header h2,
+.market-app .market-header h2,
 .market-panel h3,
 .market-chart figcaption {
   margin: 0;
 }
 
-.market-header h2 {
+.market-app .market-header h2 {
   color: #f6fbfb;
   font-size: 1.1rem;
   letter-spacing: -0.02em;
@@ -100,6 +100,7 @@
 .market-chart {
   position: relative;
   display: grid;
+  flex-shrink: 0;
   min-height: 10rem;
   margin: 0;
   padding: 0.7rem 0.7rem 0.45rem;
@@ -246,13 +247,24 @@
   transform: none;
 }
 
+.market-withdraw-all {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 620px) {
   .market-app {
     gap: 0.65rem;
     padding: 0.8rem;
   }
 
-  .market-balances,
+  .market-balances {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .market-balance-btc {
+    grid-column: 1 / -1;
+  }
+
   .market-panels {
     grid-template-columns: 1fr;
   }

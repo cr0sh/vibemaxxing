@@ -23,6 +23,8 @@ const windowDefaults: Record<string, Size & Point> = {
   messenger: { width: 570, height: 560, x: 0.12, y: 0.1 },
   terminal: { width: 470, height: 500, x: 0.72, y: 0.3 },
   'terminal-2': { width: 470, height: 500, x: 0.26, y: 0.28 },
+  spark: { width: 470, height: 500, x: 0.8, y: 0.18 },
+  market: { width: 640, height: 600, x: 0.5, y: 0.1 },
   shop: { width: 520, height: 528, x: 0.5, y: 0.14 },
   social: { width: 520, height: 600, x: 0.76, y: 0.12 },
   defeat: { width: 430, height: 330, x: 0.5, y: 0.28 },
@@ -38,6 +40,7 @@ const minimumWindowSize: Size = { width: 280, height: 180 }
 const minimumWindowSizes: Record<string, Size> = {
   terminal: { width: 280, height: 320 },
   'terminal-2': { width: 280, height: 320 },
+  spark: { width: 280, height: 320 },
 }
 
 function clampSize(candidate: Size, workspace: Size, minimum = minimumWindowSize): Size {

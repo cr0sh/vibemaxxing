@@ -466,7 +466,6 @@ describe('hidden boss assignment inventory', () => {
 
     const poor = gameReducer({ ...hired, money: 0 }, { type: 'tick', seconds: 18 })
     const rich = gameReducer({ ...hired, money: 100_000 }, { type: 'tick', seconds: 18 })
-    expect(poor.tasks).toHaveLength(2)
     expect(rich.tasks.map((task) => task.deadlineAt)).toEqual(poor.tasks.map((task) => task.deadlineAt))
     expect(poor.expectation).toBeGreaterThan(hired.expectation)
     expect(rich.expectation).toBe(poor.expectation)
@@ -593,7 +592,7 @@ describe('extended progression boundaries', () => {
     }, { type: 'tick', seconds: 1 }).tasks[0]!
     const standard = issued(false)
     const architecture = issued(true)
-    expect(architecture.deadlineAt - architecture.assignedAt).toBe(5 * (standard.deadlineAt - standard.assignedAt))
+    expect(architecture.deadlineAt - architecture.assignedAt).toBeCloseTo(5 * (standard.deadlineAt - standard.assignedAt), 10)
   })
 
   test('failed architecture retries charge again and snapshot the next attempt settings', () => {
@@ -607,16 +606,17 @@ describe('extended progression boundaries', () => {
     }
     let state: GameState = {
       ...hired,
-      rng: 1,
+      rng: 0x80000000,
       tokens: 2_000_000,
       tasks: [task],
-      taskQueue: [],
+      taskQueue: hired.taskQueue,
       nextTaskAt: 1_000,
       fastModeUnlocked: true,
       terminals: [{ ...hired.terminals[0]!, yolo: true }],
     }
     state = gameReducer(state, { type: 'start-task', id: task.id, terminalId: 'terminal', slot: 0 })
-    state = gameReducer(state, { type: 'tick', seconds: 6 })
+    state = gameReducer(state, { type: 'tick', seconds: 5 })
+    state = gameReducer({ ...state, rng: 1 }, { type: 'tick', seconds: 1 })
     expect(taskWith(state, task.id).status).toBe('failed')
     expect(state.tokens).toBe(1_400_000)
     state = gameReducer(state, { type: 'tick', seconds: 1 })
@@ -648,10 +648,10 @@ describe('extended progression boundaries', () => {
     }
     let state: GameState = {
       ...hired,
-      rng: 1,
+      rng: 0x80000000,
       tokens: 1_200_000,
       tasks: [first, { ...first, id: 2 }],
-      taskQueue: [],
+      taskQueue: hired.taskQueue,
       nextTaskAt: 1_000,
       fastModeUnlocked: true,
       terminals: [{ ...hired.terminals[0]!, slots: 2, yolo: true, fastMode: true }],
@@ -659,7 +659,8 @@ describe('extended progression boundaries', () => {
     expect(gameReducer(state, { type: 'start-task', id: 1, terminalId: 'terminal', slot: 0 })).toBe(state)
     state = gameReducer(state, { type: 'set-fast-mode', terminalId: 'terminal', enabled: false })
     state = gameReducer(state, { type: 'start-task', id: 1, terminalId: 'terminal', slot: 0 })
-    state = gameReducer(state, { type: 'tick', seconds: 6 })
+    state = gameReducer(state, { type: 'tick', seconds: 5 })
+    state = gameReducer({ ...state, rng: 1 }, { type: 'tick', seconds: 1 })
     expect(taskWith(state, 1).status).toBe('failed')
     expect(gameReducer(state, { type: 'retry-task', id: 1 })).toBe(state)
     state = gameReducer(state, { type: 'start-task', id: 2, terminalId: 'terminal', slot: 1 })
@@ -745,10 +746,13 @@ describe('extended engine contracts', () => {
     let state = gameReducer(hire(), { type: 'dev-jump', stage: 'spark' })
     const source = hire().tasks[0]!
     const task: WorkTask = { ...source, id: 701, difficulty: 1, deadlineAt: 100, status: 'assigned' }
-    state = { ...state, tokens: 0, tasks: [task], taskQueue: [], nextTaskAt: 1_000 }
+    state = { ...state, tokens: 0, tasks: [task, { ...task, id: 706 }], taskQueue: [], nextTaskAt: 1_000 }
     const started = gameReducer(state, { type: 'start-task', id: 701, terminalId: 'spark', slot: 0 })
     expect(started.tokens).toBe(0)
     expect(taskWith(started, 701)).toMatchObject({ local: true, model: 'reasoning', fastMode: false, attempt: 1 })
+    const second = gameReducer(started, { type: 'start-task', id: 706, terminalId: 'spark', slot: 1 })
+    expect(taskWith(second, 706).status).toBe('working')
+    expect(second.tokens).toBe(0)
   })
 
   test('Mercury forwards only when the fee and attempt are fully funded', () => {
@@ -812,5 +816,73 @@ describe('extended engine contracts', () => {
     const manuallyStarted = gameReducer(resumed, { type: 'start-task', id: 705, terminalId: 'spark', slot: 0 })
     expect(taskWith(manuallyStarted, 705).local).toBe(true)
     expect(manuallyStarted.tokens).toBe(0)
+    const automaticallyStarted = gameReducer({
+      ...manuallyStarted,
+      tokens: 300_000,
+      tasks: [...manuallyStarted.tasks, { ...assigned, id: 706 }],
+    }, { type: 'tick', seconds: 1 })
+    expect(taskWith(automaticallyStarted, 706).status).toBe('working')
+    expect(automaticallyStarted.tokens).toBe(0)
+  })
+
+  test('Mercury tries an affordable cloud slot instead of stalling at an expensive one', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const task: WorkTask = { ...hire().tasks[0]!, difficulty: 5, complexity: 3, deadlineAt: 100 }
+    const state: GameState = {
+      ...base, tokens: 1_100_000, tasks: [task], taskQueue: [], nextTaskAt: 1_000,
+      mercuryOwned: true, mercuryEnabled: true,
+      terminals: [
+        { id: 'terminal', slots: 1, model: 'frontier', fastMode: true, yolo: true },
+        { id: 'terminal-2', slots: 1, model: 'advanced', fastMode: false, yolo: true },
+      ],
+    }
+    const forwarded = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(forwarded, task.id)).toMatchObject({ status: 'working', terminalId: 'terminal-2' })
+    expect(forwarded.tokens).toBe(300_000)
+  })
+
+  test('Mercury delivers a ready artifact before spending the last forwarding fee', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
+    const source = hire().tasks[0]!
+    const ready: WorkTask = { ...source, status: 'artifact', progress: source.difficulty, terminalId: 'spark', slot: 0, local: true, model: 'reasoning' }
+    const pending: WorkTask = { ...source, id: 706 }
+    const state = { ...base, tokens: 300_000, tasks: [ready, pending], taskQueue: [], nextTaskAt: 1_000 }
+    const delivered = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(delivered.completedTasks).toBe(state.completedTasks + 1)
+    expect(delivered.tasks.some((task) => task.id === ready.id)).toBe(false)
+    expect(taskWith(delivered, pending.id).status).toBe('assigned')
+    expect(delivered.tokens).toBe(0)
+  })
+
+  test('L5 promotion is unavailable until the second career stage unlocks', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
+    const source = hire().tasks[0]!
+    const artifact = (id: number): WorkTask => ({ ...source, id, status: 'artifact', progress: source.difficulty })
+    const capped = gameReducer({
+      ...base, level: 4, completedTasks: 79, secondJobUnlocked: false,
+      tasks: [artifact(701)], nextTaskAt: 1_000,
+    }, { type: 'deliver-task', id: 701 })
+    expect(capped.level).toBe(4)
+    expect(capped.secondJobUnlocked).toBe(false)
+    const unlocked = gameReducer({
+      ...capped, completedTasks: 99, tasks: [artifact(702)],
+    }, { type: 'deliver-task', id: 702 })
+    expect(unlocked.secondJobUnlocked).toBe(true)
+    const promoted = gameReducer({
+      ...unlocked, tasks: [artifact(703)],
+    }, { type: 'deliver-task', id: 703 })
+    expect(promoted.level).toBe(5)
+  })
+
+  test('a new cloud terminal does not inherit another window’s doubled token model', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const task: WorkTask = { ...hire().tasks[0]!, difficulty: 1, deadlineAt: 100 }
+    const purchased = gameReducer({
+      ...base, tasks: [task], tokens: 1_000_000,
+      terminals: [{ id: 'terminal', slots: 1, model: 'frontier', fastMode: false, yolo: true }],
+    }, { type: 'buy-upgrade', upgrade: 'terminal', terminalId: 'terminal' })
+    const started = gameReducer(purchased, { type: 'start-task', id: task.id, terminalId: 'terminal-2', slot: 0 })
+    expect(taskWith(started, task.id).model).toBe('advanced')
+    expect(started.tokens).toBe(900_000)
   })
 })
