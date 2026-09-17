@@ -14,6 +14,10 @@ mode to try out something in the middle of the entire game storybook).
 This repository is based on a create-vite-app template with Bun. The below is
 the originally generated README.
 
+REMINDER: NEVER ADD PLACEHOLDER DESCRIPTIONS ON NEWLY ADDED UI COMPONENTS. LESS
+TEXT AND CONSISE DESIGN IS ALWAYS BEST. THIS IS A GAME, NOT A DASHBOARD. DO NOT
+ANNOTATE UNWANTED IMPLEMENTATION DETAIL(ex: specific probability value of specific
+action) ON UI VOLUNTARILY.
 
 ---
 

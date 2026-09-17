@@ -76,3 +76,38 @@ The flow of the game is:
   tasks(intelligence=2).
 
 - After solving more sys-architectural tasks, the odds of getting the complex tasks goes high, eventually to 80%. Then, the user would have the pain waiting. So Tiro announces the "fast mode", which can be toggled at the shop, consumes 2x tokens and +100% speed.
+
+- (Til the above the targeted playtime is 5 mins )
+
+- Further solving the tasks, you start to get some free time(boss's expectation is bounded). There will be a side playable contents that's installed at this stage:
+  - Bitcoin trading. You can buy/sell with your free money. It should have a
+    separate balance system for USD and BTC, and trading is fee-free,
+    slippage-free. The chart is a line chart randomly drawn(brownian +
+    occassional big dips and pumps), so with enough risk
+    control the player can earn money quite easily.
+  - Tiro announces a "Mapple Spark" device which can be purchased after 10s from
+    the shop, with \$15k. It's a local LLM inference computer. When purchased, you get a new
+    dedicated terminal with two split panes and intelligence=2. No fast mode
+    here. There is a delay for "physcal delivery" and it's (15s + 5s for every 1s late purchase) capped at 1m.
+
+- After the side events above, Tiro will announce "a major model upgrade" which
+  will introduce a more advanced model. It'll cloud hosted and intelligence=3,
+  speed same as the intelligence=2 model. After purchasing this, there will be a
+  "Mercury" agent option purchasable with \$8k. When purchased, it'll
+  automatically deliver tasks and artifacts between terminals(to any free slots,
+  including the Spark's) and back, costing 300K token in each forwardings. This
+  is toggle-able so the player can still do the thing manually if he wants to
+  hyperoptimize.
+
+- After further progression, there will be another "job slot" unlocked so the
+  user can have the second job. Just add the job application app back, autofill enabled at start. The new job starts from L3.
+- Also, the promotion upside is raised to L5(don't notify explicitly about
+  this). While progressing the work process, the boss will promote you
+  occasionally and start giving more complex tasks. Level N engineers will get
+  tasks with complexity from N-2 to N.
+
+- Tiro will will also introduce another model, consuming token 2x, same speed
+  from the previous generation, intelligence=4. The model switcher should be
+  enabled on all terminals(excluding the Spark's) and able to be choose the model window locally.
+
+- (Til the above the targeted playtime cumulative is 15 mins)
