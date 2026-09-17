@@ -306,7 +306,6 @@
 }
 
 
-.employment-check-button,
 .employment-terminal-button {
   min-height: 2.35rem;
   border: 1px solid rgba(224, 201, 255, 0.36);
@@ -321,8 +320,6 @@
   transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease, opacity 160ms ease;
 }
 
-.employment-check-button:hover,
-.employment-check-button:focus-visible,
 .employment-terminal-button:hover,
 .employment-terminal-button:focus-visible {
   border-color: rgba(241, 221, 255, 0.82);
@@ -330,36 +327,14 @@
   transform: translateY(-1px);
 }
 
-.employment-check-button:disabled,
 .employment-terminal-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
   transform: none;
 }
 
-.employment-check-button {
-  border-color: rgba(255, 224, 139, 0.55);
-  background: rgba(144, 104, 45, 0.48);
-}
 
-.employment-check-button:hover,
-.employment-check-button:focus-visible {
-  border-color: rgba(255, 229, 155, 0.95);
-  background: rgba(164, 122, 53, 0.68);
-}
 
-.employment-countdown {
-  margin-left: 0.28rem;
-  color: #ffe29a;
-  font-variant-numeric: tabular-nums;
-}
-
-.employment-ping-entry {
-  border-left: 2px solid #f6c970;
-  padding-left: 0.7rem;
-}
-
-.employment-next-ping,
 .employment-next-task {
   margin: 0;
   color: #a99ac3;
@@ -367,7 +342,6 @@
   line-height: 1.45;
 }
 
-.employment-next-ping strong,
 .employment-next-task strong {
   color: #e0d3f2;
   font-variant-numeric: tabular-nums;
