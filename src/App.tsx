@@ -102,8 +102,9 @@ function App() {
     devJumpTarget === 'tiro' ? 'social' :
       devJumpTarget === 'market' ? 'market' :
         devJumpTarget === 'spark' ? 'spark' :
-          devJumpTarget === 'mercury' || devJumpTarget === 'second-job' ? 'shop' :
-            devJumpTarget === 'frontier' ? 'terminal' : null
+          devJumpTarget === 'mercury' ? 'shop' :
+            devJumpTarget === 'second-job' ? 'messenger' :
+              devJumpTarget === 'frontier' ? 'terminal' : null
 
   return (
     <div className={`app-shell stage-${state.stage}`}>
