@@ -212,6 +212,12 @@
   border-color: rgba(218, 188, 255, 0.58);
 }
 
+.employment-archived-attachment {
+  border-color: rgba(169, 155, 190, 0.3);
+  background: linear-gradient(145deg, rgba(61, 47, 82, 0.5), rgba(38, 31, 52, 0.62));
+  opacity: 0.78;
+}
+
 .employment-attachment-icon {
   display: grid;
   width: 2.45rem;
@@ -277,7 +283,6 @@
   background: linear-gradient(145deg, rgba(30, 90, 70, 0.62), rgba(27, 46, 56, 0.76));
 }
 
-.employment-inline-button,
 .employment-check-button,
 .employment-terminal-button {
   min-height: 2.35rem;
@@ -293,8 +298,6 @@
   transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease, opacity 160ms ease;
 }
 
-.employment-inline-button:hover,
-.employment-inline-button:focus-visible,
 .employment-check-button:hover,
 .employment-check-button:focus-visible,
 .employment-terminal-button:hover,
@@ -304,7 +307,6 @@
   transform: translateY(-1px);
 }
 
-.employment-inline-button:disabled,
 .employment-check-button:disabled,
 .employment-terminal-button:disabled {
   cursor: not-allowed;
@@ -348,7 +350,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-
 .employment-delivery-reward {
   color: #397448;
   font-weight: 700;
@@ -358,6 +359,7 @@
   border-left: 2px solid #86e5ae;
   padding-left: 0.7rem;
 }
+
 
 .employment-messenger .self-avatar {
   background: linear-gradient(145deg, #2e9070, #23644f) !important;
@@ -447,11 +449,6 @@
   display: none;
 }
 
-.employment-terminal-lane .employment-artifact-attachment .employment-inline-button {
-  grid-column: 1;
-  max-width: 100%;
-  white-space: normal;
-}
 
 .employment-terminal-action-block p {
   margin: 0;
@@ -685,10 +682,6 @@
     gap: 0.58rem;
   }
 
-  .employment-attachment .employment-inline-button {
-    grid-column: 1 / -1;
-    justify-self: stretch;
-  }
 
   .employment-chat-state {
     display: none;

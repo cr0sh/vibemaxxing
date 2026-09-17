@@ -3,7 +3,7 @@ import {
   gameReducer,
   initialGame,
   MAX_TOKENS,
-  taskTokenCost,
+  taskReward,
   type GameState,
   type WorkTask,
   upgradePrice,
@@ -126,14 +126,54 @@ describe('employment transitions', () => {
     expect(taskWith(state, id).status).toBe('artifact')
     const reward = 5 * taskWith(state, id).difficulty
     const moneyBeforeDelivery = state.money
+    const artifactMessages = state.messages.filter((message) => message.type === 'artifact')
+    expect(artifactMessages).toHaveLength(1)
     state = gameReducer(state, { type: 'deliver-task', id })
     expect(state.completedTasks).toBe(1)
     expect(state.money).toBe(moneyBeforeDelivery + reward)
     const delivered = state
+    const deliveryMessages = delivered.messages.filter((message) => message.type === 'delivery')
+    expect(deliveryMessages).toHaveLength(1)
     state = gameReducer(state, { type: 'deliver-task', id })
     expect(state.completedTasks).toBe(1)
     expect(state.money).toBe(delivered.money)
     expect(state.tokens).toBe(delivered.tokens)
+    expect(state.messages).toEqual(delivered.messages)
+  })
+
+  test('employment messages append assignment, artifact, and delivery records without rewriting snapshots', () => {
+    let state = hire()
+    const assignment = state.messages.find((message) => message.type === 'assignment')
+    if (assignment === undefined || assignment.type !== 'assignment') {
+      throw new Error('The initial assignment message was missing')
+    }
+    const assignmentSnapshot = assignment.task
+    const id = assignment.task.id
+    state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
+    state = { ...state, nextTaskAt: 1_000 }
+    for (let second = 0; second < 60 && taskWith(state, id).status !== 'artifact'; second++) {
+      const task = taskWith(state, id)
+      if (task.status === 'approval' || task.status === 'blocked') {
+        state = gameReducer(state, { type: 'approve-task', id, approved: true })
+      }
+      state = gameReducer(state, { type: 'tick', seconds: 1 })
+    }
+    const artifact = state.messages.find((message) => message.type === 'artifact')
+    if (artifact === undefined || artifact.type !== 'artifact') {
+      throw new Error('The artifact message was missing')
+    }
+    expect(state.messages.map((message) => message.type)).toEqual(['welcome', 'assignment', 'artifact'])
+    expect(assignment.task).toEqual(assignmentSnapshot)
+    const completedTask = taskWith(state, id)
+    state = gameReducer(state, { type: 'deliver-task', id })
+    expect(state.messages.map((message) => message.type)).toEqual(['welcome', 'assignment', 'artifact', 'delivery'])
+    expect(artifact.task.status).toBe('artifact')
+    const delivery = state.messages.find((message) => message.type === 'delivery')
+    if (delivery === undefined || delivery.type !== 'delivery') {
+      throw new Error('The delivery message was missing')
+    }
+    expect(delivery.task).toEqual(artifact.task)
+    expect(delivery.reward).toBe(taskReward(completedTask))
   })
 
   test('declined commands pause work and can be explicitly resumed', () => {
@@ -219,6 +259,7 @@ describe('employment transitions', () => {
     expect(lost.failure).toBe('The task deadline was missed.')
     expect(lost.tasks).toEqual(context.tasks)
     expect(lost.pingDeadline).toBe(pingDeadline)
+    expect(lost.messages.at(-1)?.type).toBe('firing')
     expect(gameReducer(lost, { type: 'tick', seconds: 100 })).toEqual(lost)
   })
 })
@@ -232,6 +273,7 @@ describe('terminal upgrades and concurrent work', () => {
       nextPingAt: 0,
       money: 200,
     }
+    state = gameReducer(state, { type: 'tick', seconds: 18 })
     state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })
     const first = taskWith(state, 1)
     const second = taskWith(state, 2)
@@ -306,6 +348,7 @@ describe('terminal upgrades and concurrent work', () => {
       tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
     }
     state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'terminal', terminalId: 'terminal' })
+    state = gameReducer(state, { type: 'tick', seconds: 18 })
     const first = taskWith(state, 1)
     const second = taskWith(state, 2)
     state = gameReducer(state, {
@@ -328,19 +371,19 @@ describe('terminal upgrades and concurrent work', () => {
 })
 
 describe('hidden boss assignment inventory', () => {
-  test('keeps three undisclosed descriptors and starts deadlines only when issued', () => {
+  test('seeds a hidden queue and starts only funded assignments with deadlines at issue time', () => {
     const state = hire()
     expect(state.tasks).toHaveLength(1)
-    expect(state.taskQueue).toHaveLength(3)
+    expect(state.taskQueue).toHaveLength(2)
     expect(state.taskQueue.every((task) => !('deadlineAt' in task))).toBe(true)
     expect(state.tasks[0]?.deadlineAt).toBeGreaterThan(state.elapsed)
     expect(new Set([
       ...state.tasks.map((task) => task.id),
       ...state.taskQueue.map((task) => task.id),
-    ]).size).toBe(4)
+    ]).size).toBe(3)
   })
 
-  test('fills real capacity automatically and reserves tokens for issued work', () => {
+  test('funded assignments arrive one at a time on the boss timer and reserve tokens', () => {
     let state = { ...hire(), money: 200 }
     const first = taskWith(state, 1)
     const next = state.taskQueue[0]
@@ -354,10 +397,30 @@ describe('hidden boss assignment inventory', () => {
     const underfunded = state
     const funded = gameReducer(
       { ...underfunded, tokens: requiredTokens },
-      { type: 'tick', seconds: 1 },
+      { type: 'tick', seconds: 18 },
     )
     expect(funded.tasks).toHaveLength(2)
     expect(funded.tasks.every((task) => task.deadlineAt > funded.elapsed)).toBe(true)
+  })
+
+
+  test('boss pacing follows elapsed projected earnings rather than cash or hardware purchases', () => {
+    const hired = hire()
+    const upgraded = gameReducer({ ...hired, money: 200 }, {
+      type: 'buy-upgrade',
+      upgrade: 'split',
+      terminalId: 'terminal',
+    })
+    expect(upgraded.tasks).toEqual(hired.tasks)
+    expect(upgraded.taskQueue).toEqual(hired.taskQueue)
+    expect(upgraded.nextTaskAt).toBe(hired.nextTaskAt)
+    expect(upgraded.expectation).toBe(hired.expectation)
+
+    const poor = gameReducer({ ...hired, money: 0 }, { type: 'tick', seconds: 18 })
+    const rich = gameReducer({ ...hired, money: 100_000 }, { type: 'tick', seconds: 18 })
+    expect(poor.expectation).toBeGreaterThan(hired.expectation)
+    expect(rich.expectation).toBe(poor.expectation)
+    expect(rich.nextTaskAt).toBe(poor.nextTaskAt)
   })
 
   test('waits five seconds after delivery before replenishing an available slot', () => {
@@ -376,8 +439,7 @@ describe('hidden boss assignment inventory', () => {
     expect(state.tasks).toHaveLength(0)
     state = gameReducer(state, { type: 'tick', seconds: 1 })
     expect(state.tasks).toHaveLength(1)
-    expect(state.tasks[0]?.id).toBe(2)
-    expect(state.taskQueue).toHaveLength(3)
+    expect(state.taskQueue).toHaveLength(2)
   })
 
   test('replays backlog generation and issue timing deterministically for the same seed', () => {
