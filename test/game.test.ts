@@ -125,7 +125,7 @@ describe('employment transitions', () => {
       state = gameReducer(state, { type: 'tick', seconds: 1 })
     }
     expect(taskWith(state, id).status).toBe('artifact')
-    const reward = 5 * taskWith(state, id).difficulty
+    const reward = taskReward(taskWith(state, id), state.elapsed)
     const moneyBeforeDelivery = state.money
     const artifactMessages = state.messages.filter((message) => message.type === 'artifact')
     expect(artifactMessages).toHaveLength(1)
@@ -176,7 +176,8 @@ describe('employment transitions', () => {
     if (delivery === undefined || delivery.type !== 'delivery') {
       throw new Error('The delivery message was missing')
     }
-    expect(delivery.reward).toBe(taskReward(completedTask))
+    expect(delivery.reward).toBe(taskReward(completedTask, state.elapsed))
+    const firstReward = delivery.reward
     const firstHistory = structuredClone(state.messages)
     state = gameReducer(state, { type: 'tick', seconds: 5 })
     const next = state.tasks.find((task) => task.status === 'assigned')
@@ -194,8 +195,8 @@ describe('employment transitions', () => {
       artifact: message.task.artifactName,
       reward: message.reward,
     }))).toEqual([
-      { artifact: completedTask.artifactName, reward: taskReward(completedTask) },
-      { artifact: next.artifactName, reward: taskReward(next) },
+      { artifact: completedTask.artifactName, reward: firstReward },
+      { artifact: next.artifactName, reward: taskReward(next, state.elapsed) },
     ])
   })
 
@@ -480,5 +481,89 @@ describe('hidden boss assignment inventory', () => {
       replay = gameReducer(replay, { type: 'tick', seconds: 1 })
     }
     expect(replay).toEqual(batch)
+  })
+})
+
+describe('extended progression boundaries', () => {
+  test('task rewards decay from assignment and stop at five percent', () => {
+    const task = { baseReward: 45, assignedAt: 10 } as const
+    expect(taskReward(task, 10)).toBe(45)
+    expect(taskReward(task, 20)).toBe(40.5)
+    expect(taskReward(task, 110)).toBe(2.25)
+    expect(taskReward(task, 1_000)).toBe(2.25)
+  })
+
+  test('watercooler unlock uses a strict below-twenty-percent attempt boundary', () => {
+    const hired = hire()
+    const task = taskWith(hired, 1)
+    const exact = gameReducer({
+      ...hired,
+      tokens: 2_100_000,
+      tasks: [{ ...task, difficulty: 1, baseReward: 0 }],
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      nextPingAt: 0,
+    }, { type: 'start-task', id: task.id, terminalId: 'terminal', slot: 0 })
+    expect(exact.tokens).toBe(2_000_000)
+    expect(exact.watercoolerUnlocked).toBe(false)
+
+    const below = gameReducer({
+      ...hired,
+      tokens: 2_100_000,
+      tasks: [{ ...task, difficulty: 2, baseReward: 0 }],
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      nextPingAt: 0,
+    }, { type: 'start-task', id: task.id, terminalId: 'terminal', slot: 0 })
+    expect(below.tokens).toBe(1_900_000)
+    expect(below.watercoolerUnlocked).toBe(true)
+  })
+
+  test('social installation records a campaign and batch ticks add one lottery post', () => {
+    let state = {
+      ...hire(),
+      watercoolerUnlocked: true,
+      nextPingAt: 0,
+    }
+    state = gameReducer(state, { type: 'install-social' })
+    expect(state.socialPosts.map((post) => post.type)).toEqual(['campaign'])
+    state = gameReducer(state, { type: 'tick', seconds: 5 })
+    expect(state.socialPosts.map((post) => post.type)).toEqual(['campaign', 'lottery'])
+    const liked = gameReducer(state, { type: 'like-reset' })
+    expect(liked.socialPosts.find((post) => post.type === 'lottery')?.likes).toBe(1)
+  })
+
+  test('retry charges a fresh attempt and preserves its original deadline', () => {
+    const hired = hire()
+    const task = taskWith(hired, 1)
+    const failed: WorkTask = {
+      ...task,
+      kind: 'architecture',
+      status: 'failed',
+      terminalId: 'terminal',
+      slot: 0,
+      startedAt: 3,
+      assignedAt: 0,
+      progress: task.difficulty,
+      attempt: 1,
+      model: 'basic',
+      fastMode: false,
+      deadlineAt: 100,
+    }
+    const state = {
+      ...hired,
+      tokens: 2_000_000,
+      tasks: [failed],
+      terminals: [{ ...hired.terminals[0]!, yolo: true }],
+      nextPingAt: 0,
+    }
+    const retried = gameReducer(state, { type: 'retry-task', id: task.id })
+    expect(retried.tokens).toBe(state.tokens - taskTokenCost(failed, false))
+    expect(retried.tasks[0]).toMatchObject({
+      status: 'working',
+      progress: 0,
+      attempt: 2,
+      deadlineAt: 100,
+    })
   })
 })
