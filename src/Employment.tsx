@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DragEvent, Dispatch } from 'react'
-import { MAX_TOKENS, type GameAction, type GameState, type TerminalId, type WorkTask, upgradePrice } from './game'
+import { MAX_TOKENS, assignmentTokenShortfall, extraTaskCapacity, taskReward, taskTokenCost, type GameAction, type GameState, type TerminalId, type WorkTask, upgradePrice } from './game'
 import { DragDropHint } from './DragDropHints'
-import { useDragDropHints, useDragDropSource } from './DragDropHintsContext'
+import { useDragDropHints, useDragDropSource, useDragDropTarget } from './DragDropHintsContext'
 import { UnreadIndicator } from './UnreadIndicator'
 import { useUnreadMessages } from './useUnreadMessages'
 import './Employment.css'
@@ -18,6 +18,8 @@ type TerminalProps = {
   terminalId: TerminalId
   onOpenMessenger: () => void
 }
+
+const compactTokens = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
 
 const formatSeconds = (seconds: number): string => {
   const safeSeconds = Math.max(0, Math.ceil(seconds))
@@ -65,13 +67,16 @@ const taskDeadline = (task: WorkTask, elapsed: number): string => {
   const remaining = task.deadlineAt - elapsed
   return remaining <= 0 ? 'Deadline passed' : `${formatSeconds(remaining)} left`
 }
-const taskCost = (task: WorkTask): number => 10_000 * task.difficulty
 
 function findIdleTerminalSlot(tasks: readonly WorkTask[], terminalId: TerminalId, slotCount: number): number | null {
   for (let slot = 0; slot < slotCount; slot += 1) {
     if (!tasks.some((task) => task.terminalId === terminalId && task.slot === slot)) return slot
   }
   return null
+}
+
+function focusDropWindow(element: HTMLElement | null) {
+  element?.closest<HTMLElement>('.window')?.focus({ preventScroll: true })
 }
 
 function TaskAttachment({
@@ -86,7 +91,7 @@ function TaskAttachment({
   availableTokens: number
 }) {
   const isAssigned = task.status === 'assigned' && task.terminalId === null && task.slot === null
-  const canAfford = availableTokens >= taskCost(task)
+  const canAfford = availableTokens >= taskTokenCost(task)
   const canStart = state.stage === 'hired' && isAssigned && canAfford
   const dragSource = useDragDropSource({ kind: 'task', id: String(task.id) }, canStart)
   return (
@@ -99,6 +104,9 @@ function TaskAttachment({
       onMouseEnter={dragSource.onMouseEnter}
       onMouseLeave={dragSource.onMouseLeave}
       onKeyDown={dragSource.onKeyDown}
+      onPointerDown={dragSource.onPointerDown}
+      onPointerCancel={dragSource.onPointerCancel}
+      onLostPointerCapture={dragSource.onLostPointerCapture}
       onDragStart={(event) => {
         if (!canStart) return
         event.dataTransfer.effectAllowed = 'move'
@@ -112,6 +120,7 @@ function TaskAttachment({
       <div className="employment-attachment-copy">
         <strong>{task.title}</strong>
         <span>{task.description}</span>
+        <span>{task.optional ? 'Extra' : 'Required'} · ${taskReward(task)} bonus · {compactTokens.format(taskTokenCost(task))} tokens</span>
         <div className="employment-attachment-meta">
           <span>{taskStatusLabel(task)}</span>
           <span>{taskProgressLabel(task)}</span>
@@ -144,6 +153,9 @@ function ArtifactAttachment({
       onMouseEnter={dragSource.onMouseEnter}
       onMouseLeave={dragSource.onMouseLeave}
       onKeyDown={dragSource.onKeyDown}
+      onPointerDown={dragSource.onPointerDown}
+      onPointerCancel={dragSource.onPointerCancel}
+      onLostPointerCapture={dragSource.onLostPointerCapture}
       onDragStart={(event) => {
         if (disabled) return
         event.dataTransfer.effectAllowed = 'move'
@@ -156,7 +168,7 @@ function ArtifactAttachment({
       <div className="employment-attachment-icon" aria-hidden="true">◇</div>
       <div className="employment-attachment-copy">
         <strong>{task.artifactName}</strong>
-        <span>Generated artifact · ready for delivery</span>
+        <span>Ready for delivery · ${taskReward(task)} bonus</span>
         <div className="employment-attachment-meta">
           <span>Artifact ready</span>
           <span>{taskProgressLabel(task)}</span>
@@ -176,6 +188,7 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
   const reactionTimer = useRef<number | null>(null)
   const firingRef = useRef<HTMLDivElement>(null)
   const chatPaneRef = useRef<HTMLDivElement>(null)
+  const messengerRef = useRef<HTMLDivElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
 
   useEffect(() => () => {
@@ -195,9 +208,29 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
   ]
   const { unreadCount, scrollToLatest } = useUnreadMessages(messageIds, chatPaneRef)
   const artifactDropVisible = state.stage === 'hired' && isSourceActive('artifact')
+  useDragDropTarget(messengerRef, {
+    id: 'messenger-artifact',
+    priority: 1,
+    accepts: (source) => (
+      source.kind === 'artifact' &&
+      state.stage === 'hired' &&
+      state.tasks.some((task) => String(task.id) === source.id && task.status === 'artifact')
+    ),
+    onDrop: (source) => {
+      const id = Number(source.id)
+      const task = state.tasks.find((candidate) => candidate.id === id)
+      if (source.kind === 'artifact' && Number.isInteger(id) && task?.status === 'artifact') {
+        dispatch({ type: 'deliver-task', id })
+      }
+    },
+    onHover: () => focusDropWindow(messengerRef.current),
+  })
   const pingRemaining = hasPing ? (state.pingDeadline ?? state.elapsed) - state.elapsed : 0
   const nextPingRemaining = Math.max(0, state.nextPingAt - state.elapsed)
   const nextTaskRemaining = Math.max(0, state.nextTaskAt - state.elapsed)
+  const extraCapacity = extraTaskCapacity(state)
+  const tokenShortfall = assignmentTokenShortfall(state)
+  const canRequestExtra = state.stage === 'hired' && extraCapacity > 0 && tokenShortfall === 0
 
   const reactToWelcome = () => {
     dispatch({ type: 'welcome-react' })
@@ -221,6 +254,7 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
 
   return (
     <div
+      ref={messengerRef}
       className={`messenger-app employment-messenger ${artifactDropVisible ? 'employment-drop-active' : ''}`}
       onDragOver={(event) => {
         if (state.stage === 'hired' && event.dataTransfer.types.includes('application/x-vibemaxxer-artifact')) {
@@ -316,6 +350,7 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
                 <div className="message-body">
                   <div className="message-meta"><strong>You</strong><span>delivered</span></div>
                   <p>Delivered <strong>{state.lastDelivery}</strong>. Nice work — {state.completedTasks} assignment{state.completedTasks === 1 ? '' : 's'} complete.</p>
+                  <p className="employment-delivery-reward">Earned ${state.lastReward} completion bonus.</p>
                 </div>
               </div>
             )}
@@ -325,10 +360,27 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
                 Next boss check-in in <strong>{formatSeconds(nextPingRemaining)}</strong>
               </p>
             )}
-            {state.tasks.length === 0 && (
+            {state.stage === 'hired' && state.nextTaskAt > 0 && (
               <p className="employment-next-task" role="status" aria-live="polite">
-                Next assignment in <strong>{formatSeconds(nextTaskRemaining)}</strong>
+                {nextTaskRemaining === 0 && tokenShortfall > 0
+                  ? <>Next assignment waits for {compactTokens.format(tokenShortfall)} more tokens. Refill in Shop or wait for the automatic refill.</>
+                  : <>Next required assignment in <strong>{formatSeconds(nextTaskRemaining)}</strong></>}
               </p>
+            )}
+
+            {state.stage === 'hired' && (
+              <section className="employment-extra-work" aria-label="Optional assignments">
+                <strong>Optional parallel work</strong>
+                <p>Take an extra paid job with a spare agent pane. Accepting starts its deadline.</p>
+                <button className="employment-inline-button" type="button" disabled={!canRequestExtra} onClick={() => dispatch({ type: 'request-task' })}>
+                  Request extra assignment
+                </button>
+                <span>{extraCapacity === 0
+                  ? 'No spare assignment slots. Deliver extra work or add capacity in Shop.'
+                  : tokenShortfall > 0
+                    ? `Need ${compactTokens.format(tokenShortfall)} more tokens to fund current and new assignments.`
+                    : `${extraCapacity} extra assignment slot${extraCapacity === 1 ? '' : 's'} available; one pane stays reserved for required work.`}</span>
+              </section>
             )}
 
             {state.stage === 'lost' && (
@@ -360,10 +412,23 @@ type TerminalLaneProps = {
 }
 
 function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMessenger }: TerminalLaneProps) {
+  const laneRef = useRef<HTMLElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
-  const tokenCost = task ? taskCost(task) : 0
   const taskDropVisible = state.stage === 'hired' && !task && isSourceActive('task')
 
+  useDragDropTarget(laneRef, {
+    id: `terminal-lane-${terminalId}-${slot}`,
+    priority: 3,
+    accepts: (source) => source.kind === 'task' && state.stage === 'hired' && task === undefined,
+    onDrop: (source) => {
+      const id = Number(source.id)
+      const dropped = state.tasks.find((candidate) => candidate.id === id)
+      if (source.kind === 'task' && Number.isInteger(id) && !task && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null) {
+        dispatch({ type: 'start-task', id, terminalId, slot })
+      }
+    },
+    onHover: () => focusDropWindow(laneRef.current),
+  })
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     if (state.stage !== 'hired') return
     const upgrade = event.dataTransfer.getData('application/x-vibemaxxer-upgrade')
@@ -389,10 +454,6 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
     }
   }
 
-  const startTask = () => {
-    if (state.stage !== 'hired' || !task || task.status !== 'assigned' || task.terminalId !== terminalId || task.slot !== slot) return
-    dispatch({ type: 'start-task', id: task.id, terminalId, slot })
-  }
   const approval = (approved: boolean) => {
     if (state.stage !== 'hired' || !task || (task.status !== 'approval' && task.status !== 'blocked')) return
     dispatch({ type: 'approve-task', id: task.id, approved })
@@ -406,6 +467,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
 
   return (
     <section
+      ref={laneRef}
       className={`employment-terminal-lane ${taskDropVisible ? 'employment-drop-active' : ''}`}
       aria-label={`Terminal agent pane ${slot + 1}`}
       onDragOver={(event) => {
@@ -435,14 +497,6 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
             <span>deadline {taskDeadline(task, state.elapsed)}</span>
           </div>
 
-          {task.status === 'assigned' && (
-            <div className="employment-terminal-action-block">
-              <button className="employment-terminal-button" type="button" onClick={startTask} disabled={state.stage !== 'hired' || state.tokens < tokenCost}>
-                Start task <span>({tokenCost.toLocaleString()} tokens)</span>
-              </button>
-              {state.tokens < tokenCost && <span className="employment-control-hint">Need {tokenCost.toLocaleString()} tokens</span>}
-            </div>
-          )}
 
           {task.status === 'approval' && !yolo && (
             <div className="employment-terminal-action-block employment-approval-block">
@@ -477,6 +531,7 @@ export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }
   const slots = terminal?.slots ?? 0
   const yolo = terminal?.yolo ?? false
   const refillIn = 100 - (state.elapsed % 100 || 0)
+  const terminalRef = useRef<HTMLDivElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
   const idleSlot = findIdleTerminalSlot(state.tasks, terminalId, slots)
   const taskDropVisible = state.stage === 'hired' && idleSlot !== null && isSourceActive('task')
@@ -484,6 +539,36 @@ export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }
     isSourceActive('upgrade', upgrade) &&
     upgradePrice(state, upgrade, upgrade === 'terminal' ? 'terminal' : terminalId) !== null
   ))
+
+  useDragDropTarget(terminalRef, {
+    id: `terminal-${terminalId}`,
+    priority: 1,
+    accepts: (source) => {
+      if (state.stage !== 'hired') return false
+      if (source.kind === 'task') return idleSlot !== null
+      return source.kind === 'upgrade' &&
+        (source.id === 'split' || source.id === 'yolo' || source.id === 'terminal') &&
+        upgradePrice(state, source.id, source.id === 'terminal' ? 'terminal' : terminalId) !== null
+    },
+    onDrop: (source) => {
+      if (state.stage !== 'hired') return
+      if (source.kind === 'upgrade' && (source.id === 'split' || source.id === 'yolo' || source.id === 'terminal')) {
+        const target = source.id === 'terminal' ? 'terminal' : terminalId
+        if (upgradePrice(state, source.id, target) !== null) {
+          dispatch({ type: 'buy-upgrade', upgrade: source.id, terminalId: target })
+        }
+        return
+      }
+      if (source.kind === 'task' && idleSlot !== null) {
+        const id = Number(source.id)
+        const dropped = state.tasks.find((candidate) => candidate.id === id)
+        if (Number.isInteger(id) && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null) {
+          dispatch({ type: 'start-task', id, terminalId, slot: idleSlot })
+        }
+      }
+    },
+    onHover: () => focusDropWindow(terminalRef.current),
+  })
   const handleTerminalDrop = (event: DragEvent<HTMLDivElement>) => {
     if (state.stage !== 'hired') return
     const upgrade = event.dataTransfer.getData('application/x-vibemaxxer-upgrade')
@@ -527,6 +612,7 @@ export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }
 
   return (
     <div
+      ref={terminalRef}
       className={`terminal-app employment-terminal ${yolo ? 'employment-terminal-yolo' : ''} ${taskDropVisible || upgradeDropVisible ? 'employment-drop-active' : ''}`}
       onDragOver={handleTerminalDragOver}
       onDrop={handleTerminalDrop}

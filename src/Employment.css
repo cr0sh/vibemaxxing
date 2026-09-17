@@ -197,6 +197,9 @@
 .employment-task-attachment[draggable='true'],
 .employment-artifact-attachment[draggable='true'] {
   cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .employment-task-attachment[draggable='true']:active,
@@ -343,6 +346,36 @@
 .employment-next-task strong {
   color: #e0d3f2;
   font-variant-numeric: tabular-nums;
+}
+
+.employment-extra-work {
+  display: grid;
+  gap: 0.65rem;
+  border: 1px solid #daccf2;
+  border-radius: 0.65rem;
+  padding: 0.85rem;
+  background: #f2edff;
+  color: #5b417d;
+  font-size: 0.78rem;
+}
+
+.employment-extra-work p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.employment-extra-work > span {
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.employment-extra-work .employment-inline-button {
+  background: #684395;
+}
+
+.employment-delivery-reward {
+  color: #397448;
+  font-weight: 700;
 }
 
 .employment-delivery-entry {

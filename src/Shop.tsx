@@ -2,12 +2,16 @@ import { useState } from 'react'
 import type { Dispatch } from 'react'
 import {
   MAX_TOKENS,
+  TOKEN_PACK_COUNTS,
   TOKEN_PURCHASE_AMOUNT,
   TOKEN_PURCHASE_COST,
+  tokenPurchaseAmount,
+  tokenPurchaseCost,
   type GameAction,
   type GameState,
   type TerminalId,
   type TerminalUpgrade,
+  type TokenPackCount,
   upgradePrice,
 } from './game'
 import { useDragDropSource } from './DragDropHintsContext'
@@ -96,14 +100,18 @@ function UpgradeProductCard({
 
 export function ShopContent({ state, dispatch }: ShopProps) {
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
+  const [tokenPacks, setTokenPacks] = useState<TokenPackCount>(10)
 
   const selectedTargetTerminal = state.terminals.some((terminal) => terminal.id === targetTerminal)
     ? targetTerminal
     : state.terminals[0]?.id ?? 'terminal'
-  const canBuyTokens = state.stage === 'hired' && state.money >= TOKEN_PURCHASE_COST && state.tokens < MAX_TOKENS
+  const refillAmount = tokenPurchaseAmount(state.tokens, tokenPacks)
+  const refillCost = tokenPurchaseCost(refillAmount)
+  const refillPrice = `$${refillCost.toFixed(2)}`
+  const canBuyTokens = state.stage === 'hired' && state.money >= refillCost && refillAmount > 0
 
   const buyTokens = () => {
-    if (canBuyTokens) dispatch({ type: 'buy-tokens' })
+    if (canBuyTokens) dispatch({ type: 'buy-tokens', packs: tokenPacks })
   }
 
 
@@ -125,15 +133,21 @@ export function ShopContent({ state, dispatch }: ShopProps) {
       <div className="shop-products">
         <article
           className={`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`}
-          aria-label="100K token refill"
+          aria-label="Token refill"
         >
           <span className="shop-product-icon" aria-hidden="true">◇</span>
           <div className="shop-product-copy">
-            <h3>100K tokens</h3>
-            <p>{TOKEN_PURCHASE_AMOUNT.toLocaleString()} token refill</p>
+            <h3>Token refill</h3>
+            <label className="shop-pack-size">
+              Pack size
+              <select value={tokenPacks} disabled={state.stage !== 'hired'} onChange={(event) => setTokenPacks(Number(event.currentTarget.value) as TokenPackCount)}>
+                {TOKEN_PACK_COUNTS.map((packs) => <option key={packs} value={packs}>{(TOKEN_PURCHASE_AMOUNT * packs).toLocaleString()} tokens · ${TOKEN_PURCHASE_COST * packs}</option>)}
+              </select>
+            </label>
+            <p>{refillAmount > 0 ? `${refillAmount.toLocaleString()} tokens received · partial packs prorated` : 'Inventory is at the 10M token limit.'}</p>
           </div>
           <button className="shop-buy-button" type="button" onClick={buyTokens} disabled={!canBuyTokens}>
-            {state.stage !== 'hired' ? 'Unavailable' : state.tokens >= MAX_TOKENS ? 'Balance full' : canBuyTokens ? `$${TOKEN_PURCHASE_COST}` : `Need $${TOKEN_PURCHASE_COST}`}
+            {state.stage !== 'hired' ? 'Unavailable' : state.tokens >= MAX_TOKENS ? 'Balance full' : canBuyTokens ? refillPrice : `Need ${refillPrice}`}
           </button>
         </article>
 

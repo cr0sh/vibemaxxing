@@ -24,7 +24,8 @@
   font-size: 0.76rem;
 }
 
-.shop-target-row select {
+.shop-target-row select,
+.shop-pack-size select {
   min-height: 2.15rem;
   border: 1px solid #9b78ca;
   border-radius: 0.42rem;
@@ -110,6 +111,19 @@
   color: #dfd2f5;
   font-size: 0.7rem;
   line-height: 1.35;
+}
+
+.shop-pack-size {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.4rem 0;
+  color: #dfd2f5;
+  font-size: 0.7rem;
+}
+
+.shop-pack-size select {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .shop-buy-button {

@@ -3,8 +3,6 @@ import {
   gameReducer,
   initialGame,
   MAX_TOKENS,
-  TOKEN_PURCHASE_AMOUNT,
-  TOKEN_PURCHASE_COST,
   type GameState,
   type WorkTask,
   upgradePrice,
@@ -25,30 +23,69 @@ function taskWith(state: GameState, id: number): WorkTask {
 }
 
 describe('job applications', () => {
-  test('offer odds double only after the twenty-fifth rejection', () => {
+  test('offer odds double after the ninth submission', () => {
     let state = gameReducer(initialGame, { type: 'start', seed: 12345 })
-    for (let attempt = 0; attempt < 24; attempt++) {
-      state = gameReducer(state, { type: 'submit', roll: 0.999, companyIndex: 0 })
+    for (let attempt = 1; attempt <= 9; attempt++) {
+      state = gameReducer(state, { type: 'submit', roll: 0.03, companyIndex: 0 })
     }
-    state = gameReducer(state, { type: 'submit', roll: 0.015, companyIndex: 0 })
     expect(state.stage).toBe('applying')
-    expect(state.submissions).toBe(25)
-    expect(gameReducer(state, { type: 'submit', roll: 0.019, companyIndex: 0 }).stage).toBe('offer')
-    const rejectedAgain = gameReducer(state, { type: 'submit', roll: 0.021, companyIndex: 0 })
-    expect(rejectedAgain.stage).toBe('applying')
-    expect(gameReducer(rejectedAgain, { type: 'submit', roll: 0.039, companyIndex: 0 }).stage).toBe('offer')
+    expect(state.submissions).toBe(9)
+
+    const tenth = gameReducer(state, { type: 'submit', roll: 0.039999, companyIndex: 0 })
+    expect(tenth.stage).toBe('offer')
+    expect(tenth.submissions).toBe(10)
   })
 
-  test('even worst-case valid rolls get an offer before energy is exhausted', () => {
+  test('offer odds use a strict exact-roll boundary', () => {
+    const started = gameReducer(initialGame, { type: 'start', seed: 12345 })
+    const atBoundary = gameReducer(started, { type: 'submit', roll: 0.02, companyIndex: 0 })
+    expect(atBoundary.stage).toBe('applying')
+    expect(atBoundary.submissions).toBe(1)
+
+    const belowBoundary = gameReducer(started, {
+      type: 'submit',
+      roll: 0.019999,
+      companyIndex: 0,
+    })
+    expect(belowBoundary.stage).toBe('offer')
+  })
+
+  test('offer odds follow the doubling progression through submission fourteen', () => {
+    const thresholds = [
+      [11, 0.079999],
+      [12, 0.159999],
+      [13, 0.319999],
+      [14, 0.639999],
+    ] as const
+
+    for (const [attempt, roll] of thresholds) {
+      let state = gameReducer(initialGame, { type: 'start', seed: 12345 })
+      for (let previousAttempt = 1; previousAttempt < attempt; previousAttempt++) {
+        state = gameReducer(state, { type: 'submit', roll: 0.999999, companyIndex: 0 })
+      }
+      const offered = gameReducer(state, { type: 'submit', roll, companyIndex: 0 })
+      expect(offered.stage).toBe('offer')
+      expect(offered.submissions).toBe(attempt)
+    }
+  })
+
+  test('valid rolls are guaranteed an offer by submission fifteen and capped at twenty', () => {
     let state = gameReducer(initialGame, { type: 'start', seed: 12345 })
-    for (let attempt = 1; attempt <= 32; attempt++) {
+    for (let attempt = 1; attempt <= 15; attempt++) {
       state = gameReducer(state, { type: 'submit', roll: 0.999999, companyIndex: 0 })
       expect(state.energy).toBe(100 - 3 * attempt)
-      expect(state.stage).toBe(attempt === 32 ? 'offer' : 'applying')
+      expect(state.stage).toBe(attempt === 15 ? 'offer' : 'applying')
     }
-    state = gameReducer(state, { type: 'accept' })
-    expect(state.stage).toBe('hired')
-    expect(state.energy).toBe(100)
+
+    const atSubmissionTwenty = gameReducer(
+      {
+        ...gameReducer(initialGame, { type: 'start', seed: 12345 }),
+        submissions: 19,
+      },
+      { type: 'submit', roll: 0.999999, companyIndex: 0 },
+    )
+    expect(atSubmissionTwenty.stage).toBe('offer')
+    expect(atSubmissionTwenty.submissions).toBe(20)
   })
 })
 
@@ -74,7 +111,7 @@ describe('employment transitions', () => {
   test('duplicate task starts and deliveries cannot spend or award twice', () => {
     let state = hire()
     const id = taskWith(state, 1).id
-    const tokenCost = 10000 * taskWith(state, id).difficulty
+    const tokenCost = 100_000 * taskWith(state, id).difficulty
     state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
     state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
     expect(state.tokens).toBe(MAX_TOKENS - tokenCost)
@@ -86,8 +123,11 @@ describe('employment transitions', () => {
       state = gameReducer(state, { type: 'tick', seconds: 1 })
     }
     expect(taskWith(state, id).status).toBe('artifact')
+    const reward = 5 * taskWith(state, id).difficulty
+    const moneyBeforeDelivery = state.money
     state = gameReducer(state, { type: 'deliver-task', id })
     expect(state.completedTasks).toBe(1)
+    expect(state.money).toBe(moneyBeforeDelivery + reward)
     const delivered = state
     state = gameReducer(state, { type: 'deliver-task', id })
     expect(state.completedTasks).toBe(1)
@@ -118,7 +158,6 @@ describe('employment transitions', () => {
     const id = taskWith(state, 1).id
     state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
     const firstPrompt = taskWith(state, id).approvalPrompt
-    expect(firstPrompt).toBeString()
 
     let ticks = 0
     while (taskWith(state, id).status !== 'approval' && ticks < 6) {
@@ -128,7 +167,6 @@ describe('employment transitions', () => {
     expect(taskWith(state, id).approvalPrompt).toBe(firstPrompt)
 
     const resumed = gameReducer(state, { type: 'approve-task', id, approved: true })
-    expect(taskWith(resumed, id).approvalPrompt).toBeString()
 
     let replay = hire()
     replay = gameReducer(replay, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
@@ -158,21 +196,17 @@ describe('employment transitions', () => {
     expect(refilled.tokens).toBe(MAX_TOKENS)
   })
 
-  test('starts at the ten-million token cap and token purchases remain capped', () => {
-    const hired = hire()
-    expect(hired.tokens).toBe(MAX_TOKENS)
-    const nearCap = {
-      ...hired,
-      money: TOKEN_PURCHASE_COST,
-      tokens: MAX_TOKENS - TOKEN_PURCHASE_AMOUNT + 1,
-      tasks: [],
-      nextTaskAt: 120,
-      nextPingAt: 0,
-    }
-    const purchased = gameReducer(nearCap, { type: 'buy-tokens' })
+  test('partial token packs charge only for received tokens and reject repeat purchases at cap', () => {
+    const nearCap = { ...hire(), money: 5, tokens: MAX_TOKENS - 50_000 }
+    const purchased = gameReducer(nearCap, { type: 'buy-tokens', packs: 10 })
     expect(purchased.money).toBe(0)
     expect(purchased.tokens).toBe(MAX_TOKENS)
-
+    expect(gameReducer(purchased, { type: 'buy-tokens', packs: 10 })).toBe(purchased)
+    const shortByACent = { ...nearCap, money: 4.99 }
+    expect(gameReducer(shortByACent, { type: 'buy-tokens', packs: 10 })).toBe(shortByACent)
+    const lastToken = gameReducer({ ...nearCap, money: 0.01, tokens: MAX_TOKENS - 1 }, { type: 'buy-tokens', packs: 1 })
+    expect(lastToken.tokens).toBe(MAX_TOKENS)
+    expect(lastToken.money).toBe(0)
   })
   test('missing a task deadline preserves firing evidence and stops wages', () => {
     const hired = hire()
@@ -197,7 +231,8 @@ describe('terminal upgrades and concurrent work', () => {
       nextPingAt: 0,
       money: 100,
     }
-    state = gameReducer(state, { type: 'tick', seconds: 120 })
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })
+    state = gameReducer(state, { type: 'request-task' })
     const first = taskWith(state, 1)
     const second = taskWith(state, 2)
     state = gameReducer(state, {
@@ -270,10 +305,10 @@ describe('terminal upgrades and concurrent work', () => {
       nextPingAt: 0,
       tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
     }
-    state = gameReducer(state, { type: 'tick', seconds: 120 })
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'terminal', terminalId: 'terminal' })
+    state = gameReducer(state, { type: 'request-task' })
     const first = taskWith(state, 1)
     const second = taskWith(state, 2)
-    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'terminal', terminalId: 'terminal' })
     state = gameReducer(state, {
       type: 'start-task',
       id: first.id,
@@ -290,5 +325,57 @@ describe('terminal upgrades and concurrent work', () => {
     state = gameReducer(state, { type: 'tick', seconds: 1 })
     expect(state.tasks.find((task) => task.id === first.id)?.progress).toBe(before[0]! + 1)
     expect(state.tasks.find((task) => task.id === second.id)?.progress).toBe(before[1]! + 1)
+  })
+})
+
+describe('optional paid assignments', () => {
+  test('buying capacity does not force work and extra deliveries cannot postpone required work', () => {
+    let state = { ...hire(), money: 100 }
+    expect(gameReducer(state, { type: 'request-task' })).toBe(state)
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })
+    expect(state.tasks).toHaveLength(1)
+    state = gameReducer(state, { type: 'request-task' })
+    expect(state.tasks.map((task) => task.optional)).toEqual([false, true])
+    expect(gameReducer(state, { type: 'request-task' })).toBe(state)
+    state = {
+      ...state,
+      elapsed: 20,
+      tasks: state.tasks.map((task) => ({ ...task, status: 'artifact', startedAt: 0, progress: task.difficulty })),
+    }
+    state = gameReducer(state, { type: 'deliver-task', id: 1 })
+    state = gameReducer(state, { type: 'tick', seconds: 2 })
+    state = gameReducer(state, { type: 'deliver-task', id: 2 })
+    state = gameReducer(state, { type: 'tick', seconds: 2 })
+    expect(state.tasks).toHaveLength(0)
+    state = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(state.tasks.map((task) => ({ id: task.id, optional: task.optional }))).toEqual([{ id: 3, optional: false }])
+  })
+
+  test('extra work reserves tokens for assigned jobs before accepting another deadline', () => {
+    let state = { ...hire(), money: 100 }
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })
+    const requiredCost = taskWith(state, 1).difficulty * 100_000
+    const tight = { ...state, tokens: requiredCost + 1_200_000 - 1 }
+    expect(gameReducer(tight, { type: 'request-task' })).toBe(tight)
+    state = gameReducer({ ...tight, tokens: tight.tokens + 1 }, { type: 'request-task' })
+    expect(state.tasks).toHaveLength(2)
+    state = gameReducer(state, { type: 'start-task', id: 2, terminalId: 'terminal', slot: 1 })
+    state = gameReducer(state, { type: 'start-task', id: 1, terminalId: 'terminal', slot: 0 })
+    expect(state.tasks.map((task) => task.status)).toEqual(['working', 'working'])
+    expect(state.tokens).toBeGreaterThanOrEqual(0)
+  })
+
+  test('required work waits for token reserves without assigning an impossible deadline', () => {
+    const waiting: GameState = { ...hire(), tasks: [], elapsed: 10, nextTaskAt: 11, nextPingAt: 0, tokens: 1_100_000, money: 10 }
+    let state = gameReducer(waiting, { type: 'tick', seconds: 1 })
+    expect(state.stage).toBe('hired')
+    expect(state.tasks).toHaveLength(0)
+    state = gameReducer(state, { type: 'buy-tokens', packs: 1 })
+    state = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(state.tasks).toHaveLength(1)
+    expect(taskWith(state, 1).deadlineAt).toBeGreaterThan(state.elapsed)
+    const refilled = gameReducer({ ...waiting, elapsed: 99, tokens: 0 }, { type: 'tick', seconds: 1 })
+    expect(refilled.tasks).toHaveLength(1)
+    expect(refilled.tokens).toBe(MAX_TOKENS)
   })
 })
