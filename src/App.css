@@ -1623,3 +1623,30 @@ textarea:focus-visible {
 .dev-controls button {
   font-size: min(calc(0.62rem * 1.15), calc(0.62rem + 2pt));
 }
+.market-window-frame .window-content {
+  overflow: hidden;
+}
+
+.terminal-window-spark .terminal-topline {
+  background: linear-gradient(180deg, #292040, #211533);
+}
+
+@media (max-width: 620px) {
+  .dock {
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .dock::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dock-item {
+    flex: 0 0 clamp(3.2rem, 21vw, 4rem);
+  }
+
+  .market-window-frame .window-content {
+    padding: 0.7rem;
+  }
+}
