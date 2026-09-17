@@ -26,7 +26,6 @@ export type TerminalState = {
   id: TerminalId
   slots: number
   yolo: boolean
-  model: AgentModelId
   fastMode: boolean
 }
 
@@ -152,7 +151,6 @@ export type GameAction =
   | { type: 'install-social' }
   | { type: 'claim-token-reset' }
   | { type: 'like-reset' }
-  | { type: 'set-model'; terminalId: TerminalId; model: AgentModelId }
   | { type: 'set-fast-mode'; terminalId: TerminalId; enabled: boolean }
   | { type: 'retry-task'; id: number }
 
@@ -405,7 +403,6 @@ const PRIMARY_TERMINAL: TerminalState = {
   id: 'terminal',
   slots: 1,
   yolo: false,
-  model: 'basic',
   fastMode: false,
 }
 
@@ -993,7 +990,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       }
 
       const yolo = terminal.yolo === true
-      const selectedModel: AgentModelId = terminal.model === 'reasoning' ? 'reasoning' : 'basic'
+      const selectedModel: AgentModelId = state.reasoningUnlocked ? 'reasoning' : 'basic'
       const selectedFastMode = terminal.fastMode === true
       let nextRng = state.rng
       let nextApprovalAt = 0
@@ -1218,27 +1215,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return liked
     }
 
-    case 'set-model': {
-      if (
-        state.stage !== 'hired' ||
-        !isTerminalId(action.terminalId) ||
-        (action.model !== 'basic' && action.model !== 'reasoning') ||
-        (action.model === 'reasoning' && !state.reasoningUnlocked)
-      ) {
-        return state
-      }
-      const terminal = getTerminal(state, action.terminalId)
-      if (terminal === undefined || terminal.model === action.model) {
-        return state
-      }
-      return {
-        ...state,
-        terminals: state.terminals.map((candidate) => candidate.id === action.terminalId
-          ? { ...candidate, model: action.model }
-          : candidate),
-      }
-    }
-
     case 'set-fast-mode': {
       if (
         state.stage !== 'hired' ||
@@ -1283,7 +1259,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       ) {
         return state
       }
-      const selectedModel: AgentModelId = terminal.model === 'reasoning' ? 'reasoning' : 'basic'
+      const selectedModel: AgentModelId = state.reasoningUnlocked ? 'reasoning' : 'basic'
       const selectedFastMode = terminal.fastMode === true
       if (!canFundTaskAttempt(state, task, selectedFastMode)) {
         return state
@@ -1336,7 +1312,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             id: 'terminal-2',
             slots: 1,
             yolo: false,
-            model: 'basic',
             fastMode: false,
           }],
         }

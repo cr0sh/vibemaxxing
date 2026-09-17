@@ -6,7 +6,6 @@ import {
   MAX_TOKENS,
   taskReward,
   taskTokenCost,
-  type AgentModelId,
   type EmploymentMessage,
   type EmploymentTaskSnapshot,
   type GameAction,
@@ -760,7 +759,6 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
   const terminal = state.terminals.find((candidate) => candidate.id === terminalId)
   const slots = terminal?.slots ?? 0
   const yolo = terminal?.yolo ?? false
-  const selectedModel: AgentModelId = terminal?.model ?? 'basic'
   const refillIn = 100 - (state.elapsed % 100 || 0)
   const terminalRef = useRef<HTMLDivElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
@@ -862,20 +860,6 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
         <p className="terminal-prompt terminal-cursor">~ <span className="cursor-block" aria-hidden="true" /></p>
       </div>
       <div className="employment-terminal-footer">
-        <div className="employment-terminal-model-row">
-          <label htmlFor={`model-${terminalId}`}>Agent model</label>
-          <select
-            id={`model-${terminalId}`}
-            value={selectedModel}
-            onChange={(event) => dispatch({ type: 'set-model', terminalId, model: event.currentTarget.value as AgentModelId })}
-            disabled={state.stage !== 'hired' || !state.reasoningUnlocked}
-          >
-            {(Object.keys(AGENT_MODELS) as AgentModelId[]).map((model) => (
-              <option key={model} value={model}>{AGENT_MODELS[model].label}{model === 'reasoning' && !state.reasoningUnlocked ? ' (locked)' : ''}</option>
-            ))}
-          </select>
-          {!state.reasoningUnlocked && <span className="employment-control-hint">Tiro Reason unlocks after your first architecture delivery.</span>}
-        </div>
         <div className="employment-token-line">
           <span><strong>{state.tokens.toLocaleString()}</strong> tokens available</span>
           <span className="employment-refill-countdown">

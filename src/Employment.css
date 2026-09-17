@@ -1045,42 +1045,6 @@
   font-size: 0.63rem;
 }
 
-.employment-terminal-model-row {
-  display: grid;
-  grid-template-columns: auto minmax(8rem, 1fr);
-  align-items: center;
-  gap: 0.5rem;
-  color: #c8b7de;
-  font-size: 0.71rem;
-}
-
-.employment-terminal-model-row select {
-  min-height: 2.15rem;
-  min-width: 0;
-  padding: 0.35rem 0.55rem;
-  border: 1px solid rgba(209, 180, 247, 0.32);
-  border-radius: 0.45rem;
-  background: rgba(25, 15, 47, 0.72);
-  color: #f7efff;
-  cursor: pointer;
-}
-
-.employment-terminal-model-row select:focus-visible {
-  border-color: rgba(236, 210, 255, 0.82);
-  outline: 2px solid rgba(236, 210, 255, 0.22);
-  outline-offset: 1px;
-}
-
-.employment-terminal-model-row select:disabled {
-  cursor: not-allowed;
-  opacity: 0.66;
-}
-
-.employment-terminal-model-row .employment-control-hint {
-  grid-column: 1 / -1;
-  margin-top: -0.1rem;
-}
-
 @media (max-width: 620px) {
   .employment-team-status {
     margin-bottom: 0.7rem;
@@ -1093,14 +1057,6 @@
 
   .employment-terminal-banner-note {
     margin-left: 2.45rem;
-  }
-
-  .employment-terminal-model-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .employment-terminal-model-row .employment-control-hint {
-    grid-column: auto;
   }
 
   .employment-attachment-title-row,

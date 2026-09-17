@@ -596,7 +596,6 @@ describe('extended progression boundaries', () => {
       taskQueue: [],
       nextTaskAt: 1_000,
       nextPingAt: 0,
-      reasoningUnlocked: true,
       fastModeUnlocked: true,
       terminals: [{ ...hired.terminals[0]!, yolo: true }],
     }
@@ -608,13 +607,15 @@ describe('extended progression boundaries', () => {
     expect(taskWith(state, task.id).status).toBe('failed')
     expect(state.tokens).toBe(1_400_000)
 
-    state = gameReducer(state, { type: 'set-model', terminalId: 'terminal', model: 'reasoning' })
+    state = gameReducer({
+      ...state,
+      tasks: [...state.tasks, { ...task, id: 99, status: 'artifact', model: 'basic', attempt: 1 }],
+    }, { type: 'deliver-task', id: 99 })
     state = gameReducer(state, { type: 'set-fast-mode', terminalId: 'terminal', enabled: true })
     state = gameReducer(state, { type: 'retry-task', id: task.id })
     expect(state.tokens).toBe(200_000)
     expect(taskWith(state, task.id).deadlineAt).toBe(100)
 
-    state = gameReducer(state, { type: 'set-model', terminalId: 'terminal', model: 'basic' })
     state = gameReducer(state, { type: 'set-fast-mode', terminalId: 'terminal', enabled: false })
     state = gameReducer(state, { type: 'tick', seconds: 4 })
     expect(taskWith(state, task.id).status).toBe('working')

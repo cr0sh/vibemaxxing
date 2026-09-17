@@ -116,7 +116,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
       <>
         <p className="social-post-copy">
           Tiro Reason handles systems architecture reliably, but runs 40% slower than Basic.
-          Choose it in Terminal; the change applies to your next attempt.
+          Your workspace has been upgraded automatically. All new attempts use Tiro Reason.
         </p>
         <p className="social-post-caption">More thought. Fewer retries.</p>
       </>
