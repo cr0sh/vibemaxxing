@@ -146,7 +146,7 @@ function taskForMessage(state: GameState, snapshot: EmploymentTaskSnapshot): { t
   const active = state.tasks.find((candidate) => candidate.id === snapshot.id)
   return {
     task: active ?? taskFromSnapshot(snapshot),
-    archived: state.stage !== 'hired' || active === undefined,
+    archived: active === undefined,
   }
 }
 
@@ -346,7 +346,7 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
                       <ArtifactAttachment
                         task={currentTask.task}
                         elapsed={state.elapsed}
-                        disabled={currentTask.archived}
+                        disabled={currentTask.archived || state.stage !== 'hired'}
                         archived={currentTask.archived}
                       />
                     </div>

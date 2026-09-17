@@ -212,10 +212,9 @@
   border-color: rgba(218, 188, 255, 0.58);
 }
 
-.employment-archived-attachment {
+.employment-attachment.employment-archived-attachment {
   border-color: rgba(169, 155, 190, 0.3);
-  background: linear-gradient(145deg, rgba(61, 47, 82, 0.5), rgba(38, 31, 52, 0.62));
-  opacity: 0.78;
+  background: linear-gradient(145deg, #3d2f52, #261f34);
 }
 
 .employment-attachment-icon {
