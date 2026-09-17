@@ -424,7 +424,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return state
       }
 
-      const chance = Math.min(1, 0.01 * 2 ** Math.max(0, state.submissions - 24))
+      const attempt = state.submissions + 1
+      const chance =
+        attempt >= 20
+          ? 1
+          : Math.min(1, 0.02 * 2 ** Math.max(0, attempt - 9))
       const offered = Number.isFinite(action.roll) && action.roll < chance
 
       return {
