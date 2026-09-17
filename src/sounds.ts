@@ -49,7 +49,6 @@ const MILESTONE_VOICES: readonly VoiceSpec[] = [
 ]
 
 let audioContext: AudioContext | null = null
-let audioUnlocked = false
 let audioUnavailable = false
 const activeVoices = new Set<ActiveVoice>()
 
@@ -57,7 +56,10 @@ function getAudioContextConstructor(): AudioContextConstructor | null {
   if (typeof window === 'undefined') return null
 
   try {
-    const browserWindow = window as Window & { webkitAudioContext?: AudioContextConstructor }
+    const browserWindow = window as Window & {
+      AudioContext?: AudioContextConstructor
+      webkitAudioContext?: AudioContextConstructor
+    }
     return browserWindow.AudioContext ?? browserWindow.webkitAudioContext ?? null
   } catch {
     return null
@@ -102,7 +104,6 @@ export function unlockAudio(): void {
   try {
     const context = getAudioContext()
     if (!context || context.state === 'closed') return
-    audioUnlocked = true
     resumeAudioContext(context)
   } catch {
     // Audio setup must never block the user gesture that requested it.
@@ -133,10 +134,6 @@ function disposeVoice(voice: ActiveVoice): void {
 }
 
 function makeVoice(context: AudioContext, spec: VoiceSpec, now: number): void {
-  if (activeVoices.size >= MAX_ACTIVE_VOICES) {
-    const oldest = activeVoices.values().next().value
-    if (oldest) disposeVoice(oldest)
-  }
 
   const startAt = now + spec.startOffset
   const stopAt = startAt + spec.duration
@@ -198,17 +195,16 @@ function voicesForCue(cue: SoundCue): readonly VoiceSpec[] {
   }
 }
 
-
 export function playSound(cue: SoundCue): void {
-  if (!audioUnlocked && !audioContext) return
-
   try {
-    const context = getAudioContext()
+    const context = audioContext
     if (!context || context.state === 'closed') return
 
     resumeAudioContext(context)
-    const now = Number.isFinite(context.currentTime) ? context.currentTime : 0
-    for (const spec of voicesForCue(cue)) makeVoice(context, spec, now)
+    const voices = voicesForCue(cue)
+    if (activeVoices.size + voices.length > MAX_ACTIVE_VOICES) return
+    const now = context.currentTime
+    for (const spec of voices) makeVoice(context, spec, now)
   } catch {
     // Audio is strictly best-effort. In particular, partially implemented Web
     // Audio shims must not break a game action.
