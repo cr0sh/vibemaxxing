@@ -8,6 +8,7 @@ import {
   type GameAction,
   type GameState,
   type DevJumpTarget,
+  type TerminalId,
 } from './game'
 import { applicationSamples } from './applicationSamples'
 import { MessengerContent, TerminalContent } from './Employment'
@@ -92,7 +93,7 @@ function Desktop({
   const hasEmployment =
     state.stage === 'hired' ||
     (state.stage === 'lost' && (state.tasks.length > 0 || state.completedTasks > 0 || state.elapsed > 0))
-  const initialWindows: WindowState = {
+  const [windows, setWindows] = useState<WindowState>(() => ({
     apply: state.stage === 'applying',
     offer: state.stage === 'offer',
     messenger: state.stage === 'hired',
@@ -101,14 +102,12 @@ function Desktop({
     shop: false,
     social: openSocialOnMount && state.socialInstalledAt !== null,
     defeat: state.stage === 'lost',
-  }
-  const [windows, setWindows] = useState<WindowState>(() => initialWindows)
-  const initiallyOpenWindows = (Object.keys(initialWindows) as WindowId[]).filter((id) => initialWindows[id])
+  }))
   const [acknowledgedDockWindows, setAcknowledgedDockWindows] = useState<Set<WindowId>>(
-    () => new Set(initiallyOpenWindows),
+    () => new Set((Object.keys(windows) as WindowId[]).filter((id) => windows[id])),
   )
-  const [activeWindow, setActiveWindow] = useState<WindowId>(
-    initialWindows.social
+  const [activeWindow, setActiveWindow] = useState<WindowId>(() =>
+    windows.social
       ? 'social'
       : state.stage === 'lost'
         ? 'defeat'
@@ -328,6 +327,7 @@ function Desktop({
                   className="application-window"
                   hidden={!windows.apply}
                   onFocus={() => focusWindow('apply')}
+                  onMinimize={() => minimizeWindow('apply')}
                 >
                   <div className="window-heading-row">
                     <div>
@@ -381,6 +381,7 @@ function Desktop({
                   className="offer-window"
                   hidden={!windows.offer}
                   onFocus={() => focusWindow('offer')}
+                  onMinimize={() => minimizeWindow('offer')}
                 >
                   <div className="offer-hero">
                     <span className="offer-spark" aria-hidden="true">✦</span>
@@ -414,6 +415,7 @@ function Desktop({
                     contentLayout="fill"
                     hidden={!windows.messenger && !defeatAutoFront}
                     onFocus={() => focusWindow('messenger')}
+                    onMinimize={() => minimizeWindow('messenger')}
                   >
                     <MessengerContent state={state} dispatch={dispatch} onOpenSocial={() => openWindow('social')} />
                   </WindowFrame>
@@ -429,6 +431,7 @@ function Desktop({
                       contentLayout="fill"
                       hidden={!windows[terminal.id]}
                       onFocus={() => focusWindow(terminal.id)}
+                      onMinimize={() => minimizeWindow(terminal.id)}
                     >
                       <TerminalContent
                         state={state}
@@ -447,6 +450,7 @@ function Desktop({
                     contentLayout="fill"
                     hidden={!windows.shop}
                     onFocus={() => focusWindow('shop')}
+                    onMinimize={() => minimizeWindow('shop')}
                   >
                     <ShopContent state={state} dispatch={dispatch} />
                   </WindowFrame>
@@ -460,6 +464,7 @@ function Desktop({
                       contentLayout="fill"
                       hidden={!windows.social}
                       onFocus={() => focusWindow('social')}
+                      onMinimize={() => minimizeWindow('social')}
                     >
                       <SocialContent state={state} dispatch={dispatch} />
                     </WindowFrame>

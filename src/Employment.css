@@ -305,16 +305,6 @@
   font-size: 1rem;
 }
 
-.employment-compact-attachment .employment-attachment-copy {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-}
-
-.employment-compact-attachment .employment-attachment-copy > span {
-  font-size: 0.68rem;
-  line-height: 1.2;
-}
 
 .employment-check-button,
 .employment-terminal-button {

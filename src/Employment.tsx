@@ -255,9 +255,7 @@ function ArtifactAttachment({
       </div>
       <div className="employment-attachment-copy">
         <strong>{task.artifactName}</strong>
-        {compact ? (
-          <span>{archived ? 'Delivered artifact' : 'Ready for delivery'}</span>
-        ) : (
+        {!compact && (
           <>
             <span>{archived ? 'Delivered artifact' : 'Ready for delivery'}</span>
             <div className="employment-attachment-meta">
@@ -437,7 +435,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
     }
 
     if (message.type === 'assignment') {
-      const currentTask = taskForMessage(state, message.task)
+      const currentTask = taskForMessage(state, message.artifact ?? message.task)
       return (
         <div className="message-row employment-message-entry" key={message.id}>
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
