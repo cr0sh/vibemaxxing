@@ -5,8 +5,10 @@ import './DesktopWindows.css'
 
 type Point = { x: number; y: number }
 type Size = { width: number; height: number }
+type Bounds = Size & Point
 type WorkspaceState = {
   size: Size
+  bounds: Bounds
   order: string[]
   focusRequest: number
   register: (id: string) => void
@@ -46,29 +48,46 @@ function clampSize(candidate: Size, workspace: Size, minimum = minimumWindowSize
   }
 }
 
-function clampPosition(point: Point, size: Size, workspace: Size): Point {
+function clampPosition(point: Point, size: Size, bounds: Bounds): Point {
   return {
-    x: Math.max(0, Math.min(point.x, workspace.width - size.width)),
-    y: Math.max(0, Math.min(point.y, workspace.height - size.height)),
+    x: Math.max(bounds.x, Math.min(point.x, bounds.x + bounds.width - size.width)),
+    y: Math.max(bounds.y, Math.min(point.y, bounds.y + bounds.height - size.height)),
   }
 }
 
 export function WindowWorkspace({ className = '', focusRequest = 0, children }: { className?: string; focusRequest?: number; children: ReactNode }) {
   const elementRef = useRef<HTMLDivElement>(null)
-  const [size, setSize] = useState<Size>({ width: 0, height: 0 })
+  const [{ size, bounds }, setGeometry] = useState<{ size: Size; bounds: Bounds }>({
+    size: { width: 0, height: 0 },
+    bounds: { x: 0, y: 0, width: 0, height: 0 },
+  })
   const [order, setOrder] = useState<string[]>([])
   useLayoutEffect(() => {
     const element = elementRef.current
     if (!element) return
     const measure = () => {
+      const rect = element.getBoundingClientRect()
       const width = element.clientWidth
       const height = element.clientHeight
-      setSize((current) => current.width === width && current.height === height ? current : { width, height })
+      const viewportWidth = document.documentElement.clientWidth
+      const viewportHeight = window.innerHeight
+      setGeometry((current) => (
+        current.size.width === width && current.size.height === height &&
+        current.bounds.x === -rect.left && current.bounds.y === -rect.top &&
+        current.bounds.width === viewportWidth && current.bounds.height === viewportHeight
+      ) ? current : {
+        size: { width, height },
+        bounds: { x: -rect.left, y: -rect.top, width: viewportWidth, height: viewportHeight },
+      })
     }
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(element)
-    return () => observer.disconnect()
+    window.addEventListener('resize', measure)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+    }
   }, [])
 
   const register = useCallback((id: string) => {
@@ -83,7 +102,7 @@ export function WindowWorkspace({ className = '', focusRequest = 0, children }: 
 
   return (
     <DragDropHintsProvider>
-      <WorkspaceContext.Provider value={{ size, order, focusRequest, register, unregister, raise }}>
+      <WorkspaceContext.Provider value={{ size, bounds, order, focusRequest, register, unregister, raise }}>
         <div ref={elementRef} className={`windows ${className}`}>{children}</div>
       </WorkspaceContext.Provider>
     </DragDropHintsProvider>
@@ -110,16 +129,20 @@ type Resize = { pointerId: number; origin: Size; position: Point; start: Point }
 export function WindowFrame({ id, icon, title, active, className = '', contentLayout = 'padded', onFocus, onMinimize, children, hidden = false }: WindowFrameProps) {
   const workspace = useContext(WorkspaceContext)
   if (!workspace) throw new Error('WindowFrame requires a WindowWorkspace')
-  const { size: bounds, order, focusRequest, register, unregister, raise } = workspace
+  const { size: workspaceSize, bounds, order, focusRequest, register, unregister, raise } = workspace
   const defaults = windowDefaults[id] ?? defaultWindow
   const minimumSize = minimumWindowSizes[id] ?? minimumWindowSize
   const [savedSize, setSavedSize] = useState<Size | null>(null)
-  const size = clampSize(savedSize ?? defaults, bounds, minimumSize)
+  const size = clampSize(
+    savedSize ?? defaults,
+    savedSize || !workspaceSize.width || !workspaceSize.height ? bounds : workspaceSize,
+    minimumSize,
+  )
   const [savedPosition, setSavedPosition] = useState<Point | null>(null)
   // Derive bounds on resize rather than synchronizing a second copy in an effect.
   const position = clampPosition(savedPosition ?? {
-    x: (bounds.width - size.width) * defaults.x,
-    y: (bounds.height - size.height) * defaults.y,
+    x: (workspaceSize.width - size.width) * defaults.x,
+    y: (workspaceSize.height - size.height) * defaults.y,
   }, size, bounds)
   const windowRef = useRef<HTMLElement>(null)
   const drag = useRef<Drag | null>(null)
@@ -204,7 +227,10 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
     setSavedSize(clampSize({
       width: current.origin.width + event.clientX - current.start.x,
       height: current.origin.height + event.clientY - current.start.y,
-    }, { width: bounds.width - current.position.x, height: bounds.height - current.position.y }, minimumSize))
+    }, {
+      width: bounds.x + bounds.width - current.position.x,
+      height: bounds.y + bounds.height - current.position.y,
+    }, minimumSize))
   }
   const endResize = (event: PointerEvent<HTMLButtonElement>) => {
     if ((event.type === 'lostpointercapture' && event.target !== event.currentTarget) || resize.current?.pointerId !== event.pointerId) return
@@ -230,7 +256,7 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
     setSavedPosition(position)
     setSavedSize(clampSize(
       { width: size.width + direction.x * step, height: size.height + direction.y * step },
-      { width: bounds.width - position.x, height: bounds.height - position.y },
+      { width: bounds.x + bounds.width - position.x, height: bounds.y + bounds.height - position.y },
       minimumSize,
     ))
   }
