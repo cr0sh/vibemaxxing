@@ -1,27 +1,30 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { ChangeEvent, Dispatch, FormEvent } from 'react'
 import {
+  completedTaskCount,
   companies,
   gameReducer,
   initialGame,
   type Application,
+  type DevJumpTarget,
   type GameAction,
   type GameState,
-  type DevJumpTarget,
   type TerminalId,
 } from './game'
 import { getSoundsMuted, playSound, setSoundsMuted } from './sounds'
 import { useInteractionSounds } from './useInteractionSounds'
 import { applicationSamples } from './applicationSamples'
 import { MessengerContent, TerminalContent } from './Employment'
+import { MarketContent } from './Market'
 import { ShopContent } from './Shop'
 import { SocialContent } from './Social'
 import { WindowFrame, WindowWorkspace } from './DesktopWindows'
 import { ResourceCounter } from './ResourceCounter'
 import './App.css'
 
-type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'shop' | 'social' | 'defeat'
+type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'spark' | 'shop' | 'social' | 'market' | 'defeat'
 type WindowState = Record<WindowId, boolean>
+type RevisionMap = Partial<Record<WindowId, string>>
 
 const emptyApplication = (): Application => ({
   name: '',
@@ -43,40 +46,35 @@ function App() {
   useInteractionSounds()
   const [now, setNow] = useState(() => new Date())
   const [isDevPaused, setIsDevPaused] = useState(false)
-  const [devTiroJump, setDevTiroJump] = useState(0)
+  const [devRemount, setDevRemount] = useState(0)
+  const [devJumpTarget, setDevJumpTarget] = useState<DevJumpTarget | null>(null)
   const previousStateRef = useRef(state)
 
   useEffect(() => {
     const previousState = previousStateRef.current
     previousStateRef.current = state
 
-    if (previousState.stage !== 'hired' && state.stage === 'hired') {
+    const primaryHired = previousState.stage !== 'hired' && state.stage === 'hired'
+    const secondaryHired = previousState.secondJob === null && state.secondJob !== null
+    const wasPromoted = state.messages.some((message) =>
+      message.type === 'promotion' && !previousState.messages.some((previousMessage) => previousMessage.id === message.id),
+    )
+    if (primaryHired || secondaryHired || wasPromoted) {
       playSound('milestone')
     }
 
     if (previousState.stage === 'hired' && state.stage === 'hired') {
       const taskStarted = state.tasks.some((task) => {
-        if (task.status !== 'working' || task.terminalId === null || task.slot === null) {
-          return false
-        }
+        if (task.status !== 'working' || task.terminalId === null || task.slot === null) return false
         const previousTask = previousState.tasks.find((candidate) => candidate.id === task.id)
-        return previousTask?.status === 'assigned' &&
-          previousTask.terminalId === null &&
-          previousTask.slot === null
+        return previousTask?.status === 'assigned' && previousTask.terminalId === null && previousTask.slot === null
       })
-      if (taskStarted) {
-        playSound('task-transfer')
-      }
+      if (taskStarted) playSound('task-transfer')
 
       const artifactDelivered =
-        state.completedTasks > previousState.completedTasks &&
-        previousState.tasks.some((task) =>
-          task.status === 'artifact' &&
-          !state.tasks.some((candidate) => candidate.id === task.id),
-        )
-      if (artifactDelivered) {
-        playSound('artifact-transfer')
-      }
+        completedTaskCount(state) > completedTaskCount(previousState) &&
+        previousState.tasks.some((task) => task.status === 'artifact' && !state.tasks.some((candidate) => candidate.id === task.id))
+      if (artifactDelivered) playSound('artifact-transfer')
     }
   }, [state])
 
@@ -88,26 +86,36 @@ function App() {
       const elapsedSeconds = Math.floor((currentTime - lastTickAt) / 1000)
       if (elapsedSeconds > 0) {
         lastTickAt += elapsedSeconds * 1000
-        if (state.stage === 'hired' && !isDevPaused) {
-          dispatch({ type: 'tick', seconds: elapsedSeconds })
-        }
+        if (state.stage === 'hired' && !isDevPaused) dispatch({ type: 'tick', seconds: elapsedSeconds })
       }
     }, 1000)
 
     return () => window.clearInterval(timer)
   }, [state.stage, isDevPaused])
 
+  const handleDevJump = (target: DevJumpTarget) => {
+    setDevJumpTarget(target)
+    setDevRemount((current) => current + 1)
+  }
+
+  const devOpenWindow: WindowId | null =
+    devJumpTarget === 'tiro' ? 'social' :
+      devJumpTarget === 'market' ? 'market' :
+        devJumpTarget === 'spark' ? 'spark' :
+          devJumpTarget === 'mercury' || devJumpTarget === 'second-job' ? 'shop' :
+            devJumpTarget === 'frontier' ? 'terminal' : null
+
   return (
     <div className={`app-shell stage-${state.stage}`}>
       <DesktopWidgets state={state} now={now} />
       <Desktop
-        key={`${state.stage === 'hired' || state.stage === 'lost' ? 'employment' : state.stage}-${devTiroJump}`}
+        key={`${state.stage === 'hired' || state.stage === 'lost' ? 'employment' : state.stage}-${devRemount}`}
         state={state}
         dispatch={dispatch}
         isDevPaused={isDevPaused}
         onDevPauseChange={setIsDevPaused}
-        openSocialOnMount={devTiroJump > 0 && state.socialInstalledAt !== null}
-        onTiroJump={() => setDevTiroJump((current) => current + 1)}
+        openWindowOnMount={devOpenWindow}
+        onDevJump={handleDevJump}
       />
     </div>
   )
@@ -118,44 +126,47 @@ function Desktop({
   dispatch,
   isDevPaused,
   onDevPauseChange,
-  openSocialOnMount,
-  onTiroJump,
+  openWindowOnMount,
+  onDevJump,
 }: {
   state: GameState
   dispatch: Dispatch<GameAction>
   isDevPaused: boolean
   onDevPauseChange: (paused: boolean) => void
-  openSocialOnMount: boolean
-  onTiroJump: () => void
+  openWindowOnMount: WindowId | null
+  onDevJump: (target: DevJumpTarget) => void
 }) {
   const [application, setApplication] = useState<Application>(emptyApplication)
   const hasEmployment =
     state.stage === 'hired' ||
-    (state.stage === 'lost' && (state.tasks.length > 0 || state.completedTasks > 0 || state.elapsed > 0))
+    (state.stage === 'lost' && (state.tasks.length > 0 || completedTaskCount(state) > 0 || state.elapsed > 0))
+  const secondApplicationAvailable =
+    state.stage === 'hired' && state.secondJobUnlocked && state.secondJob === null && state.secondJobOffer === null
+  const secondOfferAvailable = state.stage === 'hired' && state.secondJobOffer !== null
+  const showApplication = state.stage === 'applying' || secondApplicationAvailable
+  const showOffer = state.stage === 'offer' || secondOfferAvailable
   const [windows, setWindows] = useState<WindowState>(() => ({
-    apply: state.stage === 'applying',
-    offer: state.stage === 'offer',
-    messenger: state.stage === 'hired',
-    terminal: state.stage === 'hired',
-    'terminal-2': false,
-    shop: false,
-    social: openSocialOnMount && state.socialInstalledAt !== null,
+    apply: state.stage === 'applying' || secondApplicationAvailable || openWindowOnMount === 'apply',
+    offer: state.stage === 'offer' || secondOfferAvailable || openWindowOnMount === 'offer',
+    messenger: state.stage === 'hired' || openWindowOnMount === 'messenger',
+    terminal: state.stage === 'hired' || openWindowOnMount === 'terminal',
+    'terminal-2': openWindowOnMount === 'terminal-2',
+    spark: openWindowOnMount === 'spark',
+    shop: openWindowOnMount === 'shop',
+    social: openWindowOnMount === 'social',
+    market: openWindowOnMount === 'market',
     defeat: state.stage === 'lost',
   }))
   const [acknowledgedDockWindows, setAcknowledgedDockWindows] = useState<Set<WindowId>>(
     () => new Set((Object.keys(windows) as WindowId[]).filter((id) => windows[id])),
   )
-  const [activeWindow, setActiveWindow] = useState<WindowId>(() =>
-    windows.social
-      ? 'social'
-      : state.stage === 'lost'
-        ? 'defeat'
-        : state.stage === 'hired'
-          ? 'messenger'
-          : state.stage === 'offer'
-            ? 'offer'
-            : 'apply',
-  )
+  const [activeWindow, setActiveWindow] = useState<WindowId>(() => {
+    if (openWindowOnMount) return openWindowOnMount
+    if (state.stage === 'lost') return 'defeat'
+    if (state.stage === 'hired') return 'messenger'
+    if (state.stage === 'offer') return 'offer'
+    return 'apply'
+  })
   const [focusRequest, setFocusRequest] = useState(0)
   const [isAutofilling, setIsAutofilling] = useState(false)
   const [defeatDismissed, setDefeatDismissed] = useState(false)
@@ -165,6 +176,9 @@ function Desktop({
   const fillTimer = useRef<number | null>(null)
   const fillRun = useRef(0)
   const lastSample = useRef<number | null>(null)
+  const previousRevisionsRef = useRef<RevisionMap>({})
+  const devWindowOpenedRef = useRef(false)
+
   const cancelAutofill = () => {
     if (fillTimer.current !== null) {
       window.clearTimeout(fillTimer.current)
@@ -181,19 +195,104 @@ function Desktop({
     }
   }, [state.stage])
 
-
   const currentCompany = state.company ?? companies[0] ?? 'Prompt & Circumstance'
   const terminalIds: TerminalId[] = hasEmployment ? state.terminals.map((terminal) => terminal.id) : []
-  const stageWindows: WindowId[] =
-    state.stage === 'applying'
-      ? ['apply']
-      : state.stage === 'offer'
-        ? ['offer']
-        : hasEmployment
-          ? ['messenger', ...terminalIds, 'shop', ...(state.socialInstalledAt !== null ? ['social' as const] : []), ...(state.stage === 'lost' ? ['defeat' as const] : [])]
-          : state.stage === 'lost'
-            ? ['defeat']
-            : []
+  const stageWindows: WindowId[] = state.stage === 'applying'
+    ? ['apply']
+    : state.stage === 'offer'
+      ? ['offer']
+      : hasEmployment
+        ? [
+            ...(secondApplicationAvailable || secondOfferAvailable ? [secondApplicationAvailable ? 'apply' : 'offer'] : []),
+            'messenger',
+            ...terminalIds,
+            'shop',
+            ...(state.market !== null ? ['market' as const] : []),
+            ...(state.socialInstalledAt !== null ? ['social' as const] : []),
+            ...(state.stage === 'lost' ? ['defeat' as const] : []),
+          ]
+        : state.stage === 'lost' ? ['defeat'] : []
+  const stageWindowKey = stageWindows.join('|')
+
+  useEffect(() => {
+    setWindows((current) => {
+      let changed = false
+      const next = { ...current }
+      for (const id of stageWindows) {
+        if (!(id in next)) {
+          next[id] = false
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [stageWindowKey])
+
+  const revisions: RevisionMap = {
+    messenger: [
+      state.messages.map((message) => `${message.id}:${message.type}`).join(','),
+      state.tasks.filter((task) => task.status === 'artifact').map((task) => task.id).join(','),
+    ].join('|'),
+    social: state.socialPosts.map((post) => `${post.id}:${post.type}`).join(','),
+    shop: [
+      state.fastModeUnlocked,
+      state.advancedModelAnnouncedAt !== null,
+      state.advancedModelUnlocked,
+      state.mercuryOwned,
+      state.sparkAnnouncedAt !== null,
+      state.sparkAnnouncedAt !== null && state.elapsed >= state.sparkAnnouncedAt + 10,
+      state.sparkPurchasedAt !== null,
+      state.sparkDeliveryAt !== null,
+      state.frontierModelUnlocked,
+      state.secondJobUnlocked,
+      state.terminals.map((terminal) => `${terminal.id}:${terminal.slots}:${terminal.yolo}`).join(','),
+    ].join('|'),
+    apply: `${state.stage === 'applying'}|${secondApplicationAvailable}`,
+    offer: `${state.stage === 'offer'}|${secondOfferAvailable}`,
+    market: state.market === null ? 'unavailable' : 'available',
+    spark: state.terminals.some((terminal) => terminal.id === 'spark') ? 'available' : 'unavailable',
+    terminal: state.terminals.map((terminal) => terminal.id).join(','),
+    'terminal-2': state.terminals.some((terminal) => terminal.id === 'terminal-2') ? 'available' : 'unavailable',
+  }
+
+  useEffect(() => {
+    setAcknowledgedDockWindows((current) => {
+      const next = new Set(current)
+      let changed = false
+      for (const id of stageWindows) {
+        const revision = revisions[id]
+        if (revision === undefined) continue
+        const previousRevision = previousRevisionsRef.current[id]
+        const isOpen = windows[id] || (id === 'messenger' && defeatAutoFront)
+        if (previousRevision !== undefined && previousRevision !== revision) {
+          if (isWindowActive(id) && isOpen) {
+            if (!next.has(id)) {
+              next.add(id)
+              changed = true
+            }
+          } else if (next.has(id)) {
+            next.delete(id)
+            changed = true
+          }
+        } else if (previousRevision === undefined && isWindowActive(id) && isOpen && !next.has(id)) {
+          next.add(id)
+          changed = true
+        }
+      }
+      previousRevisionsRef.current = revisions
+      return changed ? next : current
+    })
+  }, [stageWindowKey, revisions.messenger, revisions.social, revisions.shop, revisions.apply, revisions.offer, revisions.market, revisions.spark, revisions.terminal, revisions['terminal-2'], windows, activeWindow, defeatAutoFront])
+
+  useEffect(() => {
+    if (!openWindowOnMount || devWindowOpenedRef.current || !stageWindows.includes(openWindowOnMount)) return
+    devWindowOpenedRef.current = true
+    setWindows((current) => ({ ...current, [openWindowOnMount]: true }))
+    setActiveWindow(openWindowOnMount)
+    setAcknowledgedDockWindows((current) => new Set(current).add(openWindowOnMount))
+    setFocusRequest((request) => request + 1)
+  }, [openWindowOnMount, stageWindowKey])
+
   const acknowledgeDockWindow = (id: WindowId) => {
     setAcknowledgedDockWindows((current) => {
       if (current.has(id)) return current
@@ -224,8 +323,6 @@ function Desktop({
     setActiveWindow('defeat')
     if (hasEmployment) setWindows((current) => ({ ...current, messenger: true }))
   }
-
-
   const minimizeWindow = (id: WindowId) => {
     setWindows((current) => ({
       ...current,
@@ -241,7 +338,6 @@ function Desktop({
       if (remaining) setActiveWindow(remaining)
     }
   }
-
 
   const beginGame = () => {
     cancelAutofill()
@@ -263,14 +359,21 @@ function Desktop({
       event.currentTarget.reportValidity()
       return
     }
-    if (state.energy < 3 || isAutofilling) return
+    if (state.energy < 3 || isAutofilling || (!showApplication && state.stage !== 'applying')) return
 
     cancelAutofill()
-    dispatch({
-      type: 'submit',
-      roll: Math.random(),
-      companyIndex: Math.floor(Math.random() * companies.length),
-    })
+    const action: GameAction = secondApplicationAvailable
+      ? {
+          type: 'submit-second-job',
+          roll: Math.random(),
+          companyIndex: Math.floor(Math.random() * companies.length),
+        }
+      : {
+          type: 'submit',
+          roll: Math.random(),
+          companyIndex: Math.floor(Math.random() * companies.length),
+        }
+    dispatch(action)
     setApplication(emptyApplication())
   }
 
@@ -281,7 +384,10 @@ function Desktop({
   }
 
   const fillSample = () => {
-    if (state.stage !== 'applying' || state.submissions < 3 || applicationSamples.length === 0) return
+    const canAutofill = state.stage === 'applying'
+      ? state.submissions >= 3
+      : secondApplicationAvailable
+    if (!canAutofill || applicationSamples.length === 0) return
 
     cancelAutofill()
     const poolSize = applicationSamples.length
@@ -310,17 +416,14 @@ function Desktop({
 
     const advance = () => {
       if (run !== fillRun.current) return
-
       const elapsed = performance.now() - startedAt
       const visibleName = sample.name.slice(0, Math.min(sample.name.length, Math.floor(elapsed / fillCharacterIntervals.name)))
       const visibleEmail = sample.email.slice(0, Math.min(sample.email.length, Math.floor(elapsed / fillCharacterIntervals.email)))
       const visiblePitch = sample.pitch.slice(0, Math.min(sample.pitch.length, Math.floor(elapsed / fillCharacterIntervals.pitch)))
-
       setApplication((current) => {
         if (current.name === visibleName && current.email === visibleEmail && current.pitch === visiblePitch) return current
         return { ...current, name: visibleName, email: visibleEmail, pitch: visiblePitch }
       })
-
       if (elapsed >= completionDuration) {
         fillTimer.current = null
         setIsAutofilling(false)
@@ -328,18 +431,20 @@ function Desktop({
       }
       fillTimer.current = window.setTimeout(advance, Math.min(fillFrameDelay, completionDuration - elapsed))
     }
-
     advance()
-
   }
 
-  const handleDevJump = (stage: DevJumpTarget) => {
+  const runDevJump = (stage: DevJumpTarget) => {
     cancelAutofill()
     onDevPauseChange(false)
     setApplication(emptyApplication())
-    if (stage === 'tiro') onTiroJump()
+    onDevJump(stage)
     dispatch({ type: 'dev-jump', stage })
   }
+
+  const applicationCount = secondApplicationAvailable ? state.secondJobApplications : state.submissions
+  const applicationTitle = secondApplicationAvailable ? 'Second job application' : 'Job application'
+  const offerCompany = secondOfferAvailable ? state.secondJobOffer : currentCompany
 
   return (
     <>
@@ -348,8 +453,6 @@ function Desktop({
         <div className="desktop-orbit desktop-orbit-two" aria-hidden="true" />
         <div className="desktop-grid" aria-hidden="true" />
 
-
-
         {state.stage === 'ready' ? (
           <section className="ready-screen" aria-label="Start game">
             <button className="new-game-button ready-start" type="button" onClick={beginGame}>New game</button>
@@ -357,7 +460,7 @@ function Desktop({
         ) : (
           <div className="workspace-area">
             <WindowWorkspace className={`windows-${state.stage}`} focusRequest={focusRequest}>
-              {state.stage === 'applying' && (
+              {showApplication && (
                 <WindowFrame
                   id="apply"
                   icon="📨"
@@ -369,11 +472,9 @@ function Desktop({
                   onMinimize={() => minimizeWindow('apply')}
                 >
                   <div className="window-heading-row">
-                    <div>
-                      <h2>Job application</h2>
-                    </div>
-                    <div className="submission-stamp" aria-label={`${state.submissions} submissions`}>
-                      <strong>{String(state.submissions).padStart(2, '0')}</strong>
+                    <div><h2>{applicationTitle}</h2></div>
+                    <div className="submission-stamp" aria-label={`${applicationCount} submissions`}>
+                      <strong>{String(applicationCount).padStart(2, '0')}</strong>
                       <span>sent</span>
                     </div>
                   </div>
@@ -396,26 +497,26 @@ function Desktop({
                       <button className="primary-button" type="submit" disabled={state.energy < 3 || isAutofilling}>
                         Submit application <span aria-hidden="true">↗</span>
                       </button>
-                      {state.submissions >= 3 && (
-                        <button className="secondary-button" type="button" onClick={fillSample}>
+                      {(secondApplicationAvailable || state.submissions >= 3) && (
+                        <button className="secondary-button" type="button" onClick={fillSample} disabled={isAutofilling}>
                           <span aria-hidden="true">✦</span> Auto-fill application
                         </button>
                       )}
                     </div>
                   </form>
                   {state.lastResult === 'rejected' && (
-                    <p className="feedback feedback-rejected" role="status" aria-live="polite" key={state.submissions}>
+                    <p className="feedback feedback-rejected" role="status" aria-live="polite" key={`${state.submissions}-${state.secondJobApplications}`}>
                       <span aria-hidden="true">⊘</span> Application not selected. Try again.
                     </p>
                   )}
                 </WindowFrame>
               )}
 
-              {state.stage === 'offer' && (
+              {showOffer && (
                 <WindowFrame
                   id="offer"
                   icon="📬"
-                  title="Incoming offer"
+                  title={secondOfferAvailable ? 'Second job offer' : 'Incoming offer'}
                   active={isWindowActive('offer')}
                   className="offer-window"
                   hidden={!windows.offer}
@@ -424,24 +525,21 @@ function Desktop({
                 >
                   <div className="offer-hero">
                     <span className="offer-spark" aria-hidden="true">✦</span>
-                    <div>
-                      <h2>Offer received</h2>
-                    </div>
+                    <div><h2>{secondOfferAvailable ? 'Second job offer' : 'Offer received'}</h2></div>
                   </div>
                   <div className="company-card">
                     <div className="company-icon" aria-hidden="true">🏢</div>
                     <div>
                       <p className="company-label">Company</p>
-                      <h3>{currentCompany}</h3>
+                      <h3>{offerCompany}</h3>
                       <p>Role: Vibe Engineer · Remote</p>
                     </div>
                   </div>
-                  <button className="primary-button offer-accept" type="button" onClick={() => dispatch({ type: 'accept' })}>
-                    Accept offer <span aria-hidden="true">→</span>
+                  <button className="primary-button offer-accept" type="button" onClick={() => dispatch(secondOfferAvailable ? { type: 'accept-second-job' } : { type: 'accept' })}>
+                    {secondOfferAvailable ? 'Accept second job' : 'Accept offer'} <span aria-hidden="true">→</span>
                   </button>
                 </WindowFrame>
               )}
-
 
               {hasEmployment && (
                 <>
@@ -464,19 +562,15 @@ function Desktop({
                       key={terminal.id}
                       id={terminal.id}
                       icon="🖥️"
-                      title={terminal.id === 'terminal' ? 'Terminal' : 'Terminal 2'}
+                      title={terminal.id === 'terminal' ? 'Terminal' : terminal.id === 'terminal-2' ? 'Terminal 2' : 'Mapple Spark'}
                       active={isWindowActive(terminal.id)}
-                      className={`terminal-window-frame ${terminal.yolo ? 'terminal-window-yolo' : ''}`}
+                      className={`terminal-window-frame terminal-window-${terminal.id} ${terminal.yolo ? 'terminal-window-yolo' : ''}`}
                       contentLayout="fill"
                       hidden={!windows[terminal.id]}
                       onFocus={() => focusWindow(terminal.id)}
                       onMinimize={() => minimizeWindow(terminal.id)}
                     >
-                      <TerminalContent
-                        state={state}
-                        dispatch={dispatch}
-                        terminalId={terminal.id}
-                      />
+                      <TerminalContent state={state} dispatch={dispatch} terminalId={terminal.id} />
                     </WindowFrame>
                   ))}
 
@@ -493,6 +587,21 @@ function Desktop({
                   >
                     <ShopContent state={state} dispatch={dispatch} />
                   </WindowFrame>
+                  {state.market !== null && (
+                    <WindowFrame
+                      id="market"
+                      icon="📈"
+                      title="Market"
+                      active={isWindowActive('market')}
+                      className="market-window-frame"
+                      contentLayout="fill"
+                      hidden={!windows.market}
+                      onFocus={() => focusWindow('market')}
+                      onMinimize={() => minimizeWindow('market')}
+                    >
+                      <MarketContent state={state} dispatch={dispatch} />
+                    </WindowFrame>
+                  )}
                   {state.socialInstalledAt !== null && (
                     <WindowFrame
                       id="social"
@@ -541,9 +650,14 @@ function Desktop({
                 {isDevPaused ? 'Resume timer' : 'Pause timer'}
               </button>
               <button type="button" onClick={() => dispatch({ type: 'tick', seconds: 10 })}>Advance 10s</button>
-              <button type="button" onClick={() => handleDevJump('offer')}>Offer</button>
-              <button type="button" onClick={() => handleDevJump('tiro')}>Tiro</button>
-              <button type="button" onClick={() => handleDevJump('hired')}>Hired</button>
+              <button type="button" onClick={() => runDevJump('offer')}>Offer</button>
+              <button type="button" onClick={() => runDevJump('tiro')}>Tiro</button>
+              <button type="button" onClick={() => runDevJump('hired')}>Hired</button>
+              <button type="button" onClick={() => runDevJump('market')}>Market</button>
+              <button type="button" onClick={() => runDevJump('spark')}>Spark</button>
+              <button type="button" onClick={() => runDevJump('mercury')}>Mercury</button>
+              <button type="button" onClick={() => runDevJump('second-job')}>Second job</button>
+              <button type="button" onClick={() => runDevJump('frontier')}>Frontier</button>
               <button type="button" onClick={retryGame}>Reset</button>
             </div>
           </details>
@@ -554,20 +668,23 @@ function Desktop({
         <footer className="dock-area">
           <nav className="dock" aria-label="Desktop windows">
             {stageWindows.map((id) => {
-              const item =
-                id === 'apply'
-                  ? { icon: '📨', label: 'Applications' }
-                  : id === 'offer'
-                    ? { icon: '📬', label: 'Offer' }
-                    : id === 'messenger'
-                      ? { icon: '💬', label: 'Messenger' }
-                      : id === 'shop'
-                        ? { icon: '🛍️', label: 'Shop' }
+              const item = id === 'apply'
+                ? { icon: '📨', label: 'Applications' }
+                : id === 'offer'
+                  ? { icon: '📬', label: 'Offer' }
+                  : id === 'messenger'
+                    ? { icon: '💬', label: 'Messenger' }
+                    : id === 'shop'
+                      ? { icon: '🛍️', label: 'Shop' }
+                      : id === 'market'
+                        ? { icon: '📈', label: 'Market' }
                         : id === 'social'
                           ? { icon: 'Z', label: 'ZZZ' }
                           : id === 'defeat'
                             ? { icon: '⚠️', label: 'Run ended' }
-                            : { icon: '🖥️', label: id === 'terminal' ? 'Terminal' : 'Terminal 2' }
+                            : id === 'spark'
+                              ? { icon: '🖥️', label: 'Mapple Spark' }
+                              : { icon: '🖥️', label: id === 'terminal' ? 'Terminal' : 'Terminal 2' }
               const isOpen = id === 'defeat'
                 ? state.stage === 'lost' && !defeatDismissed
                 : windows[id] || (id === 'messenger' && defeatAutoFront)
@@ -609,83 +726,63 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
   }
 
   return (
-        <section className={`widget-band ${showPaidResources ? 'widget-band-paid' : ''}`} aria-label="Desktop widgets">
-          <div className="widget-cluster">
-            <div className={`paid-resources ${showPaidResources ? 'paid-resources-visible' : ''}`} aria-hidden={!showPaidResources}>
-              <div className="paid-resources-inner">
-                <div className="resource-widget resource-widget-money" aria-label={`Money ${state.money} dollars`}>
-                  <span className="resource-widget-icon" aria-hidden="true">$</span>
-                  <div>
-                    <span className="widget-label">Money</span>
-                    <span className="resource-values"><ResourceCounter value={state.money} prefix="$" /></span>
-                  </div>
-                </div>
-                <div className="resource-widget resource-widget-tokens" aria-label={`Tokens ${state.tokens}`}>
-                  <span className="resource-widget-icon" aria-hidden="true">◇</span>
-                  <div>
-                    <span className="widget-label">Tokens</span>
-                    <span className="resource-values"><ResourceCounter value={state.tokens} formatter={tokenFormatter} /></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="resource-widget resource-widget-energy" aria-label={`Energy ${state.energy}`}>
-              <span className="resource-widget-icon" aria-hidden="true">⚡</span>
+    <section className={`widget-band ${showPaidResources ? 'widget-band-paid' : ''}`} aria-label="Desktop widgets">
+      <div className="widget-cluster">
+        <div className={`paid-resources ${showPaidResources ? 'paid-resources-visible' : ''}`} aria-hidden={!showPaidResources}>
+          <div className="paid-resources-inner">
+            <div className="resource-widget resource-widget-money" aria-label={`Money ${state.money} dollars`}>
+              <span className="resource-widget-icon" aria-hidden="true">$</span>
               <div>
-                <span className="widget-label">Energy</span>
-                <span className="resource-values"><ResourceCounter value={state.energy} /></span>
+                <span className="widget-label">Money</span>
+                <span className="resource-values"><ResourceCounter value={state.money} prefix="$" /></span>
               </div>
             </div>
-            <time className="clock-widget" dateTime={now.toISOString()} aria-label={`Local time ${timeLabel}`}>
-              <span className="clock-icon" aria-hidden="true">◷</span>
-              <span>{timeLabel}</span>
-            </time>
-            <time className="date-widget" dateTime={now.toISOString()} aria-label={dateLabel}>
-              <span className="calendar-month">{monthLabel}</span>
-              <strong>{now.getDate()}</strong>
-              <span className="calendar-weekday">{weekdayLabel}</span>
-            </time>
-            <button
-              className="sound-toggle"
-              type="button"
-              onClick={toggleSounds}
-              aria-label={soundsMuted ? 'Unmute sounds' : 'Mute sounds'}
-              aria-pressed={soundsMuted}
-              title={soundsMuted ? 'Unmute sounds' : 'Mute sounds'}
-            >
-              <SpeakerIcon muted={soundsMuted} />
-              <span className="sound-toggle-label">{soundsMuted ? 'Unmute' : 'Mute'}</span>
-            </button>
+            <div className="resource-widget resource-widget-tokens" aria-label={`Tokens ${state.tokens}`}>
+              <span className="resource-widget-icon" aria-hidden="true">◇</span>
+              <div>
+                <span className="widget-label">Tokens</span>
+                <span className="resource-values"><ResourceCounter value={state.tokens} formatter={tokenFormatter} /></span>
+              </div>
+            </div>
           </div>
-        </section>
+        </div>
+        <div className="resource-widget resource-widget-energy" aria-label={`Energy ${state.energy}`}>
+          <span className="resource-widget-icon" aria-hidden="true">⚡</span>
+          <div>
+            <span className="widget-label">Energy</span>
+            <span className="resource-values"><ResourceCounter value={state.energy} /></span>
+          </div>
+        </div>
+        <time className="clock-widget" dateTime={now.toISOString()} aria-label={`Local time ${timeLabel}`}>
+          <span className="clock-icon" aria-hidden="true">◷</span>
+          <span>{timeLabel}</span>
+        </time>
+        <time className="date-widget" dateTime={now.toISOString()} aria-label={dateLabel}>
+          <span className="calendar-month">{monthLabel}</span>
+          <strong>{now.getDate()}</strong>
+          <span className="calendar-weekday">{weekdayLabel}</span>
+        </time>
+        <button
+          className="sound-toggle"
+          type="button"
+          onClick={toggleSounds}
+          aria-label={soundsMuted ? 'Unmute sounds' : 'Mute sounds'}
+          aria-pressed={soundsMuted}
+          title={soundsMuted ? 'Unmute sounds' : 'Mute sounds'}
+        >
+          <SpeakerIcon muted={soundsMuted} />
+          <span className="sound-toggle-label">{soundsMuted ? 'Unmute' : 'Mute'}</span>
+        </button>
+      </div>
+    </section>
   )
 }
 
 function SpeakerIcon({ muted }: { muted: boolean }) {
   return (
-    <svg
-      className="sound-toggle-icon"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      focusable="false"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg className="sound-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 10v4h4l5 4V6l-5 4H4Z" fill="currentColor" stroke="none" />
-      {muted ? (
-        <>
-          <path d="m16 9 5 6" />
-          <path d="m21 9-5 6" />
-        </>
-      ) : (
-        <>
-          <path d="M16 9.5a4.5 4.5 0 0 1 0 5" />
-          <path d="M18.5 7a8 8 0 0 1 0 10" />
-        </>
-      )}
+      {muted ? <><path d="m16 9 5 6" /><path d="m21 9-5 6" /></> : <><path d="M16 9.5a4.5 4.5 0 0 1 0 5" /><path d="M18.5 7a8 8 0 0 1 0 10" /></>}
     </svg>
   )
 }
