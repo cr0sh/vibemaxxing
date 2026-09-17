@@ -1020,7 +1020,6 @@ button {
 .dock-item:focus-visible .dock-icon {
   animation: dock-bounce 420ms cubic-bezier(0.22, 1, 0.36, 1);
   filter: brightness(1.12) saturate(1.08);
-  transform: translateY(-0.35rem) scale(1.12);
 }
 
 .dock-item-attention .dock-icon {
@@ -1072,16 +1071,15 @@ textarea:focus-visible {
 }
 
 @keyframes dock-bounce {
-  0% { transform: translateY(0) scale(1); }
-  42% { transform: translateY(-0.56rem) scale(1.12); }
-  70% { transform: translateY(-0.32rem) scale(1.07); }
-  100% { transform: translateY(0) scale(1.1); }
+  0%, 100% { transform: translateY(0); }
+  42% { transform: translateY(-2rem); }
+  70% { transform: translateY(-0.5rem); }
 }
 
 @keyframes dock-attention-bounce {
-  0%, 100% { transform: translateY(0) scale(1.06); }
-  42% { transform: translateY(-0.56rem) scale(1.14); }
-  70% { transform: translateY(-0.32rem) scale(1.09); }
+  0%, 100% { transform: translateY(0); }
+  42% { transform: translateY(-2rem); }
+  70% { transform: translateY(-0.5rem); }
 }
 
 @media (max-width: 900px) {
@@ -1231,7 +1229,7 @@ textarea:focus-visible {
   .dock-item-attention .dock-icon {
     animation: none !important;
     filter: brightness(1.16) saturate(1.1);
-    transform: translateY(-0.18rem) scale(1.08);
+    transform: none;
   }
   .dock-item-attention .dock-indicator {
     background: #fff3c4;
