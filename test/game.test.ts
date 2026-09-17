@@ -652,3 +652,45 @@ describe('extended progression boundaries', () => {
     expect(state.tokens).toBe(0)
   })
 })
+ 
+describe('developer previews', () => {
+  test('Tiro replaces a stale loss with a usable campaign and live reset timing', () => {
+    const hired = hire(91)
+    const stale = gameReducer({
+      ...hired,
+      tasks: hired.tasks.map((task) => ({ ...task, deadlineAt: 1 })),
+      nextTaskAt: 1_000,
+      nextPingAt: 1,
+      pingDeadline: 1,
+    }, { type: 'tick', seconds: 1 })
+    expect(stale.stage).toBe('lost')
+
+    const tiro = gameReducer(stale, { type: 'dev-jump', stage: 'tiro' })
+    expect(tiro.stage).toBe('hired')
+    expect(tiro.company).toBe(hired.company)
+    expect(tiro.elapsed).toBe(0)
+    expect(tiro.energy).toBe(100)
+    expect(tiro.tokens).toBe(1_900_000)
+    expect(tiro.money).toBe(0)
+    expect(tiro.failure).toBeNull()
+    expect(tiro.pingDeadline).toBeNull()
+    expect(tiro.resetClaimed).toBe(false)
+    expect(tiro.watercoolerUnlocked).toBe(true)
+    expect(tiro.watercoolerRead).toBe(true)
+    expect(tiro.completedTasks).toBe(0)
+    expect(tiro.level).toBe(3)
+    expect(tiro.reasoningUnlocked).toBe(false)
+    expect(tiro.fastModeUnlocked).toBe(false)
+    expect(tiro.socialInstalledAt).toBe(0)
+    expect(tiro.socialPosts).toEqual([{ id: 'campaign', type: 'campaign', elapsed: 0, likes: 0 }])
+    expect(tiro.tasks.every((task) => task.assignedAt === 0 && task.deadlineAt > 0)).toBe(true)
+
+    const claimed = gameReducer(tiro, { type: 'claim-token-reset' })
+    expect(claimed.tokens).toBe(MAX_TOKENS)
+    expect(claimed.resetClaimed).toBe(true)
+    const beforeLottery = gameReducer(claimed, { type: 'tick', seconds: 4 })
+    expect(beforeLottery.socialPosts.some((post) => post.type === 'lottery')).toBe(false)
+    const lottery = gameReducer(beforeLottery, { type: 'tick', seconds: 1 })
+    expect(lottery.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(1)
+  })
+})

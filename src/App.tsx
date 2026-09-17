@@ -7,8 +7,7 @@ import {
   type Application,
   type GameAction,
   type GameState,
-  type Stage,
-  type TerminalId,
+  type DevJumpTarget,
 } from './game'
 import { applicationSamples } from './applicationSamples'
 import { MessengerContent, TerminalContent } from './Employment'
@@ -40,7 +39,7 @@ function App() {
   const [state, dispatch] = useReducer(gameReducer, initialGame)
   const [now, setNow] = useState(() => new Date())
   const [isDevPaused, setIsDevPaused] = useState(false)
-
+  const [devTiroJump, setDevTiroJump] = useState(0)
   useEffect(() => {
     let lastTickAt = Date.now()
     const timer = window.setInterval(() => {
@@ -62,11 +61,13 @@ function App() {
     <div className={`app-shell stage-${state.stage}`}>
       <DesktopWidgets state={state} now={now} />
       <Desktop
-        key={state.stage === 'hired' || state.stage === 'lost' ? 'employment' : state.stage}
+        key={`${state.stage === 'hired' || state.stage === 'lost' ? 'employment' : state.stage}-${devTiroJump}`}
         state={state}
         dispatch={dispatch}
         isDevPaused={isDevPaused}
         onDevPauseChange={setIsDevPaused}
+        openSocialOnMount={devTiroJump > 0 && state.socialInstalledAt !== null}
+        onTiroJump={() => setDevTiroJump((current) => current + 1)}
       />
     </div>
   )
@@ -77,28 +78,45 @@ function Desktop({
   dispatch,
   isDevPaused,
   onDevPauseChange,
+  openSocialOnMount,
+  onTiroJump,
 }: {
   state: GameState
   dispatch: Dispatch<GameAction>
   isDevPaused: boolean
   onDevPauseChange: (paused: boolean) => void
+  openSocialOnMount: boolean
+  onTiroJump: () => void
 }) {
   const [application, setApplication] = useState<Application>(emptyApplication)
   const hasEmployment =
     state.stage === 'hired' ||
     (state.stage === 'lost' && (state.tasks.length > 0 || state.completedTasks > 0 || state.elapsed > 0))
-  const [windows, setWindows] = useState<WindowState>(() => ({
+  const initialWindows: WindowState = {
     apply: state.stage === 'applying',
     offer: state.stage === 'offer',
     messenger: state.stage === 'hired',
     terminal: state.stage === 'hired',
     'terminal-2': false,
     shop: false,
-    social: false,
+    social: openSocialOnMount && state.socialInstalledAt !== null,
     defeat: state.stage === 'lost',
-  }))
+  }
+  const [windows, setWindows] = useState<WindowState>(() => initialWindows)
+  const initiallyOpenWindows = (Object.keys(initialWindows) as WindowId[]).filter((id) => initialWindows[id])
+  const [acknowledgedDockWindows, setAcknowledgedDockWindows] = useState<Set<WindowId>>(
+    () => new Set(initiallyOpenWindows),
+  )
   const [activeWindow, setActiveWindow] = useState<WindowId>(
-    state.stage === 'lost' ? 'defeat' : state.stage === 'hired' ? 'messenger' : state.stage === 'offer' ? 'offer' : 'apply',
+    initialWindows.social
+      ? 'social'
+      : state.stage === 'lost'
+        ? 'defeat'
+        : state.stage === 'hired'
+          ? 'messenger'
+          : state.stage === 'offer'
+            ? 'offer'
+            : 'apply',
   )
   const [focusRequest, setFocusRequest] = useState(0)
   const [isAutofilling, setIsAutofilling] = useState(false)
@@ -138,8 +156,20 @@ function Desktop({
           : state.stage === 'lost'
             ? ['defeat']
             : []
-  const [acknowledgedDockWindows, setAcknowledgedDockWindows] = useState<Set<WindowId>>(() => new Set())
+  const acknowledgeDockWindow = (id: WindowId) => {
+    setAcknowledgedDockWindows((current) => {
+      if (current.has(id)) return current
+      const next = new Set(current)
+      next.add(id)
+      return next
+    })
+  }
+  const focusWindow = (id: WindowId) => {
+    acknowledgeDockWindow(id)
+    setActiveWindow(id)
+  }
   const openWindow = (id: WindowId) => {
+    acknowledgeDockWindow(id)
     setWindows((current) => ({ ...current, [id]: true }))
     if (id === 'defeat') {
       setDefeatDismissed(false)
@@ -150,21 +180,13 @@ function Desktop({
     setFocusRequest((request) => request + 1)
     setActiveWindow(id)
   }
-  const activateDock = (id: WindowId) => {
-    setAcknowledgedDockWindows((current) => {
-      if (current.has(id)) return current
-      const next = new Set(current)
-      next.add(id)
-      return next
-    })
-    openWindow(id)
-  }
-
   const focusDefeat = () => {
+    acknowledgeDockWindow('defeat')
     setDefeatClaimed(true)
     setActiveWindow('defeat')
     if (hasEmployment) setWindows((current) => ({ ...current, messenger: true }))
   }
+
 
   const minimizeWindow = (id: WindowId) => {
     setWindows((current) => ({
@@ -273,10 +295,11 @@ function Desktop({
 
   }
 
-  const handleDevJump = (stage: Stage) => {
+  const handleDevJump = (stage: DevJumpTarget) => {
     cancelAutofill()
     onDevPauseChange(false)
     setApplication(emptyApplication())
+    if (stage === 'tiro') onTiroJump()
     dispatch({ type: 'dev-jump', stage })
   }
 
@@ -304,8 +327,7 @@ function Desktop({
                   active={isWindowActive('apply')}
                   className="application-window"
                   hidden={!windows.apply}
-                  onFocus={() => setActiveWindow('apply')}
-                  onMinimize={() => minimizeWindow('apply')}
+                  onFocus={() => focusWindow('apply')}
                 >
                   <div className="window-heading-row">
                     <div>
@@ -358,8 +380,7 @@ function Desktop({
                   active={isWindowActive('offer')}
                   className="offer-window"
                   hidden={!windows.offer}
-                  onFocus={() => setActiveWindow('offer')}
-                  onMinimize={() => minimizeWindow('offer')}
+                  onFocus={() => focusWindow('offer')}
                 >
                   <div className="offer-hero">
                     <span className="offer-spark" aria-hidden="true">✦</span>
@@ -392,8 +413,7 @@ function Desktop({
                     className="messenger-window-frame"
                     contentLayout="fill"
                     hidden={!windows.messenger && !defeatAutoFront}
-                    onFocus={() => setActiveWindow('messenger')}
-                    onMinimize={() => minimizeWindow('messenger')}
+                    onFocus={() => focusWindow('messenger')}
                   >
                     <MessengerContent state={state} dispatch={dispatch} onOpenSocial={() => openWindow('social')} />
                   </WindowFrame>
@@ -408,8 +428,7 @@ function Desktop({
                       className={`terminal-window-frame ${terminal.yolo ? 'terminal-window-yolo' : ''}`}
                       contentLayout="fill"
                       hidden={!windows[terminal.id]}
-                      onFocus={() => setActiveWindow(terminal.id)}
-                      onMinimize={() => minimizeWindow(terminal.id)}
+                      onFocus={() => focusWindow(terminal.id)}
                     >
                       <TerminalContent
                         state={state}
@@ -427,8 +446,7 @@ function Desktop({
                     className="shop-window-frame"
                     contentLayout="fill"
                     hidden={!windows.shop}
-                    onFocus={() => setActiveWindow('shop')}
-                    onMinimize={() => minimizeWindow('shop')}
+                    onFocus={() => focusWindow('shop')}
                   >
                     <ShopContent state={state} dispatch={dispatch} />
                   </WindowFrame>
@@ -441,8 +459,7 @@ function Desktop({
                       className="social-window-frame"
                       contentLayout="fill"
                       hidden={!windows.social}
-                      onFocus={() => setActiveWindow('social')}
-                      onMinimize={() => minimizeWindow('social')}
+                      onFocus={() => focusWindow('social')}
                     >
                       <SocialContent state={state} dispatch={dispatch} />
                     </WindowFrame>
@@ -481,6 +498,7 @@ function Desktop({
               </button>
               <button type="button" onClick={() => dispatch({ type: 'tick', seconds: 10 })}>Advance 10s</button>
               <button type="button" onClick={() => handleDevJump('offer')}>Offer</button>
+              <button type="button" onClick={() => handleDevJump('tiro')}>Tiro</button>
               <button type="button" onClick={() => handleDevJump('hired')}>Hired</button>
               <button type="button" onClick={retryGame}>Reset</button>
             </div>
@@ -509,12 +527,13 @@ function Desktop({
               const isOpen = id === 'defeat'
                 ? state.stage === 'lost' && !defeatDismissed
                 : windows[id] || (id === 'messenger' && defeatAutoFront)
+              const dockAcknowledged = acknowledgedDockWindows.has(id) || (state.stage === 'lost' && id === 'defeat')
               return (
                 <button
-                  className={`dock-item dock-item-${id} ${isWindowActive(id) ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''} ${!acknowledgedDockWindows.has(id) ? 'dock-item-attention' : ''}`}
+                  className={`dock-item dock-item-${id} ${isWindowActive(id) ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''} ${!dockAcknowledged ? 'dock-item-attention' : ''}`}
                   type="button"
                   key={id}
-                  onClick={() => activateDock(id)}
+                  onClick={() => openWindow(id)}
                   aria-label={`${isOpen ? 'Focus' : 'Open'} ${item.label} window`}
                   aria-pressed={isWindowActive(id) && isOpen}
                 >
