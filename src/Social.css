@@ -308,36 +308,6 @@
   font-weight: 750;
 }
 
-.social-empty {
-  display: grid;
-  justify-items: center;
-  align-content: center;
-  min-height: 12rem;
-  padding: 2rem 1.5rem;
-  text-align: center;
-}
-
-.social-empty .social-avatar {
-  margin-bottom: 0.68rem;
-}
-
-.social-empty h2 {
-  margin: 0;
-  color: #50345a;
-  font-size: 0.88rem;
-}
-
-.social-empty p {
-  max-width: 18rem;
-  margin: 0.45rem 0 0;
-  color: #977f8e;
-  font-size: 0.72rem;
-  line-height: 1.45;
-}
-
-.social-not-installed {
-  flex: 1 1 auto;
-}
 
 @media (max-width: 560px) {
   .social-header {

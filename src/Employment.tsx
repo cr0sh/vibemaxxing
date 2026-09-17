@@ -23,6 +23,7 @@ import './Employment.css'
 
 type MessengerProps = {
   state: GameState
+  dispatch: Dispatch<GameAction>
   /** Opens the installed social app. The reducer action is dispatched first. */
   onOpenSocial: () => void
 }
@@ -69,7 +70,7 @@ const taskProgressLabel = (task: WorkTask): string => {
   if (task.status === 'approval') return 'Paused for review'
   if (task.status === 'blocked') return 'Blocked'
   if (task.status === 'artifact') return 'Complete'
-  if (task.status === 'failed') return `${Math.round(Math.min(1, task.progress / Math.max(1, task.difficulty)) * 100)}% retained`
+  if (task.status === 'failed') return 'Attempt failed'
   return `${Math.round(Math.min(1, task.progress / Math.max(1, task.difficulty)) * 100)}% complete`
 }
 
@@ -79,7 +80,7 @@ const workPhrase = (task: WorkTask): string => {
   if (task.status === 'approval') return 'The agent paused. Your review is required before it can continue.'
   if (task.status === 'blocked') return 'The agent is waiting on your review decision.'
   if (task.status === 'artifact') return 'The artifact is packaged and ready to deliver.'
-  if (task.status === 'failed') return 'This attempt stopped, but its progress evidence is saved. Retry to continue.'
+  if (task.status === 'failed') return 'The design did not pass. Start a fresh attempt before the deadline.'
   if (ratio < 0.25) return 'Reading the brief and mapping a first approach…'
   if (ratio < 0.55) return 'Building the first useful pass…'
   if (ratio < 0.82) return 'Checking edge cases and tightening the result…'
@@ -127,8 +128,7 @@ function TaskAttachment({
   archived?: boolean
 }) {
   const isAssigned = task.status === 'assigned' && task.terminalId === null && task.slot === null
-  const canAfford = canFundTaskAttempt(state, task, task.fastMode)
-  const canStart = state.stage === 'hired' && !archived && isAssigned && canAfford
+  const canStart = state.stage === 'hired' && !archived && isAssigned && canFundTaskAttempt(state, task, task.fastMode)
   const dragSource = useDragDropSource({ kind: 'task', id: String(task.id) }, canStart)
   const rewardAt = archived ? task.assignedAt : elapsed
   const reward = taskReward(task, rewardAt)
@@ -164,11 +164,13 @@ function TaskAttachment({
           <span className="employment-task-kind">{kindLabel}</span>
         </div>
         <span>{task.description}</span>
+        {task.baseReward > 0 && (
         <span className="employment-reward-line">
           <span className="employment-reward-bag" aria-hidden="true">💰</span>
           {archived ? `${formatMoney(reward)} initial bonus` : `${formatMoney(reward)} reward now`}
           <span className="employment-reward-decay">{archived ? '' : ' · depreciates while assigned'}</span>
         </span>
+        )}
         <span className="employment-attachment-meta employment-task-economy">
           <span>{compactTokens.format(cost)} tokens{task.fastMode ? ' · 2×' : ''}</span>
           {task.model !== null && <span>{taskModelLabel(task)}</span>}
@@ -295,11 +297,12 @@ function WatercoolerPane({
           <p>Colleagues share the useful stuff here. No boss pings, just a little context between attempts.</p>
         </div>
       </div>
+      {state.watercoolerUnlocked ? (
       <div className="message-row employment-message-entry employment-watercooler-message">
         <div className="avatar" aria-hidden="true">M</div>
         <div className="message-body">
           <div className="message-meta"><strong>mira.from-product</strong><span>watercooler</span></div>
-          <p>Someone made a tiny social app for the team. The ZZZ feed is where the good launch notes are hiding.</p>
+          <p>Running low on tokens? Tiro is running a free usage-reset campaign on ZZZ. Grab the reset, then watch the feed for another chance.</p>
           <button
             className="employment-social-open-button"
             type="button"
@@ -312,6 +315,7 @@ function WatercoolerPane({
           {installed && state.stage === 'lost' && <span className="employment-control-hint">ZZZ is read-only after the run ends.</span>}
         </div>
       </div>
+      ) : <p className="employment-control-hint">No messages yet.</p>}
     </div>
   )
 }
@@ -450,7 +454,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
           <div className="message-body">
             <div className="message-meta"><strong>You</strong><span>delivered</span></div>
             <p>Delivered <strong>{message.task.artifactName}</strong>. Nice work — {message.completedTasks} assignment{message.completedTasks === 1 ? '' : 's'} complete.</p>
-            <p className="employment-delivery-reward"><span aria-hidden="true">💰</span> Earned {formatMoney(message.reward)} completion bonus.</p>
+            {message.reward > 0 && <p className="employment-delivery-reward"><span aria-hidden="true">💰</span> Earned {formatMoney(message.reward)} completion bonus.</p>}
             <div className="employment-delivery-meta">
               <span>{message.task.kind === 'architecture' ? 'Architecture milestone' : 'Standard assignment'}</span>
               {message.task.model !== null && <span>{taskModelLabel(taskFromSnapshot(message.task))}</span>}
@@ -468,7 +472,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
           <div className="message-body">
             <div className="message-meta"><strong>boss.exe</strong><span>incentives · {formatSeconds(message.elapsed)}</span></div>
-            <p>Five deliveries in. Keep the quality steady and the completion bonuses will keep compounding.</p>
+            <p>Incentivized mode starts now. New assignments include a cash bonus; it drops by 10% of its initial value every 10 seconds, down to 5%. Deadlines still apply.</p>
             <span className="employment-milestone-label">Performance incentives enabled</span>
           </div>
         </div>
@@ -492,13 +496,14 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
       const currentTask = taskForMessage(state, message.task)
       const retryFastMode = currentTerminalFastMode(state, currentTask.task)
       const retryCost = taskTokenCost(currentTask.task, retryFastMode)
-      const canRetry = state.stage === 'hired' && !currentTask.archived && canFundTaskAttempt(state, currentTask.task, retryFastMode)
+      const currentFailure = !currentTask.archived && currentTask.task.status === 'failed' && currentTask.task.attempt === message.task.attempt
+      const canRetry = state.stage === 'hired' && currentFailure && canFundTaskAttempt(state, currentTask.task, retryFastMode)
       return (
         <div className="message-row employment-message-entry employment-attempt-failed-entry" key={message.id}>
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
           <div className="message-body">
             <div className="message-meta"><strong>agent-shell</strong><span>attempt failed · {formatSeconds(message.elapsed)}</span></div>
-            <p><strong>{message.task.title}</strong> did not pass the completion check. The lane evidence is preserved; no artifact or bonus was created.</p>
+            <p><strong>{message.task.title}</strong> did not pass the completion check. No artifact or bonus was produced.</p>
             <div className="employment-failed-summary">
               <span>{message.task.kind === 'architecture' ? 'Architecture brief' : 'Standard brief'}</span>
               <span>{message.task.model === null ? 'Basic model' : taskModelLabel(taskFromSnapshot(message.task))}</span>
@@ -513,7 +518,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
             >
               Retry attempt · {compactTokens.format(retryCost)} tokens
             </button>
-            {state.stage === 'hired' && !currentTask.archived && !canFundTaskAttempt(state, currentTask.task, retryFastMode) && <span className="employment-control-hint">Need more tokens before this lane can retry.</span>}
+            {state.stage === 'hired' && currentFailure && !canFundTaskAttempt(state, currentTask.task, retryFastMode) && <span className="employment-control-hint">Need more tokens before this lane can retry.</span>}
           </div>
         </div>
       )
@@ -568,7 +573,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
         <div className="messenger-team">vibe<span>corp</span></div>
         <div className="employment-team-status">
           <span className="employment-level-badge">L{state.level}</span>
-          <span>{state.level === 4 ? 'Architecture track' : 'Delivery track'}</span>
+          <span>{state.level === 4 ? 'Architecture track' : 'Intern'}</span>
         </div>
         <p className="sidebar-heading">Channels</p>
         <ChannelButton channel="general" active={channel === 'general'} unread={unreadCount > 0} onSelect={() => selectChannel('general')} />
@@ -588,19 +593,19 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
             <ChannelButton channel="watercooler" active={channel === 'watercooler'} unread={watercoolerUnread} onSelect={() => selectChannel('watercooler')} />
           </nav>
         </div>
-        <div ref={chatPaneRef} className="chat-scroll-region">
+        <div ref={chatPaneRef} className="chat-scroll-region employment-general-pane" hidden={channel !== 'general'}>
           <div className="chat-messages">
-            <div hidden={channel !== 'general'} aria-hidden={channel !== 'general'} className="employment-general-pane">
               {state.messages.map(renderGeneralMessage)}
               {state.stage === 'hired' && state.pingDeadline === null && (
                 <p className="employment-next-ping" role="status" aria-live="polite">
                   Next boss check-in in <strong>{formatSeconds(nextPingRemaining)}</strong>
                 </p>
               )}
-            </div>
-            <div hidden={channel !== 'watercooler'} aria-hidden={channel !== 'watercooler'} className="employment-watercooler-wrapper">
-              <WatercoolerPane state={state} onOpenSocial={handleOpenSocial} />
-            </div>
+          </div>
+        </div>
+        <div className="chat-scroll-region employment-watercooler-wrapper" hidden={channel !== 'watercooler'}>
+          <div className="chat-messages">
+            <WatercoolerPane state={state} onOpenSocial={handleOpenSocial} />
           </div>
         </div>
         <UnreadIndicator count={channel === 'general' ? unreadCount : 0} onClick={scrollToLatest} />
@@ -628,7 +633,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
   useDragDropTarget(laneRef, {
     id: `terminal-lane-${terminalId}-${slot}`,
     priority: 3,
-    accepts: (source) => source.kind === 'task' && state.stage === 'hired' && task === undefined && state.tasks.some((candidate) => candidate.status === 'assigned' && candidate.terminalId === null && candidate.slot === null && canFundTaskAttempt(state, candidate, fastMode)),
+    accepts: (source) => source.kind === 'task' && state.stage === 'hired' && task === undefined && state.tasks.some((candidate) => String(candidate.id) === source.id && candidate.status === 'assigned' && candidate.terminalId === null && candidate.slot === null && canFundTaskAttempt(state, candidate, fastMode)),
     onDrop: (source) => {
       const id = Number(source.id)
       const dropped = state.tasks.find((candidate) => candidate.id === id)
@@ -681,7 +686,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
         const hasUpgrade = event.dataTransfer.types.includes('application/x-vibemaxxer-upgrade')
         const upgrade = hasUpgrade ? event.dataTransfer.getData('application/x-vibemaxxer-upgrade') : ''
         const taskId = hasTask ? Number(event.dataTransfer.getData('application/x-vibemaxxer-task')) : NaN
-        const droppedTask = state.tasks.find((candidate) => candidate.id === taskId)
+        const droppedTask = state.tasks.find((candidate) => candidate.id === taskId || isSourceActive('task', String(candidate.id)))
         const terminalTarget = upgrade === 'terminal' ? 'terminal' : terminalId
         const canDropTask = hasTask && !task && droppedTask?.status === 'assigned' && droppedTask.terminalId === null && droppedTask.slot === null && canFundTaskAttempt(state, droppedTask, fastMode)
         if (canDropTask || (hasUpgrade && (upgrade === 'split' || upgrade === 'yolo' || upgrade === 'terminal') && upgradePrice(state, upgrade, terminalTarget) !== null)) {
@@ -692,7 +697,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
       onDrop={handleDrop}
     >
       <div className="employment-lane-heading">
-        <span>{yolo ? 'YOLO' : task ? taskStatusLabel(task).toLowerCase() : 'idle'}</span>
+        <span>{task ? taskStatusLabel(task).toLowerCase() : yolo ? 'YOLO' : 'idle'}</span>
         {task && <span>attempt {Math.max(1, task.attempt)}</span>}
       </div>
       {task && (
@@ -712,7 +717,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
           <div className="employment-attempt-meta">
             <span>{modelLabel}</span>
             <span>{taskSpeedLabel(task)}</span>
-            {task.status !== 'failed' && <span><span aria-hidden="true">💰</span> {formatMoney(taskReward(task, state.elapsed))} now</span>}
+            {task.status !== 'failed' && task.baseReward > 0 && <span><span aria-hidden="true">💰</span> {formatMoney(taskReward(task, state.elapsed))} now</span>}
           </div>
 
           {task.status === 'approval' && !yolo && (
@@ -770,7 +775,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
     priority: 1,
     accepts: (source) => {
       if (state.stage !== 'hired') return false
-      if (source.kind === 'task') return idleSlot !== null && state.tasks.some((candidate) => candidate.status === 'assigned' && candidate.terminalId === null && candidate.slot === null && canFundTaskAttempt(state, candidate, terminal?.fastMode ?? false))
+      if (source.kind === 'task') return idleSlot !== null && state.tasks.some((candidate) => String(candidate.id) === source.id && candidate.status === 'assigned' && candidate.terminalId === null && candidate.slot === null && canFundTaskAttempt(state, candidate, terminal?.fastMode ?? false))
       return source.kind === 'upgrade' &&
         (source.id === 'split' || source.id === 'yolo' || source.id === 'terminal') &&
         upgradePrice(state, source.id, source.id === 'terminal' ? 'terminal' : terminalId) !== null
@@ -815,7 +820,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
     const hasTask = event.dataTransfer.types.includes('application/x-vibemaxxer-task')
     const hasUpgrade = event.dataTransfer.types.includes('application/x-vibemaxxer-upgrade')
     const taskId = hasTask ? Number(event.dataTransfer.getData('application/x-vibemaxxer-task')) : NaN
-    const droppedTask = state.tasks.find((candidate) => candidate.id === taskId)
+    const droppedTask = state.tasks.find((candidate) => candidate.id === taskId || isSourceActive('task', String(candidate.id)))
     const canDropTask = hasTask && idleSlot !== null && droppedTask?.status === 'assigned' && droppedTask.terminalId === null && droppedTask.slot === null && canFundTaskAttempt(state, droppedTask, terminal?.fastMode ?? false)
     if (state.stage === 'hired' && (canDropTask || (hasUpgrade && (['split', 'yolo', 'terminal'] as const).some((upgrade) => upgradePrice(state, upgrade, upgrade === 'terminal' ? 'terminal' : terminalId) !== null)))) {
       event.preventDefault()
@@ -850,6 +855,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
             terminalId={terminalId}
             slot={slot}
             task={state.tasks.find((candidate) => candidate.terminalId === terminalId && candidate.slot === slot)}
+            yolo={yolo}
             fastMode={terminal?.fastMode ?? false}
           />
         ))}
@@ -868,7 +874,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
               <option key={model} value={model}>{AGENT_MODELS[model].label}{model === 'reasoning' && !state.reasoningUnlocked ? ' (locked)' : ''}</option>
             ))}
           </select>
-          {!state.reasoningUnlocked && <span className="employment-control-hint">Reasoning unlocks after the first milestone.</span>}
+          {!state.reasoningUnlocked && <span className="employment-control-hint">Tiro Reason unlocks after your first architecture delivery.</span>}
         </div>
         <div className="employment-token-line">
           <span><strong>{state.tokens.toLocaleString()}</strong> tokens available</span>

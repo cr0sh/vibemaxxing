@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useRef } from 'react'
 import type { Dispatch } from 'react'
 import {
   type GameAction,
@@ -23,10 +23,10 @@ const elapsedLabel = (elapsed: number): string => {
 
 const postHeading = (post: SocialPost): string => {
   switch (post.type) {
-    case 'campaign': return 'Welcome to ZZZ'
+    case 'campaign': return 'Your usage reset is here'
     case 'lottery': return 'The Tiro Token Lottery'
     case 'reset': return 'A token miracle'
-    case 'model': return 'Reasoning mode is online'
+    case 'model': return 'Tiro Reason is online'
     case 'fast-mode': return 'Fast mode unlocked'
   }
 }
@@ -57,8 +57,8 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
     return (
       <>
         <p className="social-post-copy">
-          Tiro here. Your company is moving fast, so your tokens should too. ZZZ is the unofficial
-          place for people who ship first and read the changelog eventually.
+          Tiro here. Running low? Claim a free, one-time reset to the full 10M token balance.
+          Keep an eye on this feed — there may be another reset in your future.
         </p>
         <p className="social-post-caption">A tiny social network for a very serious workplace.</p>
         <button
@@ -104,7 +104,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
     return (
       <>
         <p className="social-post-copy social-success-copy">
-          The token fairy has arrived. Your balance was fully reset by the ZZZ lottery.
+          Your token inventory is back at 10M. Time to ship something ambitious.
         </p>
         <p className="social-post-caption">Keep shipping. Keep hearting.</p>
       </>
@@ -115,10 +115,10 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
     return (
       <>
         <p className="social-post-copy">
-          Reasoning mode has joined the team. Choose it on a terminal when a task needs a little more
-          thought; the model is available from the terminal controls.
+          Tiro Reason handles systems architecture reliably, but runs 40% slower than Basic.
+          Choose it in Terminal; the change applies to your next attempt.
         </p>
-        <p className="social-post-caption">More careful, not more mysterious.</p>
+        <p className="social-post-caption">More thought. Fewer retries.</p>
       </>
     )
   }
@@ -160,16 +160,8 @@ function SocialPostCard({ post, state, dispatch }: { post: SocialPost; state: Ga
 
 export function SocialContent({ state, dispatch }: SocialProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
-  const posts = useMemo(
-    () => state.socialPosts
-      .map((post, index) => ({ post, index }))
-      .sort((left, right) => left.post.elapsed - right.post.elapsed || left.index - right.index)
-      .map(({ post }) => post),
-    [state.socialPosts],
-  )
+  const posts = state.socialPosts
   const { unreadCount, scrollToLatest } = useUnreadMessages(posts.map((post) => post.id), scrollRef)
-  const isInstalled = state.socialInstalledAt !== null
-  const hasPosts = posts.length > 0
 
   return (
     <section className="social-app" aria-label="ZZZ social feed">
@@ -181,22 +173,12 @@ export function SocialContent({ state, dispatch }: SocialProps) {
             <h1>ZZZ</h1>
           </div>
         </div>
-        <div className="social-status" aria-label={isInstalled ? 'ZZZ connected' : 'ZZZ not connected'}>
-          <span className={`social-status-dot ${isInstalled ? 'is-live' : ''}`} aria-hidden="true" />
-          <span>{isInstalled ? 'Connected' : 'Waiting for install'}</span>
+        <div className="social-status" aria-label={state.stage === 'hired' ? 'ZZZ connected' : 'ZZZ archive'}>
+          <span className={`social-status-dot ${state.stage === 'hired' ? 'is-live' : ''}`} aria-hidden="true" />
+          <span>{state.stage === 'hired' ? 'Connected' : 'Read only'}</span>
         </div>
       </header>
 
-      {!isInstalled && (
-        <div className="social-empty social-not-installed" role="status">
-          <TiroAvatar />
-          <h2>ZZZ is waiting in the wings</h2>
-          <p>Install the social channel from the Messenger incentives post to unlock the feed.</p>
-        </div>
-      )}
-
-      {isInstalled && (
-        <>
           <div className="social-feed-toolbar">
             <div>
               <p className="social-feed-title">Your timeline</p>
@@ -205,18 +187,8 @@ export function SocialContent({ state, dispatch }: SocialProps) {
             <UnreadIndicator count={unreadCount} onClick={scrollToLatest} />
           </div>
           <div className="social-feed" ref={scrollRef} role="log" aria-label="ZZZ timeline" aria-live="polite">
-            {hasPosts
-              ? posts.map((post) => <SocialPostCard key={post.id} post={post} state={state} dispatch={dispatch} />)
-              : (
-                <div className="social-empty" role="status">
-                  <TiroAvatar />
-                  <h2>The timeline is quiet</h2>
-                  <p>Give it a second. Tiro is typing something probably actionable.</p>
-                </div>
-              )}
+            {posts.map((post) => <SocialPostCard key={post.id} post={post} state={state} dispatch={dispatch} />)}
           </div>
-        </>
-      )}
     </section>
   )
 }

@@ -24,6 +24,7 @@ const windowDefaults: Record<string, Size & Point> = {
   terminal: { width: 470, height: 500, x: 0.72, y: 0.3 },
   'terminal-2': { width: 470, height: 500, x: 0.26, y: 0.28 },
   shop: { width: 520, height: 528, x: 0.5, y: 0.14 },
+  social: { width: 520, height: 600, x: 0.76, y: 0.12 },
   defeat: { width: 430, height: 330, x: 0.5, y: 0.28 },
 }
 const defaultWindow = { width: 520, height: 380, x: 0.5, y: 0.16 }

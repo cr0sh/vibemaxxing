@@ -126,11 +126,7 @@ export function ShopContent({ state, dispatch }: ShopProps) {
 
   const fastModeLabel = state.stage !== 'hired'
     ? 'Unavailable'
-    : !state.fastModeUnlocked
-      ? 'Locked'
-      : selectedTerminal?.fastMode
-        ? 'On'
-        : 'Off'
+    : selectedTerminal?.fastMode ? 'On' : 'Off'
 
 
   return (
@@ -158,6 +154,7 @@ export function ShopContent({ state, dispatch }: ShopProps) {
             targetTerminal={selectedTargetTerminal}
           />
         ))}
+        {state.fastModeUnlocked && (
         <article
           className={`shop-product shop-fast-mode-product ${fastModeAvailable ? '' : 'shop-product-unavailable'}`}
           aria-label="Fast mode"
@@ -166,9 +163,7 @@ export function ShopContent({ state, dispatch }: ShopProps) {
           <div className="shop-product-copy">
             <h3>Fast mode</h3>
             <p>
-              {state.fastModeUnlocked
-                ? 'The next attempt on the selected terminal runs at 2× speed and costs 2× tokens.'
-                : 'Unlock this control through the ZZZ feed.'}
+              The next attempt on the selected terminal runs at 2× speed and costs 2× tokens.
             </p>
           </div>
           <label className="shop-fast-mode-toggle">
@@ -183,6 +178,7 @@ export function ShopContent({ state, dispatch }: ShopProps) {
             <span className="shop-toggle-track" aria-hidden="true"><span /></span>
           </label>
         </article>
+        )}
 
         <article
           className={`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`}

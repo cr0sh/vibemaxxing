@@ -19,7 +19,7 @@ export type AgentModelId = 'basic' | 'reasoning'
 
 export const AGENT_MODELS: Record<AgentModelId, { label: string; intelligence: number; speed: number }> = {
   basic: { label: 'Basic', intelligence: 1, speed: 1 },
-  reasoning: { label: 'Reasoning', intelligence: 2, speed: 0.6 },
+  reasoning: { label: 'Tiro Reason', intelligence: 2, speed: 0.6 },
 }
 
 export type TerminalState = {
@@ -37,6 +37,7 @@ export type TaskDescriptor = {
   difficulty: number
   artifactName: string
   kind: 'standard' | 'architecture'
+  complexity: number
 }
 
 export type WorkTask = TaskDescriptor & {
@@ -62,6 +63,7 @@ export type EmploymentTaskSnapshot = Pick<
   | 'difficulty'
   | 'artifactName'
   | 'kind'
+  | 'complexity'
   | 'deadlineAt'
   | 'startedAt'
   | 'assignedAt'
@@ -85,7 +87,8 @@ export type EmploymentMessage =
       reward: number
       completedTasks: number
     }
-  | { id: string; type: 'incentives' | 'promotion'; elapsed: number }
+  | { id: string; type: 'incentives'; elapsed: number }
+  | { id: string; type: 'promotion'; elapsed: number }
   | { id: string; type: 'attempt-failed'; elapsed: number; task: EmploymentTaskSnapshot }
   | { id: string; type: 'ping'; elapsed: number; deadlineAt: number; acknowledged: boolean }
   | { id: string; type: 'firing'; elapsed: number; failure: string }
@@ -197,7 +200,7 @@ export function taskReward(
   const initial = Number.isFinite(task.baseReward) ? Math.max(0, task.baseReward) : 0
   const safeElapsed = Number.isFinite(elapsed) ? elapsed : task.assignedAt
   const elapsedSinceAssignment = Math.max(0, safeElapsed - task.assignedAt)
-  const retained = Math.max(0.05, 1 - 0.1 * elapsedSinceAssignment / 10)
+  const retained = Math.max(0.05, 1 - 0.1 * Math.floor(elapsedSinceAssignment / 10))
   return Math.round(initial * retained * 100) / 100
 }
 
@@ -319,20 +322,28 @@ function deadlineFor(difficulty: number, expectation: number, elapsed: number): 
   return elapsed + (1.5 * difficulty) / safeExpectation
 }
 
+const architectureBlueprints: readonly Pick<TaskDescriptor, 'title' | 'description' | 'artifactName'>[] = [
+  { title: 'Design multi-region failover', description: 'Plan how traffic and data recover when an entire region disappears.', artifactName: 'failover-architecture.md' },
+  { title: 'Design the event backbone', description: 'Define durable event delivery, ordering, and recovery across services.', artifactName: 'event-backbone.md' },
+  { title: 'Partition the tenant datastore', description: 'Design tenant isolation and a migration path without downtime.', artifactName: 'tenant-partition-plan.md' },
+  { title: 'Untangle the service boundary', description: 'Split a critical service while preserving its contracts and rollout safety.', artifactName: 'service-boundaries.md' },
+]
+
 function createDescriptor(
   state: Pick<GameState, 'rng' | 'nextTaskId' | 'level' | 'completedArchitectureTasks'>,
 ): readonly [TaskDescriptor, number, number] {
-  const [blueprintRng, blueprintIndex] = drawInteger(state.rng, 0, taskBlueprints.length - 1)
-  const [difficultyRng, difficulty] = drawInteger(blueprintRng, 6, MAX_TASK_DIFFICULTY)
-  let nextRng = difficultyRng
+  let rng = state.rng
   let kind: TaskDescriptor['kind'] = 'standard'
   if (state.level === 4) {
-    const [architectureRng, architectureRoll] = nextRandom(nextRng)
-    nextRng = architectureRng
+    const [architectureRng, architectureRoll] = nextRandom(rng)
+    rng = architectureRng
     const architectureChance = Math.min(0.8, 0.35 + 0.05 * state.completedArchitectureTasks)
     kind = architectureRoll < architectureChance ? 'architecture' : 'standard'
   }
-  const blueprint = taskBlueprints[blueprintIndex] ?? taskBlueprints[0]
+  const blueprints = kind === 'architecture' ? architectureBlueprints : taskBlueprints
+  const [blueprintRng, blueprintIndex] = drawInteger(rng, 0, blueprints.length - 1)
+  const [nextRng, difficulty] = drawInteger(blueprintRng, 6, MAX_TASK_DIFFICULTY)
+  const blueprint = blueprints[blueprintIndex] ?? blueprints[0]
   return [
     {
       id: state.nextTaskId,
@@ -341,6 +352,7 @@ function createDescriptor(
       difficulty,
       artifactName: blueprint.artifactName,
       kind,
+      complexity: kind === 'architecture' ? 2 : 1,
     },
     nextRng,
     state.nextTaskId + 1,
@@ -368,6 +380,7 @@ function snapshotTask(task: WorkTask): EmploymentTaskSnapshot {
     difficulty: task.difficulty,
     artifactName: task.artifactName,
     kind: task.kind,
+    complexity: task.complexity,
     deadlineAt: task.deadlineAt,
     startedAt: task.startedAt,
     assignedAt: task.assignedAt,
@@ -454,8 +467,9 @@ export function canFundTaskAttempt(
   task: WorkTask,
   fastMode: boolean,
 ): boolean {
-  const otherReservations = reservedAssignmentTokens(
-    state.tasks.filter((candidate) => candidate.id !== task.id),
+  const otherReservations = state.tasks.reduce(
+    (total, candidate) => total + (candidate.id !== task.id && candidate.status === 'assigned' ? taskTokenCost(candidate) : 0),
+    0,
   )
   const cost = taskTokenCost(task, fastMode)
   return Number.isFinite(cost) && cost >= 0 && Number.isFinite(otherReservations) &&
@@ -609,17 +623,18 @@ function advanceTask(
     return [task, rng]
   }
 
-  const model = task.model === 'reasoning' ? AGENT_MODELS.reasoning : AGENT_MODELS.basic
+  const model = AGENT_MODELS[task.model ?? 'basic']
   const speed = model.speed * (task.fastMode ? 2 : 1)
   const progress = Math.min(task.difficulty, roundedProgress(task.progress + speed))
   if (progress >= task.difficulty - 0.000001) {
     const completed = { ...task, progress: task.difficulty, nextApprovalAt: 0, approvalPrompt: null }
-    if (task.kind !== 'architecture' || task.model === 'reasoning') {
+    const successChance = Math.min(1, model.intelligence / task.complexity)
+    if (successChance === 1) {
       return [{ ...completed, status: 'artifact' }, rng]
     }
     const [nextRng, successRoll] = nextRandom(rng)
     return [
-      { ...completed, status: successRoll < 0.5 ? 'artifact' : 'failed' },
+      { ...completed, status: successRoll < successChance ? 'artifact' : 'failed' },
       nextRng,
     ]
   }
@@ -999,6 +1014,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           ? {
               ...candidate,
               terminalId: action.terminalId,
+              slot: action.slot,
+              startedAt: state.elapsed,
               model: selectedModel,
               fastMode: selectedFastMode,
               attempt: candidate.attempt + 1,
@@ -1091,7 +1108,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         level: completedTasks >= 50 ? 4 : state.level,
         reasoningUnlocked: state.reasoningUnlocked || completedArchitectureTasks >= 1,
         fastModeUnlocked: state.fastModeUnlocked || completedArchitectureTasks >= 5,
-        money: state.money + reward,
+        money: Math.round((state.money + reward) * 100) / 100,
         nextTaskAt,
         expectation: bossExpectationAt(state.elapsed),
       }, {
@@ -1161,7 +1178,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (state.stage !== 'hired' || state.socialInstalledAt === null || state.resetClaimed) {
         return state
       }
-      const resetCount = state.socialPosts.filter((post) => post.type === 'reset').length + 1
+      const resetCount = state.socialPosts.reduce((count, post) => count + Number(post.type === 'reset'), 1)
       return appendSocialPost({
         ...state,
         tokens: MAX_TOKENS,
@@ -1179,7 +1196,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return state
       }
       const [nextRng, successRoll] = nextRandom(state.rng)
-      const resetCount = state.socialPosts.filter((post) => post.type === 'reset').length + 1
       let liked = {
         ...state,
         rng: nextRng,
@@ -1188,6 +1204,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           : post),
       }
       if (successRoll < 0.01) {
+        const resetCount = state.socialPosts.reduce((count, post) => count + Number(post.type === 'reset'), 1)
         liked = appendSocialPost({
           ...liked,
           tokens: MAX_TOKENS,

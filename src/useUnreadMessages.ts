@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 
 const NEAR_BOTTOM_TOLERANCE = 24
@@ -40,8 +40,10 @@ function scrollToBottom(element: HTMLElement, behavior: ScrollBehavior = 'auto')
 export function useUnreadMessages(
   messageIds: readonly string[],
   scrollRef: RefObject<HTMLElement | null>,
+  active = true,
 ): { unreadCount: number; scrollToLatest: () => void } {
   const [unreadCount, setUnreadCount] = useState(0)
+  const activeRef = useRef(active)
   const currentMessageIds = useRef<Set<string> | null>(null)
   const seenMessageIds = useRef<Set<string> | null>(null)
   const unreadMessageIds = useRef<Set<string> | null>(null)
@@ -72,6 +74,7 @@ export function useUnreadMessages(
       const unreadIds = unreadMessageIds.current
       if (!element || !work || !ids || !seenIds || !unreadIds) return
       pending.current = null
+      const visible = activeRef.current && element.getClientRects().length > 0
 
       // A removed message must not leave stale state behind. Pruning seen IDs also
       // keeps this bookkeeping bounded and treats a later reappearance as new.
@@ -86,7 +89,7 @@ export function useUnreadMessages(
 
       // Scroll events are sampled in a frame so bursts of wheel/touch events cannot
       // fight message reconciliation or cause a render for every DOM event.
-      if (work.scroll) {
+      if (work.scroll && visible) {
         const nearBottom = isNearBottom(element)
         if (following.current && !nearBottom) {
           // Smooth programmatic scrolling emits intermediate events. Keep following
@@ -101,13 +104,14 @@ export function useUnreadMessages(
 
       // A resize or content reflow should preserve the user's position. If they were
       // already at the bottom, follow the new bottom; otherwise never steal their scroll.
-      if (work.layout) {
+      if (work.layout && visible) {
         const nearBottom = isNearBottom(element)
         if (atBottom.current === null) {
           atBottom.current = nearBottom
         } else if (atBottom.current) {
           if (!nearBottom) scrollToBottom(element)
           atBottom.current = true
+          unreadIds.clear()
         } else if (nearBottom) {
           atBottom.current = true
           unreadIds.clear()
@@ -123,8 +127,8 @@ export function useUnreadMessages(
         }
 
         if (newlyAdded.length > 0) {
-          if (atBottom.current === null) atBottom.current = isNearBottom(element)
-          if (atBottom.current) {
+          if (visible && atBottom.current === null) atBottom.current = isNearBottom(element)
+          if (visible && atBottom.current) {
             scrollToBottom(element)
           } else {
             for (const id of newlyAdded) unreadIds.add(id)
@@ -135,6 +139,13 @@ export function useUnreadMessages(
       publishCount()
     })
   }, [publishCount, scrollRef])
+
+  useLayoutEffect(() => {
+    activeRef.current = active
+    if (!pending.current) pending.current = { messages: false, scroll: false, layout: false }
+    pending.current.layout = true
+    scheduleFrame()
+  }, [active, scheduleFrame])
 
   useEffect(() => {
     const element = scrollRef.current
