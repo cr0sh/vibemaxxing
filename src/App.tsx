@@ -10,6 +10,8 @@ import {
   type DevJumpTarget,
   type TerminalId,
 } from './game'
+import { playSound } from './sounds'
+import { useInteractionSounds } from './useInteractionSounds'
 import { applicationSamples } from './applicationSamples'
 import { MessengerContent, TerminalContent } from './Employment'
 import { ShopContent } from './Shop'
@@ -38,9 +40,46 @@ const tokenFormatter = new Intl.NumberFormat('en-US', { notation: 'compact', max
 
 function App() {
   const [state, dispatch] = useReducer(gameReducer, initialGame)
+  useInteractionSounds()
   const [now, setNow] = useState(() => new Date())
   const [isDevPaused, setIsDevPaused] = useState(false)
   const [devTiroJump, setDevTiroJump] = useState(0)
+  const previousStateRef = useRef(state)
+
+  useEffect(() => {
+    const previousState = previousStateRef.current
+    previousStateRef.current = state
+
+    if (previousState.stage !== 'hired' && state.stage === 'hired') {
+      playSound('milestone')
+    }
+
+    if (previousState.stage === 'hired' && state.stage === 'hired') {
+      const taskStarted = state.tasks.some((task) => {
+        if (task.status !== 'working' || task.terminalId === null || task.slot === null) {
+          return false
+        }
+        const previousTask = previousState.tasks.find((candidate) => candidate.id === task.id)
+        return previousTask?.status === 'assigned' &&
+          previousTask.terminalId === null &&
+          previousTask.slot === null
+      })
+      if (taskStarted) {
+        playSound('task-transfer')
+      }
+
+      const artifactDelivered =
+        state.completedTasks > previousState.completedTasks &&
+        previousState.tasks.some((task) =>
+          task.status === 'artifact' &&
+          !state.tasks.some((candidate) => candidate.id === task.id),
+        )
+      if (artifactDelivered) {
+        playSound('artifact-transfer')
+      }
+    }
+  }, [state])
+
   useEffect(() => {
     let lastTickAt = Date.now()
     const timer = window.setInterval(() => {
