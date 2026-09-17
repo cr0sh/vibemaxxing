@@ -102,8 +102,9 @@ function App() {
     devJumpTarget === 'tiro' ? 'social' :
       devJumpTarget === 'market' ? 'market' :
         devJumpTarget === 'spark' ? 'spark' :
-          devJumpTarget === 'mercury' || devJumpTarget === 'second-job' ? 'shop' :
-            devJumpTarget === 'frontier' ? 'terminal' : null
+          devJumpTarget === 'mercury' ? 'shop' :
+            devJumpTarget === 'second-job' ? 'messenger' :
+              devJumpTarget === 'frontier' ? 'terminal' : null
 
   return (
     <div className={`app-shell stage-${state.stage}`}>
@@ -227,6 +228,12 @@ function Desktop({
       return changed ? next : current
     })
   }, [stageWindowKey])
+
+  useEffect(() => {
+    if (stageWindows.includes(activeWindow)) return
+    const fallback = stageWindows.find((id) => windows[id]) ?? stageWindows[0]
+    if (fallback !== undefined) setActiveWindow(fallback)
+  }, [stageWindowKey, activeWindow, windows])
 
   const revisions: RevisionMap = {
     messenger: [
