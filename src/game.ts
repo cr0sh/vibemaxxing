@@ -39,6 +39,26 @@ export type WorkTask = TaskDescriptor & {
   slot: number | null
   approvalPrompt: string | null
 }
+export type EmploymentTaskSnapshot = Pick<
+  WorkTask,
+  'id' | 'title' | 'description' | 'difficulty' | 'artifactName' | 'deadlineAt' | 'startedAt' | 'status' | 'progress'
+>
+
+export type EmploymentMessage =
+  | { id: string; type: 'welcome'; elapsed: number }
+  | { id: string; type: 'assignment'; elapsed: number; task: EmploymentTaskSnapshot }
+  | { id: string; type: 'artifact'; elapsed: number; task: EmploymentTaskSnapshot }
+  | {
+      id: string
+      type: 'delivery'
+      elapsed: number
+      task: EmploymentTaskSnapshot
+      reward: number
+      completedTasks: number
+    }
+  | { id: string; type: 'ping'; elapsed: number; deadlineAt: number; acknowledged: boolean }
+  | { id: string; type: 'firing'; elapsed: number; failure: string }
+
 
 export type GameState = {
   stage: Stage
@@ -58,9 +78,8 @@ export type GameState = {
   nextPingAt: number
   pingDeadline: number | null
   welcomeReacted: boolean
-  lastDelivery: string | null
+  messages: EmploymentMessage[]
   failure: string | null
-  lastReward: number
   expectation: number
   rng: number
 }
@@ -93,9 +112,12 @@ export const MAX_TOKENS = 10_000_000
 const TOKEN_TASK_COST = 100_000
 export const TOKEN_PURCHASE_AMOUNT = 100_000
 export const TOKEN_PURCHASE_COST = 100
-const TASK_COOLDOWN = 5
 const MAX_TASK_DIFFICULTY = 12
 const TASK_REWARD_PER_DIFFICULTY = 5
+const BASELINE_TASK_CYCLE_SECONDS = 18
+const AVERAGE_TASK_DIFFICULTY = 9
+const BOSS_BUDGET_ANCHOR = 620
+const MIN_ASSIGNMENT_INTERVAL = 2
 const MIN_EXPECTATION = 0.05
 const MAX_EXPECTATION = 1
 const UINT_RANGE = 4_294_967_296
@@ -206,6 +228,22 @@ function drawApprovalCheckpoint(rng: number): readonly [number, number, string] 
   return [nextRng, approvalDelay, APPROVAL_PROMPTS[promptIndex] ?? APPROVAL_PROMPTS[0] ?? '']
 }
 
+
+function projectedGrossAt(elapsed: number): number {
+  const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
+  const averageTaskReward = TASK_REWARD_PER_DIFFICULTY * AVERAGE_TASK_DIFFICULTY
+  return safeElapsed * (1 + averageTaskReward / BASELINE_TASK_CYCLE_SECONDS)
+}
+
+function bossExpectationAt(elapsed: number): number {
+  const ratio = projectedGrossAt(elapsed) / BOSS_BUDGET_ANCHOR
+  return clamp(0.2 + 0.8 * ratio / (1 + ratio), MIN_EXPECTATION, MAX_EXPECTATION)
+}
+
+function assignmentIntervalAt(elapsed: number): number {
+  const ratio = projectedGrossAt(elapsed) / BOSS_BUDGET_ANCHOR
+  return Math.max(MIN_ASSIGNMENT_INTERVAL, Math.ceil(BASELINE_TASK_CYCLE_SECONDS / (1 + ratio)))
+}
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value))
 }
@@ -245,12 +283,30 @@ function refillTaskQueue(state: GameState): GameState {
   }
   return current
 }
+function snapshotTask(task: WorkTask): EmploymentTaskSnapshot {
+  return {
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    difficulty: task.difficulty,
+    artifactName: task.artifactName,
+    deadlineAt: task.deadlineAt,
+    startedAt: task.startedAt,
+    status: task.status,
+    progress: task.progress,
+  }
+}
+
+function appendMessage(state: GameState, message: EmploymentMessage): GameState {
+  if (state.messages.some((candidate) => candidate.id === message.id)) {
+    return state
+  }
+  return { ...state, messages: [...state.messages, message] }
+}
+
 
 const PRIMARY_TERMINAL: TerminalState = { id: 'terminal', slots: 1, yolo: false }
 
-function assignmentCapacity(state: GameState): number {
-  return state.terminals.reduce((total, terminal) => total + terminal.slots, 0)
-}
 
 function reservedAssignmentTokens(tasks: readonly WorkTask[]): number {
   return tasks.reduce(
@@ -264,43 +320,43 @@ function issueAvailableAssignments(state: GameState): GameState {
     return state
   }
 
-  let current = refillTaskQueue(state)
-  let tasks = current.tasks
-  let queue = current.taskQueue
-  let reserved = reservedAssignmentTokens(tasks)
-  let changed = current !== state
-
-  while (tasks.length < assignmentCapacity(current) && queue.length > 0) {
-    const descriptor = queue[0]
-    if (descriptor === undefined || current.tokens < reserved + taskTokenCost(descriptor)) {
-      break
-    }
-
-    const task: WorkTask = {
-      ...descriptor,
-      deadlineAt: deadlineFor(descriptor.difficulty, current.expectation, current.elapsed),
-      startedAt: null,
-      status: 'assigned',
-      progress: 0,
-      nextApprovalAt: 0,
-      terminalId: null,
-      slot: null,
-      approvalPrompt: null,
-    }
-    tasks = [...tasks, task]
-    queue = queue.slice(1)
-    reserved += taskTokenCost(task)
-    current = refillTaskQueue({ ...current, tasks, taskQueue: queue })
-    queue = current.taskQueue
-    changed = true
+  const current = refillTaskQueue(state)
+  const descriptor = current.taskQueue[0]
+  if (descriptor === undefined) {
+    return current
   }
 
-  if (!changed) return state
-  return { ...current, tasks, taskQueue: queue }
+  const reserved = reservedAssignmentTokens(current.tasks)
+  const cost = taskTokenCost(descriptor)
+  if (!Number.isFinite(cost) || current.tokens < reserved + cost) {
+    return current
+  }
+
+  const task: WorkTask = {
+    ...descriptor,
+    deadlineAt: deadlineFor(descriptor.difficulty, bossExpectationAt(current.elapsed), current.elapsed),
+    startedAt: null,
+    status: 'assigned',
+    progress: 0,
+    nextApprovalAt: 0,
+    terminalId: null,
+    slot: null,
+    approvalPrompt: null,
+  }
+  return appendMessage({
+    ...current,
+    tasks: [...current.tasks, task],
+    taskQueue: current.taskQueue.slice(1),
+    nextTaskAt: current.elapsed + assignmentIntervalAt(current.elapsed),
+  }, {
+    id: `assignment-${task.id}`,
+    type: 'assignment',
+    elapsed: current.elapsed,
+    task: snapshotTask(task),
+  })
 }
 
 function createHiredState(state: GameState): GameState {
-  const expectation = clamp(state.expectation, MIN_EXPECTATION, MAX_EXPECTATION)
   const hired: GameState = {
     ...state,
     stage: 'hired',
@@ -314,12 +370,16 @@ function createHiredState(state: GameState): GameState {
     nextPingAt: state.elapsed,
     pingDeadline: null,
     welcomeReacted: false,
-    lastDelivery: null,
-    lastReward: 0,
+    messages: [],
     failure: null,
-    expectation,
+    expectation: bossExpectationAt(state.elapsed),
   }
-  const withQueue = refillTaskQueue(hired)
+  const welcomed = appendMessage(hired, {
+    id: 'welcome',
+    type: 'welcome',
+    elapsed: hired.elapsed,
+  })
+  const withQueue = refillTaskQueue(welcomed)
   const [nextRng, pingDelay] = drawInteger(withQueue.rng, 90, 150)
   return issueAvailableAssignments({
     ...withQueue,
@@ -329,12 +389,20 @@ function createHiredState(state: GameState): GameState {
 }
 
 function lose(state: GameState, failure: string): GameState {
-  return {
+  const lost = {
     ...state,
-    stage: 'lost',
+    stage: 'lost' as const,
     failure,
   }
+  return appendMessage(lost, {
+    id: 'firing',
+    type: 'firing',
+    elapsed: state.elapsed,
+    failure,
+  })
 }
+
+
 
 export const initialGame: GameState = {
   stage: 'ready',
@@ -354,8 +422,7 @@ export const initialGame: GameState = {
   nextPingAt: 0,
   pingDeadline: null,
   welcomeReacted: false,
-  lastDelivery: null,
-  lastReward: 0,
+  messages: [],
   failure: null,
   expectation: 0.2,
   rng: 1,
@@ -405,6 +472,7 @@ function tickHired(state: GameState, seconds: number): GameState {
       elapsed: current.elapsed + 1,
       money: current.money + 1,
       tokens: (current.elapsed + 1) % 100 === 0 ? MAX_TOKENS : current.tokens,
+      expectation: bossExpectationAt(current.elapsed + 1),
     }
 
     if (current.tasks.some((task) => current.elapsed >= task.deadlineAt)) {
@@ -415,20 +483,39 @@ function tickHired(state: GameState, seconds: number): GameState {
       return lose(current, 'The boss ping went unanswered.')
     }
 
-    current = {
-      ...current,
-      tasks: current.tasks.map((task) => advanceTask(task, current.elapsed, current.terminals)),
+    const previousTasks = current.tasks
+    const advancedTasks = previousTasks.map((task) => advanceTask(task, current.elapsed, current.terminals))
+    current = { ...current, tasks: advancedTasks }
+    for (let index = 0; index < advancedTasks.length; index += 1) {
+      const before = previousTasks[index]
+      const after = advancedTasks[index]
+      if (before?.status !== 'artifact' && after?.status === 'artifact') {
+        current = appendMessage(current, {
+          id: `artifact-${after.id}`,
+          type: 'artifact',
+          elapsed: current.elapsed,
+          task: snapshotTask(after),
+        })
+      }
     }
+
     current = issueAvailableAssignments(current)
 
     if (current.pingDeadline === null && current.nextPingAt > 0 && current.elapsed >= current.nextPingAt) {
       const [nextRng, pingDelay] = drawInteger(current.rng, 90, 150)
-      current = {
+      const pingDeadline = current.elapsed + 30
+      current = appendMessage({
         ...current,
-        pingDeadline: current.elapsed + 30,
+        pingDeadline,
         nextPingAt: current.elapsed + pingDelay,
         rng: nextRng,
-      }
+      }, {
+        id: `ping-${pingDeadline}`,
+        type: 'ping',
+        elapsed: current.elapsed,
+        deadlineAt: pingDeadline,
+        acknowledged: false,
+      })
     }
   }
 
@@ -548,7 +635,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           nextPingAt: 0,
           pingDeadline: null,
           welcomeReacted: false,
-          lastDelivery: null,
+          messages: [],
           failure: null,
         }
       }
@@ -565,9 +652,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           taskQueue: [],
           terminals: [{ ...PRIMARY_TERMINAL }],
           pingDeadline: null,
+          messages: [],
           failure: null,
         }
       }
+
 
       if (action.stage === 'hired') {
         return createHiredState({
@@ -579,16 +668,22 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         })
       }
 
-      return {
+      const failure = 'The run ended in the developer preview.'
+      return appendMessage({
         ...state,
         stage: 'lost',
         company:
           state.company !== null && companies.includes(state.company)
             ? state.company
             : companies[0] ?? null,
-        failure: 'The run ended in the developer preview.',
+        failure,
         pingDeadline: null,
-      }
+      }, {
+        id: 'firing',
+        type: 'firing',
+        elapsed: state.elapsed,
+        failure,
+      })
     }
 
     case 'tick':
@@ -599,12 +694,27 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ? { ...state, welcomeReacted: !state.welcomeReacted }
         : state
 
-    case 'acknowledge-ping':
-      return state.stage === 'hired' &&
-        state.pingDeadline !== null &&
-        state.elapsed <= state.pingDeadline
-        ? { ...state, pingDeadline: null }
-        : state
+    case 'acknowledge-ping': {
+      if (
+        state.stage !== 'hired' ||
+        state.pingDeadline === null ||
+        state.elapsed > state.pingDeadline
+      ) {
+        return state
+      }
+
+      const pingDeadline = state.pingDeadline
+      return {
+        ...state,
+        pingDeadline: null,
+        messages: state.messages.map((message) => (
+          message.type === 'ping' && message.deadlineAt === pingDeadline
+            ? { ...message, acknowledged: true }
+            : message
+        )),
+      }
+    }
+
 
     case 'start-task': {
       if (
@@ -728,24 +838,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return state
       }
 
-      const duration = Math.max(1, state.elapsed - (task.startedAt ?? state.elapsed))
-      const observedSpeed = clamp(task.difficulty / duration, MIN_EXPECTATION, MAX_EXPECTATION)
-      const expectation = clamp(
-        state.expectation * 0.8 + observedSpeed * 0.2,
-        MIN_EXPECTATION,
-        MAX_EXPECTATION,
-      )
+      const reward = taskReward(task)
+      const completedTasks = state.completedTasks + 1
+      const remainingTasks = state.tasks.filter((candidate) => candidate.id !== action.id)
+      const nextTaskAt = remainingTasks.length === 0
+        ? Math.min(state.nextTaskAt, state.elapsed + 5)
+        : state.nextTaskAt
 
-      return {
+      return appendMessage({
         ...state,
-        tasks: state.tasks.filter((candidate) => candidate.id !== action.id),
-        completedTasks: state.completedTasks + 1,
-        money: state.money + taskReward(task),
-        nextTaskAt: Math.max(state.nextTaskAt, state.elapsed + TASK_COOLDOWN),
-        lastDelivery: task.artifactName,
-        lastReward: taskReward(task),
-        expectation,
-      }
+        tasks: remainingTasks,
+        completedTasks,
+        money: state.money + reward,
+        nextTaskAt,
+        expectation: bossExpectationAt(state.elapsed),
+      }, {
+        id: `delivery-${task.id}`,
+        type: 'delivery',
+        elapsed: state.elapsed,
+        task: snapshotTask(task),
+        reward,
+        completedTasks,
+      })
     }
 
     case 'buy-tokens': {
@@ -770,21 +884,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       }
 
       if (action.upgrade === 'terminal') {
-        return issueAvailableAssignments({
+        return {
           ...state,
           money: state.money - price,
           terminals: [...state.terminals, { id: 'terminal-2', slots: 1, yolo: false }],
-        })
+        }
       }
 
       if (action.upgrade === 'split') {
-        return issueAvailableAssignments({
+        return {
           ...state,
           money: state.money - price,
           terminals: state.terminals.map((terminal) => terminal.id === action.terminalId
             ? { ...terminal, slots: Math.min(MAX_TERMINAL_SLOTS, terminal.slots + 1) }
             : terminal),
-        })
+        }
       }
 
       return {

@@ -131,6 +131,15 @@ export function ShopContent({ state, dispatch }: ShopProps) {
         <span>Drag an upgrade onto a Terminal window.</span>
       </div>
       <div className="shop-products">
+        {upgradeProducts.map((product) => (
+          <UpgradeProductCard
+            key={product.upgrade}
+            product={product}
+            state={state}
+            dispatch={dispatch}
+            targetTerminal={selectedTargetTerminal}
+          />
+        ))}
         <article
           className={`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`}
           aria-label="Token refill"
@@ -151,15 +160,6 @@ export function ShopContent({ state, dispatch }: ShopProps) {
           </button>
         </article>
 
-        {upgradeProducts.map((product) => (
-          <UpgradeProductCard
-            key={product.upgrade}
-            product={product}
-            state={state}
-            dispatch={dispatch}
-            targetTerminal={selectedTargetTerminal}
-          />
-        ))}
       </div>
     </div>
   )

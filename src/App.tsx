@@ -85,7 +85,7 @@ function Desktop({
   const [application, setApplication] = useState<Application>(emptyApplication)
   const hasEmployment =
     state.stage === 'hired' ||
-    (state.stage === 'lost' && (state.tasks.length > 0 || state.completedTasks > 0 || state.elapsed > 0 || state.lastDelivery !== null))
+    (state.stage === 'lost' && (state.tasks.length > 0 || state.completedTasks > 0 || state.elapsed > 0))
   const [windows, setWindows] = useState<WindowState>(() => ({
     apply: state.stage === 'applying',
     offer: state.stage === 'offer',
@@ -136,6 +136,7 @@ function Desktop({
           : state.stage === 'lost'
             ? ['defeat']
             : []
+  const [acknowledgedDockWindows, setAcknowledgedDockWindows] = useState<Set<WindowId>>(() => new Set())
   const openWindow = (id: WindowId) => {
     setWindows((current) => ({ ...current, [id]: true }))
     if (id === 'defeat') {
@@ -146,6 +147,15 @@ function Desktop({
     }
     setFocusRequest((request) => request + 1)
     setActiveWindow(id)
+  }
+  const activateDock = (id: WindowId) => {
+    setAcknowledgedDockWindows((current) => {
+      if (current.has(id)) return current
+      const next = new Set(current)
+      next.add(id)
+      return next
+    })
+    openWindow(id)
   }
 
   const focusDefeat = () => {
@@ -403,7 +413,6 @@ function Desktop({
                         state={state}
                         dispatch={dispatch}
                         terminalId={terminal.id}
-                        onOpenMessenger={() => openWindow('messenger')}
                       />
                     </WindowFrame>
                   ))}
@@ -483,10 +492,10 @@ function Desktop({
                 : windows[id] || (id === 'messenger' && defeatAutoFront)
               return (
                 <button
-                  className={`dock-item ${isWindowActive(id) ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''}`}
+                  className={`dock-item ${isWindowActive(id) ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''} ${!acknowledgedDockWindows.has(id) ? 'dock-item-attention' : ''}`}
                   type="button"
                   key={id}
-                  onClick={() => openWindow(id)}
+                  onClick={() => activateDock(id)}
                   aria-label={`${isOpen ? 'Focus' : 'Open'} ${item.label} window`}
                   aria-pressed={isWindowActive(id) && isOpen}
                 >

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DragEvent, Dispatch } from 'react'
-import { MAX_TOKENS, taskReward, taskTokenCost, type GameAction, type GameState, type TerminalId, type WorkTask, upgradePrice } from './game'
+import { MAX_TOKENS, taskReward, taskTokenCost, type EmploymentTaskSnapshot, type GameAction, type GameState, type TerminalId, type WorkTask, upgradePrice } from './game'
 import { DragDropHint } from './DragDropHints'
 import { useDragDropHints, useDragDropSource, useDragDropTarget } from './DragDropHintsContext'
 import { UnreadIndicator } from './UnreadIndicator'
@@ -16,7 +16,6 @@ type TerminalProps = {
   state: GameState
   dispatch: Dispatch<GameAction>
   terminalId: TerminalId
-  onOpenMessenger: () => void
 }
 
 const compactTokens = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
@@ -84,19 +83,21 @@ function TaskAttachment({
   task,
   elapsed,
   availableTokens,
+  archived = false,
 }: {
   state: GameState
   task: WorkTask
   elapsed: number
   availableTokens: number
+  archived?: boolean
 }) {
   const isAssigned = task.status === 'assigned' && task.terminalId === null && task.slot === null
   const canAfford = availableTokens >= taskTokenCost(task)
-  const canStart = state.stage === 'hired' && isAssigned && canAfford
+  const canStart = state.stage === 'hired' && !archived && isAssigned && canAfford
   const dragSource = useDragDropSource({ kind: 'task', id: String(task.id) }, canStart)
   return (
     <div
-      className={`employment-attachment employment-task-attachment employment-task-${task.status}`}
+      className={`employment-attachment employment-task-attachment employment-task-${task.status} ${archived ? 'employment-archived-attachment' : ''}`}
       draggable={canStart}
       tabIndex={canStart ? 0 : undefined}
       onFocus={dragSource.onFocus}
@@ -122,30 +123,48 @@ function TaskAttachment({
         <span>{task.description}</span>
         <span>${taskReward(task)} bonus · {compactTokens.format(taskTokenCost(task))} tokens</span>
         <div className="employment-attachment-meta">
-          <span>{taskStatusLabel(task)}</span>
-          <span>{taskProgressLabel(task)}</span>
-          <span>{taskDeadline(task, elapsed)}</span>
+          <span>{archived ? 'Delivered' : taskStatusLabel(task)}</span>
+          <span>{archived ? 'Complete' : taskProgressLabel(task)}</span>
+          {!archived && <span>{taskDeadline(task, elapsed)}</span>}
         </div>
       </div>
     </div>
   )
 }
 
+function taskFromSnapshot(snapshot: EmploymentTaskSnapshot): WorkTask {
+  return {
+    ...snapshot,
+    nextApprovalAt: 0,
+    terminalId: null,
+    slot: null,
+    approvalPrompt: null,
+  }
+}
+
+function taskForMessage(state: GameState, snapshot: EmploymentTaskSnapshot): { task: WorkTask; archived: boolean } {
+  const active = state.tasks.find((candidate) => candidate.id === snapshot.id)
+  return {
+    task: active ?? taskFromSnapshot(snapshot),
+    archived: active === undefined,
+  }
+}
+
 function ArtifactAttachment({
   task,
   elapsed,
-  onDeliver,
   disabled = false,
+  archived = false,
 }: {
   task: WorkTask
   elapsed: number
-  onDeliver: () => void
   disabled?: boolean
+  archived?: boolean
 }) {
   const dragSource = useDragDropSource({ kind: 'artifact', id: String(task.id) }, !disabled)
   return (
     <div
-      className="employment-attachment employment-artifact-attachment"
+      className={`employment-attachment employment-artifact-attachment ${archived ? 'employment-archived-attachment' : ''}`}
       draggable={!disabled}
       tabIndex={!disabled ? 0 : undefined}
       onFocus={dragSource.onFocus}
@@ -168,19 +187,17 @@ function ArtifactAttachment({
       <div className="employment-attachment-icon" aria-hidden="true">◇</div>
       <div className="employment-attachment-copy">
         <strong>{task.artifactName}</strong>
-        <span>Ready for delivery · ${taskReward(task)} bonus</span>
+        <span>{archived ? 'Delivered artifact' : 'Ready for delivery'}</span>
         <div className="employment-attachment-meta">
-          <span>Artifact ready</span>
-          <span>{taskProgressLabel(task)}</span>
-          <span>{taskDeadline(task, elapsed)}</span>
+          <span>{archived ? 'Delivered' : 'Artifact ready'}</span>
+          <span>{archived ? 'Complete' : taskProgressLabel(task)}</span>
+          {!archived && <span>{taskDeadline(task, elapsed)}</span>}
         </div>
       </div>
-      <button className="employment-inline-button" type="button" onClick={onDeliver} disabled={disabled}>
-        Deliver artifact <span aria-hidden="true">↗</span>
-      </button>
     </div>
   )
 }
+
 
 
 export function MessengerContent({ state, dispatch }: MessengerProps) {
@@ -198,14 +215,7 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
     if (state.stage === 'lost') firingRef.current?.scrollIntoView({ block: 'nearest' })
   }, [state.stage])
 
-  const hasPing = state.pingDeadline !== null
-  const messageIds: readonly string[] = [
-    'welcome',
-    ...state.tasks.map((task) => `task-${task.id}`),
-    ...(hasPing ? [`ping-${state.pingDeadline}`] : []),
-    ...(state.lastDelivery ? [`delivery-${state.completedTasks}`] : []),
-    ...(state.stage === 'lost' ? [`firing-${state.failure ?? 'run-ended'}`] : []),
-  ]
+  const messageIds = state.messages.map((message) => message.id)
   const { unreadCount, scrollToLatest } = useUnreadMessages(messageIds, chatPaneRef)
   const artifactDropVisible = state.stage === 'hired' && isSourceActive('artifact')
   useDragDropTarget(messengerRef, {
@@ -225,7 +235,6 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
     },
     onHover: () => focusDropWindow(messengerRef.current),
   })
-  const pingRemaining = hasPing ? (state.pingDeadline ?? state.elapsed) - state.elapsed : 0
   const nextPingRemaining = Math.max(0, state.nextPingAt - state.elapsed)
 
   const reactToWelcome = () => {
@@ -278,93 +287,123 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
         </div>
         <div ref={chatPaneRef} className="chat-scroll-region">
           <div className="chat-messages">
-            <div className="welcome-banner employment-message-entry">
-              <span aria-hidden="true">🎉</span> Welcome to the team
-            </div>
-            <div className="message-row employment-message-entry">
-              <div className="avatar boss-avatar" aria-hidden="true">B</div>
-              <div className="message-body">
-                <div className="message-meta"><strong>boss.exe</strong><span>just now</span></div>
-                <p>Welcome aboard. Your workspace is ready.</p>
-                <button
-                  className={`message-reaction employment-reaction-button ${state.welcomeReacted ? 'employment-reaction-active' : ''}`}
-                  type="button"
-                  onClick={reactToWelcome}
-                  disabled={state.stage !== 'hired'}
-                  aria-pressed={state.welcomeReacted}
-                >
-                  🎉 {state.welcomeReacted ? 2 : 1}
-                  {reactionBurst > 0 && <span className="employment-emoji-pop" key={reactionBurst} aria-hidden="true">🎉</span>}
-                </button>
-              </div>
-            </div>
-
-            {state.tasks.map((task) => (
-              <div className="message-row employment-message-entry" key={`task-${task.id}`}>
-                <div className="avatar boss-avatar" aria-hidden="true">B</div>
-                <div className="message-body">
-                  <div className="message-meta">
-                    <strong>{task.status === 'artifact' ? 'agent-shell' : 'boss.exe'}</strong>
-                    <span>{task.status === 'artifact' ? 'just now' : 'assignment'}</span>
+            {state.messages.map((message) => {
+              if (message.type === 'welcome') {
+                return (
+                  <div key={message.id}>
+                    <div className="welcome-banner employment-message-entry">
+                      <span aria-hidden="true">🎉</span> Welcome to the team
+                    </div>
+                    <div className="message-row employment-message-entry">
+                      <div className="avatar boss-avatar" aria-hidden="true">B</div>
+                      <div className="message-body">
+                        <div className="message-meta"><strong>boss.exe</strong><span>just now</span></div>
+                        <p>Welcome aboard. Your workspace is ready.</p>
+                        <button
+                          className={`message-reaction employment-reaction-button ${state.welcomeReacted ? 'employment-reaction-active' : ''}`}
+                          type="button"
+                          onClick={reactToWelcome}
+                          disabled={state.stage !== 'hired'}
+                          aria-pressed={state.welcomeReacted}
+                        >
+                          🎉 {state.welcomeReacted ? 2 : 1}
+                          {reactionBurst > 0 && <span className="employment-emoji-pop" key={reactionBurst} aria-hidden="true">🎉</span>}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  {task.status === 'artifact'
-                    ? <p>Waiting for <strong>{task.artifactName}</strong> in Terminal.</p>
-                    : <p>Here is the next thing to ship. Drag this task into Terminal to start.</p>}
-                  {task.status !== 'artifact' && (
-                    <TaskAttachment
-                      state={state}
-                      task={task}
-                      elapsed={state.elapsed}
-                      availableTokens={state.tokens}
-                    />
-                  )}
-                </div>
-              </div>
-            ))}
+                )
+              }
 
-            {hasPing && (
-              <div className="message-row employment-message-entry employment-ping-entry" key={`ping-${state.pingDeadline}`}>
-                <div className="avatar boss-avatar" aria-hidden="true">B</div>
-                <div className="message-body">
-                  <div className="message-meta"><strong>boss.exe</strong><span>check-in</span></div>
-                  <p>Quick check-in: are you still on this? Please acknowledge before the timer runs out.</p>
-                  <button
-                    className="employment-check-button"
-                    type="button"
-                    onClick={() => dispatch({ type: 'acknowledge-ping' })}
-                    disabled={state.stage !== 'hired' || pingRemaining <= 0}
-                  >
-                    <span aria-hidden="true">✅</span> Check in <span className="employment-countdown">{formatSeconds(pingRemaining)}</span>
-                  </button>
-                </div>
-              </div>
-            )}
+              if (message.type === 'assignment') {
+                const currentTask = taskForMessage(state, message.task)
+                return (
+                  <div className="message-row employment-message-entry" key={message.id}>
+                    <div className="avatar boss-avatar" aria-hidden="true">B</div>
+                    <div className="message-body">
+                      <div className="message-meta"><strong>boss.exe</strong><span>assignment</span></div>
+                      <p>Here is the next thing to ship. Drag this task into Terminal to start.</p>
+                      <TaskAttachment
+                        state={state}
+                        task={currentTask.task}
+                        elapsed={state.elapsed}
+                        availableTokens={state.tokens}
+                        archived={currentTask.archived}
+                      />
+                    </div>
+                  </div>
+                )
+              }
 
-            {state.lastDelivery && (
-              <div className="message-row employment-message-entry employment-delivery-entry" key={`delivery-${state.completedTasks}-${state.lastDelivery}`}>
-                <div className="avatar self-avatar" aria-hidden="true">Y</div>
-                <div className="message-body">
-                  <div className="message-meta"><strong>You</strong><span>delivered</span></div>
-                  <p>Delivered <strong>{state.lastDelivery}</strong>. Nice work — {state.completedTasks} assignment{state.completedTasks === 1 ? '' : 's'} complete.</p>
-                  <p className="employment-delivery-reward">Earned ${state.lastReward} completion bonus.</p>
-                </div>
-              </div>
-            )}
+              if (message.type === 'artifact') {
+                const currentTask = taskForMessage(state, message.task)
+                return (
+                  <div className="message-row employment-message-entry" key={message.id}>
+                    <div className="avatar boss-avatar" aria-hidden="true">B</div>
+                    <div className="message-body">
+                      <div className="message-meta"><strong>agent-shell</strong><span>artifact ready</span></div>
+                      <p>Waiting for <strong>{message.task.artifactName}</strong> in Terminal.</p>
+                      <ArtifactAttachment
+                        task={currentTask.task}
+                        elapsed={state.elapsed}
+                        disabled={currentTask.archived || state.stage !== 'hired'}
+                        archived={currentTask.archived}
+                      />
+                    </div>
+                  </div>
+                )
+              }
 
-            {!hasPing && (
+              if (message.type === 'delivery') {
+                return (
+                  <div className="message-row employment-message-entry employment-delivery-entry" key={message.id}>
+                    <div className="avatar self-avatar" aria-hidden="true">Y</div>
+                    <div className="message-body">
+                      <div className="message-meta"><strong>You</strong><span>delivered</span></div>
+                      <p>Delivered <strong>{message.task.artifactName}</strong>. Nice work — {message.completedTasks} assignment{message.completedTasks === 1 ? '' : 's'} complete.</p>
+                      <p className="employment-delivery-reward">Earned ${message.reward} completion bonus.</p>
+                    </div>
+                  </div>
+                )
+              }
+
+              if (message.type === 'ping') {
+                const active = state.stage === 'hired' && state.pingDeadline === message.deadlineAt
+                const remaining = active ? message.deadlineAt - state.elapsed : 0
+                return (
+                  <div className="message-row employment-message-entry employment-ping-entry" key={message.id}>
+                    <div className="avatar boss-avatar" aria-hidden="true">B</div>
+                    <div className="message-body">
+                      <div className="message-meta"><strong>boss.exe</strong><span>check-in</span></div>
+                      <p>Quick check-in: are you still on this? Please acknowledge before the timer runs out.</p>
+                      <button
+                        className="employment-check-button"
+                        type="button"
+                        onClick={() => dispatch({ type: 'acknowledge-ping' })}
+                        disabled={!active || remaining <= 0}
+                      >
+                        <span aria-hidden="true">✅</span> {active ? 'Check in' : message.acknowledged ? 'Acknowledged' : 'No response'} <span className="employment-countdown">{active ? formatSeconds(remaining) : ''}</span>
+                      </button>
+                    </div>
+                  </div>
+                )
+              }
+
+              return (
+                <div ref={firingRef} className="message-row employment-message-entry employment-firing-entry" key={message.id}>
+                  <div className="avatar boss-avatar" aria-hidden="true">B</div>
+                  <div className="message-body">
+                    <div className="message-meta"><strong>boss.exe</strong><span>now</span></div>
+                    <p>You are fired. {message.failure}</p>
+                  </div>
+                </div>
+              )
+            })}
+
+            {state.stage === 'hired' && state.pingDeadline === null && (
               <p className="employment-next-ping" role="status" aria-live="polite">
                 Next boss check-in in <strong>{formatSeconds(nextPingRemaining)}</strong>
               </p>
-            )}
-
-            {state.stage === 'lost' && (
-              <div ref={firingRef} className="message-row employment-message-entry employment-firing-entry" key={`firing-${state.failure}`}>
-                <div className="avatar boss-avatar" aria-hidden="true">B</div>
-                <div className="message-body">
-                  <div className="message-meta"><strong>boss.exe</strong><span>now</span></div>
-                  <p>You are fired. {state.failure ?? 'The run ended.'}</p>
-                </div>
-              </div>
             )}
           </div>
         </div>
@@ -382,10 +421,10 @@ type TerminalLaneProps = {
   slot: number
   task: WorkTask | undefined
   yolo: boolean
-  onOpenMessenger: () => void
 }
 
-function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMessenger }: TerminalLaneProps) {
+function TerminalLane({ state, dispatch, terminalId, slot, task, yolo }: TerminalLaneProps) {
+
   const laneRef = useRef<HTMLElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
   const taskDropVisible = state.stage === 'hired' && !task && isSourceActive('task')
@@ -431,11 +470,6 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
   const approval = (approved: boolean) => {
     if (state.stage !== 'hired' || !task || (task.status !== 'approval' && task.status !== 'blocked')) return
     dispatch({ type: 'approve-task', id: task.id, approved })
-  }
-  const deliverArtifact = () => {
-    if (state.stage !== 'hired' || !task || task.status !== 'artifact') return
-    dispatch({ type: 'deliver-task', id: task.id })
-    onOpenMessenger()
   }
   const progress = task ? Math.min(100, Math.max(0, (task.progress / Math.max(1, task.difficulty)) * 100)) : 0
 
@@ -491,7 +525,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
 
           {task.status === 'artifact' && (
             <div className="employment-terminal-action-block">
-              <ArtifactAttachment task={task} elapsed={state.elapsed} disabled={state.stage !== 'hired'} onDeliver={deliverArtifact} />
+              <ArtifactAttachment task={task} elapsed={state.elapsed} disabled={state.stage !== 'hired'} />
             </div>
           )}
         </div>
@@ -500,7 +534,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
   )
 }
 
-export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }: TerminalProps) {
+export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) {
   const terminal = state.terminals.find((candidate) => candidate.id === terminalId)
   const slots = terminal?.slots ?? 0
   const yolo = terminal?.yolo ?? false
@@ -605,7 +639,6 @@ export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }
             slot={slot}
             task={state.tasks.find((candidate) => candidate.terminalId === terminalId && candidate.slot === slot)}
             yolo={yolo}
-            onOpenMessenger={onOpenMessenger}
           />
         ))}
         <p className="terminal-prompt terminal-cursor">~ <span className="cursor-block" aria-hidden="true" /></p>
