@@ -23,9 +23,9 @@ const elapsedLabel = (elapsed: number): string => {
 
 const postHeading = (post: SocialPost): string => {
   switch (post.type) {
-    case 'campaign': return 'Your usage reset is here'
-    case 'lottery': return 'The Tiro Token Lottery'
-    case 'reset': return 'A token miracle'
+    case 'campaign': return 'A free reset. Back to 10M.'
+    case 'lottery': return 'Like for a free token reset'
+    case 'reset': return 'Token reset applied'
     case 'model': return 'Tiro Reason is online'
     case 'fast-mode': return 'Fast mode unlocked'
   }
@@ -33,9 +33,9 @@ const postHeading = (post: SocialPost): string => {
 
 const postKicker = (post: SocialPost): string => {
   switch (post.type) {
-    case 'campaign': return 'TIRO / ZZZ'
-    case 'lottery': return 'TIRO COMMUNITY'
-    case 'reset': return 'TIRO SYSTEMS'
+    case 'campaign': return 'TIRO'
+    case 'lottery': return 'TIRO'
+    case 'reset': return 'TIRO'
     case 'model': return 'TIRO LABS'
     case 'fast-mode': return 'TIRO LABS'
   }
@@ -57,19 +57,18 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
     return (
       <>
         <p className="social-post-copy">
-          Tiro here. Running low? Claim a free, one-time reset to the full 10M token balance.
-          Keep an eye on this feed — there may be another reset in your future.
+          Running low? Reset your token balance to 10M right now, on us.
         </p>
-        <p className="social-post-caption">A tiny social network for a very serious workplace.</p>
+        <p className="social-post-caption">One free reset per run. Applied immediately, not saved for later.</p>
         <button
           className="social-action social-claim-button"
           type="button"
           disabled={isLost || hasClaimedReset}
           onClick={() => dispatch({ type: 'claim-token-reset' })}
         >
-          {hasClaimedReset ? '10M token reset claimed' : 'Claim your 10M token reset'}
+          {hasClaimedReset ? 'Reset applied' : 'Reset to 10M now'}
         </button>
-        {hasClaimedReset && <p className="social-action-note">Claim recorded. The reset is yours once per run.</p>}
+        {hasClaimedReset && <p className="social-action-note">Your balance was reset to 10M immediately.</p>}
       </>
     )
   }
@@ -78,22 +77,22 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
     return (
       <>
         <p className="social-post-copy">
-          Heart this post for a chance at a full token reset. Every heart is one draw, and every draw
-          has an explicit <strong>1% chance</strong> to refill the token balance.
+          Out of tokens? Hit Like—we’re topping lucky builders back up to 10M.
+          No luck? Like again. More Likes, more chances to get back to shipping.
         </p>
-        <p className="social-post-caption">No cooldown. No hidden catch. Please heart responsibly.</p>
+        <p className="social-post-caption">Each Like has a <strong>1% chance</strong> of resetting your balance to 10M immediately.</p>
         <div className="social-lottery-actions">
           <button
             className="social-heart-button"
             type="button"
             disabled={isLost}
             onClick={() => dispatch({ type: 'like-reset' })}
-            aria-label={`Heart the token lottery post. ${post.likes.toLocaleString()} hearts so far.`}
+            aria-label={`Like Tiro’s post. ${post.likes.toLocaleString()} ${post.likes === 1 ? 'like' : 'likes'} so far.`}
           >
             <span aria-hidden="true">♥</span>
-            <span>Heart</span>
+            <span>Like</span>
           </button>
-          <span className="social-like-count" aria-live="polite">{post.likes.toLocaleString()} hearts</span>
+          <span className="social-like-count" aria-live="polite">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'}</span>
         </div>
         {isLost && <p className="social-action-note">The feed is archived after the run ends.</p>}
       </>
@@ -102,12 +101,9 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
 
   if (post.type === 'reset') {
     return (
-      <>
-        <p className="social-post-copy social-success-copy">
-          Your token inventory is back at 10M. Time to ship something ambitious.
-        </p>
-        <p className="social-post-caption">Keep shipping. Keep hearting.</p>
-      </>
+      <p className="social-post-copy social-success-copy">
+        We reset your balance to 10M tokens immediately.
+      </p>
     )
   }
 
@@ -182,7 +178,7 @@ export function SocialContent({ state, dispatch }: SocialProps) {
           <div className="social-feed-toolbar">
             <div>
               <p className="social-feed-title">Your timeline</p>
-              <p className="social-feed-subtitle">Tiro, updates, and extremely questionable incentives.</p>
+              <p className="social-feed-subtitle">Token resets and product updates from Tiro.</p>
             </div>
             <UnreadIndicator count={unreadCount} onClick={scrollToLatest} />
           </div>
