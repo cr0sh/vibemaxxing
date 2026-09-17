@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { DragEvent, Dispatch } from 'react'
 import { MAX_TOKENS, type GameAction, type GameState, type TerminalId, type WorkTask, upgradePrice } from './game'
 import { DragDropHint } from './DragDropHints'
-import { useDragDropHints, useDragDropSource } from './DragDropHintsContext'
+import { useDragDropHints, useDragDropSource, useDragDropTarget } from './DragDropHintsContext'
+import { useWindowWorkspace } from './DesktopWindows'
 import { UnreadIndicator } from './UnreadIndicator'
 import { useUnreadMessages } from './useUnreadMessages'
 import './Employment.css'
@@ -99,6 +100,9 @@ function TaskAttachment({
       onMouseEnter={dragSource.onMouseEnter}
       onMouseLeave={dragSource.onMouseLeave}
       onKeyDown={dragSource.onKeyDown}
+      onPointerDown={dragSource.onPointerDown}
+      onPointerCancel={dragSource.onPointerCancel}
+      onLostPointerCapture={dragSource.onLostPointerCapture}
       onDragStart={(event) => {
         if (!canStart) return
         event.dataTransfer.effectAllowed = 'move'
@@ -144,6 +148,9 @@ function ArtifactAttachment({
       onMouseEnter={dragSource.onMouseEnter}
       onMouseLeave={dragSource.onMouseLeave}
       onKeyDown={dragSource.onKeyDown}
+      onPointerDown={dragSource.onPointerDown}
+      onPointerCancel={dragSource.onPointerCancel}
+      onLostPointerCapture={dragSource.onLostPointerCapture}
       onDragStart={(event) => {
         if (disabled) return
         event.dataTransfer.effectAllowed = 'move'
@@ -176,7 +183,9 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
   const reactionTimer = useRef<number | null>(null)
   const firingRef = useRef<HTMLDivElement>(null)
   const chatPaneRef = useRef<HTMLDivElement>(null)
+  const messengerRef = useRef<HTMLDivElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
+  const { raise } = useWindowWorkspace()
 
   useEffect(() => () => {
     if (reactionTimer.current !== null) window.clearTimeout(reactionTimer.current)
@@ -195,6 +204,23 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
   ]
   const { unreadCount, scrollToLatest } = useUnreadMessages(messageIds, chatPaneRef)
   const artifactDropVisible = state.stage === 'hired' && isSourceActive('artifact')
+  useDragDropTarget(messengerRef, {
+    id: 'messenger-artifact',
+    priority: 1,
+    accepts: (source) => (
+      source.kind === 'artifact' &&
+      state.stage === 'hired' &&
+      state.tasks.some((task) => String(task.id) === source.id && task.status === 'artifact')
+    ),
+    onDrop: (source) => {
+      const id = Number(source.id)
+      const task = state.tasks.find((candidate) => candidate.id === id)
+      if (source.kind === 'artifact' && Number.isInteger(id) && task?.status === 'artifact') {
+        dispatch({ type: 'deliver-task', id })
+      }
+    },
+    onHover: () => raise('messenger'),
+  })
   const pingRemaining = hasPing ? (state.pingDeadline ?? state.elapsed) - state.elapsed : 0
   const nextPingRemaining = Math.max(0, state.nextPingAt - state.elapsed)
   const nextTaskRemaining = Math.max(0, state.nextTaskAt - state.elapsed)
@@ -221,6 +247,7 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
 
   return (
     <div
+      ref={messengerRef}
       className={`messenger-app employment-messenger ${artifactDropVisible ? 'employment-drop-active' : ''}`}
       onDragOver={(event) => {
         if (state.stage === 'hired' && event.dataTransfer.types.includes('application/x-vibemaxxer-artifact')) {
@@ -360,10 +387,24 @@ type TerminalLaneProps = {
 }
 
 function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMessenger }: TerminalLaneProps) {
+  const laneRef = useRef<HTMLElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
-  const tokenCost = task ? taskCost(task) : 0
+  const { raise } = useWindowWorkspace()
   const taskDropVisible = state.stage === 'hired' && !task && isSourceActive('task')
 
+  useDragDropTarget(laneRef, {
+    id: `terminal-lane-${terminalId}-${slot}`,
+    priority: 3,
+    accepts: (source) => source.kind === 'task' && state.stage === 'hired' && task === undefined,
+    onDrop: (source) => {
+      const id = Number(source.id)
+      const dropped = state.tasks.find((candidate) => candidate.id === id)
+      if (source.kind === 'task' && Number.isInteger(id) && !task && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null) {
+        dispatch({ type: 'start-task', id, terminalId, slot })
+      }
+    },
+    onHover: () => raise(terminalId),
+  })
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     if (state.stage !== 'hired') return
     const upgrade = event.dataTransfer.getData('application/x-vibemaxxer-upgrade')
@@ -389,10 +430,6 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
     }
   }
 
-  const startTask = () => {
-    if (state.stage !== 'hired' || !task || task.status !== 'assigned' || task.terminalId !== terminalId || task.slot !== slot) return
-    dispatch({ type: 'start-task', id: task.id, terminalId, slot })
-  }
   const approval = (approved: boolean) => {
     if (state.stage !== 'hired' || !task || (task.status !== 'approval' && task.status !== 'blocked')) return
     dispatch({ type: 'approve-task', id: task.id, approved })
@@ -406,6 +443,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
 
   return (
     <section
+      ref={laneRef}
       className={`employment-terminal-lane ${taskDropVisible ? 'employment-drop-active' : ''}`}
       aria-label={`Terminal agent pane ${slot + 1}`}
       onDragOver={(event) => {
@@ -435,14 +473,6 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, onOpenMes
             <span>deadline {taskDeadline(task, state.elapsed)}</span>
           </div>
 
-          {task.status === 'assigned' && (
-            <div className="employment-terminal-action-block">
-              <button className="employment-terminal-button" type="button" onClick={startTask} disabled={state.stage !== 'hired' || state.tokens < tokenCost}>
-                Start task <span>({tokenCost.toLocaleString()} tokens)</span>
-              </button>
-              {state.tokens < tokenCost && <span className="employment-control-hint">Need {tokenCost.toLocaleString()} tokens</span>}
-            </div>
-          )}
 
           {task.status === 'approval' && !yolo && (
             <div className="employment-terminal-action-block employment-approval-block">
@@ -477,13 +507,45 @@ export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }
   const slots = terminal?.slots ?? 0
   const yolo = terminal?.yolo ?? false
   const refillIn = 100 - (state.elapsed % 100 || 0)
+  const terminalRef = useRef<HTMLDivElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
+  const { raise } = useWindowWorkspace()
   const idleSlot = findIdleTerminalSlot(state.tasks, terminalId, slots)
   const taskDropVisible = state.stage === 'hired' && idleSlot !== null && isSourceActive('task')
   const upgradeDropVisible = state.stage === 'hired' && (['split', 'yolo', 'terminal'] as const).some((upgrade) => (
     isSourceActive('upgrade', upgrade) &&
     upgradePrice(state, upgrade, upgrade === 'terminal' ? 'terminal' : terminalId) !== null
   ))
+
+  useDragDropTarget(terminalRef, {
+    id: `terminal-${terminalId}`,
+    priority: 1,
+    accepts: (source) => {
+      if (state.stage !== 'hired') return false
+      if (source.kind === 'task') return idleSlot !== null
+      return source.kind === 'upgrade' &&
+        (source.id === 'split' || source.id === 'yolo' || source.id === 'terminal') &&
+        upgradePrice(state, source.id, source.id === 'terminal' ? 'terminal' : terminalId) !== null
+    },
+    onDrop: (source) => {
+      if (state.stage !== 'hired') return
+      if (source.kind === 'upgrade' && (source.id === 'split' || source.id === 'yolo' || source.id === 'terminal')) {
+        const target = source.id === 'terminal' ? 'terminal' : terminalId
+        if (upgradePrice(state, source.id, target) !== null) {
+          dispatch({ type: 'buy-upgrade', upgrade: source.id, terminalId: target })
+        }
+        return
+      }
+      if (source.kind === 'task' && idleSlot !== null) {
+        const id = Number(source.id)
+        const dropped = state.tasks.find((candidate) => candidate.id === id)
+        if (Number.isInteger(id) && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null) {
+          dispatch({ type: 'start-task', id, terminalId, slot: idleSlot })
+        }
+      }
+    },
+    onHover: () => raise(terminalId),
+  })
   const handleTerminalDrop = (event: DragEvent<HTMLDivElement>) => {
     if (state.stage !== 'hired') return
     const upgrade = event.dataTransfer.getData('application/x-vibemaxxer-upgrade')
@@ -527,6 +589,7 @@ export function TerminalContent({ state, dispatch, terminalId, onOpenMessenger }
 
   return (
     <div
+      ref={terminalRef}
       className={`terminal-app employment-terminal ${yolo ? 'employment-terminal-yolo' : ''} ${taskDropVisible || upgradeDropVisible ? 'employment-drop-active' : ''}`}
       onDragOver={handleTerminalDragOver}
       onDrop={handleTerminalDrop}

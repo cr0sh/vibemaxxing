@@ -98,6 +98,7 @@ function Desktop({
   const [activeWindow, setActiveWindow] = useState<WindowId>(
     state.stage === 'lost' ? 'defeat' : state.stage === 'hired' ? 'messenger' : state.stage === 'offer' ? 'offer' : 'apply',
   )
+  const [focusRequest, setFocusRequest] = useState(0)
   const [isAutofilling, setIsAutofilling] = useState(false)
   const [defeatDismissed, setDefeatDismissed] = useState(false)
   const [defeatClaimed, setDefeatClaimed] = useState(false)
@@ -143,6 +144,7 @@ function Desktop({
     } else if (defeatAutoFront) {
       setDefeatClaimed(true)
     }
+    setFocusRequest((request) => request + 1)
     setActiveWindow(id)
   }
 
@@ -281,7 +283,7 @@ function Desktop({
           </section>
         ) : (
           <div className="workspace-area">
-            <WindowWorkspace className={`windows-${state.stage}`}>
+            <WindowWorkspace className={`windows-${state.stage}`} focusRequest={focusRequest}>
               {state.stage === 'applying' && (
                 <WindowFrame
                   id="apply"

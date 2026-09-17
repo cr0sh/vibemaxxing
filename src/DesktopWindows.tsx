@@ -8,6 +8,7 @@ type Size = { width: number; height: number }
 type WorkspaceState = {
   size: Size
   order: string[]
+  focusRequest: number
   register: (id: string) => void
   unregister: (id: string) => void
   raise: (id: string) => void
@@ -38,11 +39,10 @@ function clampPosition(point: Point, size: Size, workspace: Size): Point {
   }
 }
 
-export function WindowWorkspace({ className = '', children }: { className?: string; children: ReactNode }) {
+export function WindowWorkspace({ className = '', focusRequest = 0, children }: { className?: string; focusRequest?: number; children: ReactNode }) {
   const elementRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<Size>({ width: 0, height: 0 })
   const [order, setOrder] = useState<string[]>([])
-
   useLayoutEffect(() => {
     const element = elementRef.current
     if (!element) return
@@ -69,11 +69,17 @@ export function WindowWorkspace({ className = '', children }: { className?: stri
 
   return (
     <DragDropHintsProvider>
-      <WorkspaceContext.Provider value={{ size, order, register, unregister, raise }}>
+      <WorkspaceContext.Provider value={{ size, order, focusRequest, register, unregister, raise }}>
         <div ref={elementRef} className={`windows ${className}`}>{children}</div>
       </WorkspaceContext.Provider>
     </DragDropHintsProvider>
   )
+}
+
+export function useWindowWorkspace(): WorkspaceState {
+  const workspace = useContext(WorkspaceContext)
+  if (!workspace) throw new Error('useWindowWorkspace requires a WindowWorkspace')
+  return workspace
 }
 
 interface WindowFrameProps {
@@ -94,7 +100,7 @@ type Drag = { pointerId: number; origin: Point; start: Point }
 export function WindowFrame({ id, icon, title, active, className = '', contentLayout = 'padded', onFocus, onMinimize, children, hidden = false }: WindowFrameProps) {
   const workspace = useContext(WorkspaceContext)
   if (!workspace) throw new Error('WindowFrame requires a WindowWorkspace')
-  const { size: bounds, order, register, unregister, raise } = workspace
+  const { size: bounds, order, focusRequest, register, unregister, raise } = workspace
   const defaults = windowDefaults[id] ?? defaultWindow
   const size = { width: Math.min(defaults.width, bounds.width), height: Math.min(defaults.height, bounds.height) }
   const [savedPosition, setSavedPosition] = useState<Point | null>(null)
@@ -106,19 +112,16 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
   const windowRef = useRef<HTMLElement>(null)
   const drag = useRef<Drag | null>(null)
   const [dragging, setDragging] = useState(false)
-
-  useLayoutEffect(() => {
-    register(id)
-    return () => unregister(id)
-  }, [id, register, unregister])
-
   useLayoutEffect(() => {
     if (hidden || !active) return
-    raise(id)
-    if (!windowRef.current?.contains(document.activeElement)) {
-      windowRef.current?.focus({ preventScroll: true })
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) raise(id)
+    })
+    return () => {
+      cancelled = true
     }
-  }, [active, hidden, id, raise])
+  }, [active, focusRequest, hidden, id, raise])
 
   const focus = () => {
     raise(id)
