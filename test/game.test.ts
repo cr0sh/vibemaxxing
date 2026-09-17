@@ -542,6 +542,7 @@ describe('extended progression boundaries', () => {
   test('the one-time claim and five-second lottery preserve the refill schedule', () => {
     let state: GameState = {
       ...hire(), watercoolerUnlocked: true, tokens: 100,
+      tasks: [], taskQueue: [], nextTaskAt: 1_000,
     }
     state = gameReducer(state, { type: 'install-social' })
     expect(gameReducer(state, { type: 'like-reset' })).toBe(state)
@@ -576,6 +577,7 @@ describe('extended progression boundaries', () => {
     ] as const) {
       const issued = gameReducer({
         ...hired, rng, level: 4, completedArchitectureTasks,
+        tasks: [], taskQueue: [], nextTaskAt: 0,
       }, { type: 'tick', seconds: 1 })
       expect(issued.tasks[0]?.kind).toBe(kind)
     }
@@ -585,6 +587,7 @@ describe('extended progression boundaries', () => {
     const hired = hire()
     const descriptor = hired.taskQueue[0]!
     const issued = (architecture: boolean) => gameReducer({
+      ...hired, level: 4, elapsed: 200, tasks: [], nextTaskAt: 0,
       taskQueue: [{ ...descriptor, kind: architecture ? 'architecture' : 'standard', complexity: architecture ? 2 : 1 }],
     }, { type: 'tick', seconds: 1 }).tasks[0]!
     const standard = issued(false)
