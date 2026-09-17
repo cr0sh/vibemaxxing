@@ -5,6 +5,7 @@ export type Application = {
 }
 
 export type Stage = 'ready' | 'applying' | 'offer' | 'hired' | 'lost'
+export type DevJumpTarget = Stage | 'tiro'
 
 export type TaskStatus = 'assigned' | 'working' | 'approval' | 'blocked' | 'artifact' | 'failed'
 
@@ -76,8 +77,7 @@ export type EmploymentTaskSnapshot = Pick<
 
 export type EmploymentMessage =
   | { id: string; type: 'welcome'; elapsed: number }
-  | { id: string; type: 'assignment'; elapsed: number; task: EmploymentTaskSnapshot }
-  | { id: string; type: 'artifact'; elapsed: number; task: EmploymentTaskSnapshot }
+  | { id: string; type: 'assignment'; elapsed: number; task: EmploymentTaskSnapshot; artifact: EmploymentTaskSnapshot | null }
   | {
       id: string
       type: 'delivery'
@@ -138,7 +138,7 @@ export type GameAction =
   | { type: 'submit'; roll: number; companyIndex: number }
   | { type: 'accept' }
   | { type: 'reset' }
-  | { type: 'dev-jump'; stage: Stage }
+  | { type: 'dev-jump'; stage: DevJumpTarget }
   | { type: 'tick'; seconds: number }
   | { type: 'welcome-react' }
   | { type: 'acknowledge-ping' }
@@ -186,6 +186,7 @@ const SECONDARY_PRICE_MULTIPLIER = 2
 const ADDITIONAL_TERMINAL_PRICE = 1_000
 const WATERCOOLER_THRESHOLD = MAX_TOKENS * 0.2
 const SOCIAL_LOTTERY_DELAY = 5
+const TIRO_PREVIEW_TOKENS = 1_900_000
 
 export function taskTokenCost(task: Pick<WorkTask, 'difficulty'>, fastMode = false): number {
   return TOKEN_TASK_COST * task.difficulty * (fastMode ? 2 : 1)
@@ -402,6 +403,17 @@ function appendMessage(state: GameState, message: EmploymentMessage): GameState 
   return { ...state, messages: [...state.messages, message] }
 }
 
+function updateAssignmentArtifact(state: GameState, task: WorkTask): GameState {
+  return {
+    ...state,
+    messages: state.messages.map((message) => (
+      message.type === 'assignment' && message.task.id === task.id
+        ? { ...message, artifact: snapshotTask(task) }
+        : message
+    )),
+  }
+}
+
 
 const PRIMARY_TERMINAL: TerminalState = {
   id: 'terminal',
@@ -461,6 +473,7 @@ function issueAvailableAssignments(state: GameState): GameState {
     type: 'assignment',
     elapsed: current.elapsed,
     task: snapshotTask(task),
+    artifact: null,
   })
 }
 export function canFundTaskAttempt(
@@ -709,12 +722,7 @@ function tickHired(state: GameState, seconds: number): GameState {
       const before = previousTasks[index]
       const after = advancedTasks[index]
       if (before?.status !== 'artifact' && after?.status === 'artifact') {
-        current = appendMessage(current, {
-          id: `artifact-${after.id}`,
-          type: 'artifact',
-          elapsed: current.elapsed,
-          task: snapshotTask(after),
-        })
+        current = updateAssignmentArtifact(current, after)
       }
       if (before?.status !== 'failed' && after?.status === 'failed') {
         current = appendMessage(current, {
@@ -849,6 +857,25 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'dev-jump': {
       if (action.stage === 'ready') {
         return initialGame
+      }
+
+      if (action.stage === 'tiro') {
+        const company =
+          state.company !== null && companies.includes(state.company)
+            ? state.company
+            : companies[0] ?? null
+        const freshHired = createHiredState({
+          ...initialGame,
+          company,
+          elapsed: 0,
+          tokens: TIRO_PREVIEW_TOKENS,
+          rng: normalizeSeed(state.rng),
+        })
+        return gameReducer({
+          ...freshHired,
+          watercoolerUnlocked: true,
+          watercoolerRead: true,
+        }, { type: 'install-social' })
       }
 
       if (action.stage === 'applying') {

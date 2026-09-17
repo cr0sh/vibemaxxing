@@ -289,6 +289,23 @@
   background: linear-gradient(145deg, rgba(30, 90, 70, 0.62), rgba(27, 46, 56, 0.76));
 }
 
+.employment-compact-attachment {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  width: min(100%, 28rem);
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.52rem;
+  box-shadow: none;
+}
+
+.employment-compact-attachment .employment-attachment-icon {
+  width: 1.8rem;
+  height: 1.8rem;
+  font-size: 1rem;
+}
+
+
 .employment-check-button,
 .employment-terminal-button {
   min-height: 2.35rem;

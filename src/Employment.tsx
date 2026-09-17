@@ -216,16 +216,18 @@ function ArtifactAttachment({
   elapsed,
   disabled = false,
   archived = false,
+  compact = false,
 }: {
   task: WorkTask
   elapsed: number
   disabled?: boolean
   archived?: boolean
+  compact?: boolean
 }) {
   const dragSource = useDragDropSource({ kind: 'artifact', id: String(task.id) }, !disabled)
   return (
     <div
-      className={`employment-attachment employment-artifact-attachment ${task.kind === 'architecture' ? 'employment-architecture-attachment' : ''} ${archived ? 'employment-archived-attachment' : ''}`}
+      className={`employment-attachment employment-artifact-attachment ${task.kind === 'architecture' ? 'employment-architecture-attachment' : ''} ${archived ? 'employment-archived-attachment' : ''} ${compact ? 'employment-compact-attachment' : ''}`}
       draggable={!disabled}
       tabIndex={!disabled ? 0 : undefined}
       onFocus={dragSource.onFocus}
@@ -253,12 +255,16 @@ function ArtifactAttachment({
       </div>
       <div className="employment-attachment-copy">
         <strong>{task.artifactName}</strong>
-        <span>{archived ? 'Delivered artifact' : 'Ready for delivery'}</span>
-        <div className="employment-attachment-meta">
-          <span>{archived ? 'Delivered' : 'Artifact ready'}</span>
-          <span>{archived ? 'Complete' : taskProgressLabel(task)}</span>
-          {!archived && <span>{taskDeadline(task, elapsed)}</span>}
-        </div>
+        {!compact && (
+          <>
+            <span>{archived ? 'Delivered artifact' : 'Ready for delivery'}</span>
+            <div className="employment-attachment-meta">
+              <span>{archived ? 'Delivered' : 'Artifact ready'}</span>
+              <span>{archived ? 'Complete' : taskProgressLabel(task)}</span>
+              {!archived && <span>{taskDeadline(task, elapsed)}</span>}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -429,7 +435,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
     }
 
     if (message.type === 'assignment') {
-      const currentTask = taskForMessage(state, message.task)
+      const currentTask = taskForMessage(state, message.artifact ?? message.task)
       return (
         <div className="message-row employment-message-entry" key={message.id}>
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
@@ -437,20 +443,15 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
             <div className="message-meta"><strong>boss.exe</strong><span>assignment</span></div>
             <p>Here is the next thing to ship. Drag this task into Terminal to start.</p>
             <TaskAttachment state={state} task={currentTask.task} elapsed={state.elapsed} archived={currentTask.archived} />
-          </div>
-        </div>
-      )
-    }
-
-    if (message.type === 'artifact') {
-      const currentTask = taskForMessage(state, message.task)
-      return (
-        <div className="message-row employment-message-entry" key={message.id}>
-          <div className="avatar boss-avatar" aria-hidden="true">B</div>
-          <div className="message-body">
-            <div className="message-meta"><strong>agent-shell</strong><span>artifact ready</span></div>
-            <p>Waiting for <strong>{message.task.artifactName}</strong> in Terminal.</p>
-            <ArtifactAttachment task={currentTask.task} elapsed={state.elapsed} disabled={currentTask.archived || state.stage !== 'hired'} archived={currentTask.archived} />
+            {message.artifact !== null && (
+              <ArtifactAttachment
+                task={taskFromSnapshot(message.artifact)}
+                elapsed={state.elapsed}
+                disabled={currentTask.archived || state.stage !== 'hired'}
+                archived={currentTask.archived}
+                compact
+              />
+            )}
           </div>
         </div>
       )
