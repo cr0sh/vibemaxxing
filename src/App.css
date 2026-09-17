@@ -1012,6 +1012,16 @@ button {
   transform: translateY(-0.35rem) scale(1.12);
 }
 
+.dock-item-attention .dock-icon {
+  animation: dock-attention-bounce 900ms cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  filter: brightness(1.16) saturate(1.1);
+}
+
+.dock-item-attention .dock-indicator {
+  background: #fff3c4;
+  box-shadow: 0 0 0.58rem 0.16rem rgba(255, 225, 132, 0.88);
+}
+
 button:focus-visible,
 summary:focus-visible,
 input:focus-visible,
@@ -1055,6 +1065,12 @@ textarea:focus-visible {
   42% { transform: translateY(-0.56rem) scale(1.12); }
   70% { transform: translateY(-0.32rem) scale(1.07); }
   100% { transform: translateY(0) scale(1.1); }
+}
+
+@keyframes dock-attention-bounce {
+  0%, 100% { transform: translateY(0) scale(1.06); }
+  42% { transform: translateY(-0.56rem) scale(1.14); }
+  70% { transform: translateY(-0.32rem) scale(1.09); }
 }
 
 @media (max-width: 900px) {
@@ -1200,6 +1216,15 @@ textarea:focus-visible {
   }
   .new-game-button:hover {
     animation: none;
+  }
+  .dock-item-attention .dock-icon {
+    animation: none !important;
+    filter: brightness(1.16) saturate(1.1);
+    transform: translateY(-0.18rem) scale(1.08);
+  }
+  .dock-item-attention .dock-indicator {
+    background: #fff3c4;
+    box-shadow: 0 0 0.58rem 0.16rem rgba(255, 225, 132, 0.88);
   }
 }
 .widget-band {
