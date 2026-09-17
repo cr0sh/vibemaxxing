@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DragEvent, Dispatch } from 'react'
-import { MAX_TOKENS, assignmentTokenShortfall, extraTaskCapacity, taskReward, taskTokenCost, type GameAction, type GameState, type TerminalId, type WorkTask, upgradePrice } from './game'
+import { MAX_TOKENS, taskReward, taskTokenCost, type GameAction, type GameState, type TerminalId, type WorkTask, upgradePrice } from './game'
 import { DragDropHint } from './DragDropHints'
 import { useDragDropHints, useDragDropSource, useDragDropTarget } from './DragDropHintsContext'
 import { UnreadIndicator } from './UnreadIndicator'
@@ -53,7 +53,7 @@ const taskProgressLabel = (task: WorkTask): string => {
 
 const workPhrase = (task: WorkTask): string => {
   const ratio = task.progress / Math.max(1, task.difficulty)
-  if (task.status === 'assigned') return 'No assignment attached. Drag one from Messenger.'
+  if (task.status === 'assigned') return 'Assignment is ready. Drag it into Terminal to start.'
   if (task.status === 'approval') return 'The agent paused. Your review is required before it can continue.'
   if (task.status === 'blocked') return 'The agent is waiting on your review decision.'
   if (task.status === 'artifact') return 'The artifact is packaged and ready to deliver.'
@@ -120,7 +120,7 @@ function TaskAttachment({
       <div className="employment-attachment-copy">
         <strong>{task.title}</strong>
         <span>{task.description}</span>
-        <span>{task.optional ? 'Extra' : 'Required'} · ${taskReward(task)} bonus · {compactTokens.format(taskTokenCost(task))} tokens</span>
+        <span>${taskReward(task)} bonus · {compactTokens.format(taskTokenCost(task))} tokens</span>
         <div className="employment-attachment-meta">
           <span>{taskStatusLabel(task)}</span>
           <span>{taskProgressLabel(task)}</span>
@@ -226,11 +226,6 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
     onHover: () => focusDropWindow(messengerRef.current),
   })
   const pingRemaining = hasPing ? (state.pingDeadline ?? state.elapsed) - state.elapsed : 0
-  const nextPingRemaining = Math.max(0, state.nextPingAt - state.elapsed)
-  const nextTaskRemaining = Math.max(0, state.nextTaskAt - state.elapsed)
-  const extraCapacity = extraTaskCapacity(state)
-  const tokenShortfall = assignmentTokenShortfall(state)
-  const canRequestExtra = state.stage === 'hired' && extraCapacity > 0 && tokenShortfall === 0
 
   const reactToWelcome = () => {
     dispatch({ type: 'welcome-react' })
@@ -359,28 +354,6 @@ export function MessengerContent({ state, dispatch }: MessengerProps) {
               <p className="employment-next-ping" role="status" aria-live="polite">
                 Next boss check-in in <strong>{formatSeconds(nextPingRemaining)}</strong>
               </p>
-            )}
-            {state.stage === 'hired' && state.nextTaskAt > 0 && (
-              <p className="employment-next-task" role="status" aria-live="polite">
-                {nextTaskRemaining === 0 && tokenShortfall > 0
-                  ? <>Next assignment waits for {compactTokens.format(tokenShortfall)} more tokens. Refill in Shop or wait for the automatic refill.</>
-                  : <>Next required assignment in <strong>{formatSeconds(nextTaskRemaining)}</strong></>}
-              </p>
-            )}
-
-            {state.stage === 'hired' && (
-              <section className="employment-extra-work" aria-label="Optional assignments">
-                <strong>Optional parallel work</strong>
-                <p>Take an extra paid job with a spare agent pane. Accepting starts its deadline.</p>
-                <button className="employment-inline-button" type="button" disabled={!canRequestExtra} onClick={() => dispatch({ type: 'request-task' })}>
-                  Request extra assignment
-                </button>
-                <span>{extraCapacity === 0
-                  ? 'No spare assignment slots. Deliver extra work or add capacity in Shop.'
-                  : tokenShortfall > 0
-                    ? `Need ${compactTokens.format(tokenShortfall)} more tokens to fund current and new assignments.`
-                    : `${extraCapacity} extra assignment slot${extraCapacity === 1 ? '' : 's'} available; one pane stays reserved for required work.`}</span>
-              </section>
             )}
 
             {state.stage === 'lost' && (

@@ -21,18 +21,20 @@ export type TerminalState = {
   yolo: boolean
 }
 
-export type WorkTask = {
+export type TaskDescriptor = {
   id: number
   title: string
   description: string
   difficulty: number
-  optional: boolean
+  artifactName: string
+}
+
+export type WorkTask = TaskDescriptor & {
   deadlineAt: number
   startedAt: number | null
   status: TaskStatus
   progress: number
   nextApprovalAt: number
-  artifactName: string
   terminalId: TerminalId | null
   slot: number | null
   approvalPrompt: string | null
@@ -48,8 +50,10 @@ export type GameState = {
   money: number
   elapsed: number
   tasks: WorkTask[]
+  taskQueue: TaskDescriptor[]
   terminals: TerminalState[]
   completedTasks: number
+  nextTaskId: number
   nextTaskAt: number
   nextPingAt: number
   pingDeadline: number | null
@@ -70,7 +74,6 @@ export type GameAction =
   | { type: 'tick'; seconds: number }
   | { type: 'welcome-react' }
   | { type: 'acknowledge-ping' }
-  | { type: 'request-task' }
   | { type: 'start-task'; id: number; terminalId: TerminalId; slot: number }
   | { type: 'approve-task'; id: number; approved: boolean }
   | { type: 'deliver-task'; id: number }
@@ -89,7 +92,7 @@ const MAX_ENERGY = 100
 export const MAX_TOKENS = 10_000_000
 const TOKEN_TASK_COST = 100_000
 export const TOKEN_PURCHASE_AMOUNT = 100_000
-export const TOKEN_PURCHASE_COST = 10
+export const TOKEN_PURCHASE_COST = 100
 const TASK_COOLDOWN = 5
 const MAX_TASK_DIFFICULTY = 12
 const TASK_REWARD_PER_DIFFICULTY = 5
@@ -98,34 +101,26 @@ const MAX_EXPECTATION = 1
 const UINT_RANGE = 4_294_967_296
 const MAX_TERMINAL_SLOTS = 4
 const MAX_TERMINALS = 2
-const SPLIT_PRICES: readonly number[] = [20, 40, 100]
-const YOLO_PRICE = 42
+const TASK_QUEUE_SIZE = 3
+const SPLIT_PRICES: readonly number[] = [200, 400, 1_000]
+const YOLO_PRICE = 420
 const SECONDARY_PRICE_MULTIPLIER = 2
-const ADDITIONAL_TERMINAL_PRICE = 100
+const ADDITIONAL_TERMINAL_PRICE = 1_000
 
-export function taskTokenCost(task: WorkTask): number {
+export function taskTokenCost(task: Pick<WorkTask, 'difficulty'>): number {
   return TOKEN_TASK_COST * task.difficulty
 }
 
-export function taskReward(task: WorkTask): number {
+export function taskReward(task: Pick<WorkTask, 'difficulty'>): number {
   return TASK_REWARD_PER_DIFFICULTY * task.difficulty
 }
 
 export function assignmentTokenShortfall(state: GameState): number {
-  let reserve = TOKEN_TASK_COST * MAX_TASK_DIFFICULTY
-  for (const task of state.tasks) {
-    if (task.status === 'assigned') reserve += taskTokenCost(task)
-  }
-  return Math.max(0, reserve - state.tokens)
-}
-
-export function extraTaskCapacity(state: GameState): number {
-  let capacity = -1 // Keep one pane available for the required assignment.
-  for (const terminal of state.terminals) capacity += terminal.slots
-  for (const task of state.tasks) {
-    if (task.optional) capacity -= 1
-  }
-  return Math.max(0, capacity)
+  const reserved = state.tasks.reduce(
+    (total, task) => total + (task.status === 'assigned' ? taskTokenCost(task) : 0),
+    0,
+  )
+  return Math.max(0, reserved - state.tokens)
 }
 
 export function tokenPurchaseAmount(tokens: number, packs: TokenPackCount): number {
@@ -136,7 +131,7 @@ export function tokenPurchaseCost(amount: number): number {
   return Math.ceil(amount * TOKEN_PURCHASE_COST * 100 / TOKEN_PURCHASE_AMOUNT) / 100
 }
 
-const taskBlueprints: readonly Pick<WorkTask, 'title' | 'description' | 'artifactName'>[] = [
+const taskBlueprints: readonly Pick<TaskDescriptor, 'title' | 'description' | 'artifactName'>[] = [
   {
     title: 'Tame the onboarding flow',
     description: 'Make the first-run checklist feel calm, clear, and impossible to miss.',
@@ -228,58 +223,117 @@ function deadlineFor(difficulty: number, expectation: number, elapsed: number): 
   return elapsed + (1.5 * difficulty) / safeExpectation
 }
 
-function createTask(state: GameState, elapsed: number, optional = false): readonly [WorkTask, number] {
+function createDescriptor(state: Pick<GameState, 'rng' | 'nextTaskId'>): readonly [TaskDescriptor, number, number] {
   const [blueprintRng, blueprintIndex] = drawInteger(state.rng, 0, taskBlueprints.length - 1)
   const [nextRng, difficulty] = drawInteger(blueprintRng, 6, MAX_TASK_DIFFICULTY)
   const blueprint = taskBlueprints[blueprintIndex] ?? taskBlueprints[0]
-
   return [
     {
-      id: state.completedTasks + state.tasks.length + 1,
+      id: state.nextTaskId,
       title: blueprint.title,
       description: blueprint.description,
       difficulty,
-      optional,
-      deadlineAt: deadlineFor(difficulty, state.expectation, elapsed),
-      startedAt: null,
-      status: 'assigned',
-      progress: 0,
-      nextApprovalAt: 0,
       artifactName: blueprint.artifactName,
-      terminalId: null,
-      slot: null,
-      approvalPrompt: null
     },
     nextRng,
+    state.nextTaskId + 1,
   ]
+}
+
+function refillTaskQueue(state: GameState): GameState {
+  let current = state
+  while (current.taskQueue.length < TASK_QUEUE_SIZE) {
+    const [descriptor, rng, nextTaskId] = createDescriptor(current)
+    current = {
+      ...current,
+      taskQueue: [...current.taskQueue, descriptor],
+      rng,
+      nextTaskId,
+    }
+  }
+  return current
 }
 
 const PRIMARY_TERMINAL: TerminalState = { id: 'terminal', slots: 1, yolo: false }
 
+function assignmentCapacity(state: GameState): number {
+  return state.terminals.reduce((total, terminal) => total + terminal.slots, 0)
+}
+
+function reservedAssignmentTokens(tasks: readonly WorkTask[]): number {
+  return tasks.reduce(
+    (total, task) => total + (task.status === 'assigned' ? taskTokenCost(task) : 0),
+    0,
+  )
+}
+
+function issueAvailableAssignments(state: GameState): GameState {
+  if (state.stage !== 'hired' || (state.nextTaskAt > 0 && state.elapsed < state.nextTaskAt)) {
+    return state
+  }
+
+  let current = refillTaskQueue(state)
+  let tasks = current.tasks
+  let queue = current.taskQueue
+  let reserved = reservedAssignmentTokens(tasks)
+  let changed = current !== state
+
+  while (tasks.length < assignmentCapacity(current) && queue.length > 0) {
+    const descriptor = queue[0]
+    if (descriptor === undefined || current.tokens < reserved + taskTokenCost(descriptor)) {
+      break
+    }
+
+    const task: WorkTask = {
+      ...descriptor,
+      deadlineAt: deadlineFor(descriptor.difficulty, current.expectation, current.elapsed),
+      startedAt: null,
+      status: 'assigned',
+      progress: 0,
+      nextApprovalAt: 0,
+      terminalId: null,
+      slot: null,
+      approvalPrompt: null,
+    }
+    tasks = [...tasks, task]
+    queue = queue.slice(1)
+    reserved += taskTokenCost(task)
+    current = refillTaskQueue({ ...current, tasks, taskQueue: queue })
+    queue = current.taskQueue
+    changed = true
+  }
+
+  if (!changed) return state
+  return { ...current, tasks, taskQueue: queue }
+}
+
 function createHiredState(state: GameState): GameState {
   const expectation = clamp(state.expectation, MIN_EXPECTATION, MAX_EXPECTATION)
-  const [task, taskRng] = createTask(
-    { ...state, tasks: [], terminals: [{ ...PRIMARY_TERMINAL }], expectation },
-    state.elapsed,
-  )
-  const [nextRng, pingDelay] = drawInteger(taskRng, 90, 150)
-
-  return {
+  const hired: GameState = {
     ...state,
     stage: 'hired',
     energy: MAX_ENERGY,
-    tasks: [task],
+    tasks: [],
+    taskQueue: [],
     terminals: [{ ...PRIMARY_TERMINAL }],
+    completedTasks: state.completedTasks,
+    nextTaskId: Math.max(state.nextTaskId, state.completedTasks + 1),
     nextTaskAt: 0,
-    nextPingAt: state.elapsed + pingDelay,
+    nextPingAt: state.elapsed,
     pingDeadline: null,
     welcomeReacted: false,
     lastDelivery: null,
     lastReward: 0,
     failure: null,
     expectation,
-    rng: nextRng,
   }
+  const withQueue = refillTaskQueue(hired)
+  const [nextRng, pingDelay] = drawInteger(withQueue.rng, 90, 150)
+  return issueAvailableAssignments({
+    ...withQueue,
+    nextPingAt: withQueue.elapsed + pingDelay,
+    rng: nextRng,
+  })
 }
 
 function lose(state: GameState, failure: string): GameState {
@@ -300,8 +354,10 @@ export const initialGame: GameState = {
   money: 0,
   elapsed: 0,
   tasks: [],
+  taskQueue: [],
   terminals: [{ ...PRIMARY_TERMINAL }],
   completedTasks: 0,
+  nextTaskId: 1,
   nextTaskAt: 0,
   nextPingAt: 0,
   pingDeadline: null,
@@ -320,7 +376,6 @@ function getTerminal(state: GameState, terminalId: TerminalId): TerminalState | 
 function isTerminalId(value: string): value is TerminalId {
   return value === 'terminal' || value === 'terminal-2'
 }
-
 
 function advanceTask(task: WorkTask, elapsed: number, terminals: readonly TerminalState[]): WorkTask {
   if (task.status !== 'working') {
@@ -372,16 +427,7 @@ function tickHired(state: GameState, seconds: number): GameState {
       ...current,
       tasks: current.tasks.map((task) => advanceTask(task, current.elapsed, current.terminals)),
     }
-
-    if (current.nextTaskAt > 0 && current.elapsed >= current.nextTaskAt && assignmentTokenShortfall(current) === 0) {
-      const [task, nextRng] = createTask(current, current.elapsed)
-      current = {
-        ...current,
-        tasks: [...current.tasks, task],
-        nextTaskAt: 0,
-        rng: nextRng,
-      }
-    }
+    current = issueAvailableAssignments(current)
 
     if (current.pingDeadline === null && current.nextPingAt > 0 && current.elapsed >= current.nextPingAt) {
       const [nextRng, pingDelay] = drawInteger(current.rng, 90, 150)
@@ -504,6 +550,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           stage: 'applying',
           company: null,
           tasks: [],
+          taskQueue: [],
           terminals: [{ ...PRIMARY_TERMINAL }],
           nextTaskAt: 0,
           nextPingAt: 0,
@@ -523,6 +570,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               ? state.company
               : companies[0] ?? null,
           tasks: [],
+          taskQueue: [],
           terminals: [{ ...PRIMARY_TERMINAL }],
           pingDeadline: null,
           failure: null,
@@ -565,14 +613,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         state.elapsed <= state.pingDeadline
         ? { ...state, pingDeadline: null }
         : state
-
-    case 'request-task': {
-      if (state.stage !== 'hired' || extraTaskCapacity(state) === 0 || assignmentTokenShortfall(state) > 0) {
-        return state
-      }
-      const [task, nextRng] = createTask(state, state.elapsed, true)
-      return { ...state, tasks: [...state.tasks, task], rng: nextRng }
-    }
 
     case 'start-task': {
       if (
@@ -709,7 +749,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         tasks: state.tasks.filter((candidate) => candidate.id !== action.id),
         completedTasks: state.completedTasks + 1,
         money: state.money + taskReward(task),
-        nextTaskAt: task.optional ? state.nextTaskAt : state.elapsed + TASK_COOLDOWN,
+        nextTaskAt: Math.max(state.nextTaskAt, state.elapsed + TASK_COOLDOWN),
         lastDelivery: task.artifactName,
         lastReward: taskReward(task),
         expectation,
@@ -724,11 +764,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return state
       }
 
-      return {
+      return issueAvailableAssignments({
         ...state,
         money: Math.round((state.money - cost) * 100) / 100,
         tokens: state.tokens + amount,
-      }
+      })
     }
 
     case 'buy-upgrade': {
@@ -738,21 +778,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       }
 
       if (action.upgrade === 'terminal') {
-        return {
+        return issueAvailableAssignments({
           ...state,
           money: state.money - price,
           terminals: [...state.terminals, { id: 'terminal-2', slots: 1, yolo: false }],
-        }
+        })
       }
 
       if (action.upgrade === 'split') {
-        return {
+        return issueAvailableAssignments({
           ...state,
           money: state.money - price,
           terminals: state.terminals.map((terminal) => terminal.id === action.terminalId
             ? { ...terminal, slots: Math.min(MAX_TERMINAL_SLOTS, terminal.slots + 1) }
             : terminal),
-        }
+        })
       }
 
       return {
