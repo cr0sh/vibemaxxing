@@ -191,6 +191,10 @@ export function taskTokenCost(task: Pick<WorkTask, 'difficulty'>, fastMode = fal
   return TOKEN_TASK_COST * task.difficulty * (fastMode ? 2 : 1)
 }
 
+export function taskSuccessChance(task: Pick<TaskDescriptor, 'complexity'>, model: AgentModelId): number {
+  return Math.min(1, AGENT_MODELS[model].intelligence / task.complexity)
+}
+
 export function taskReward(
   task: Pick<WorkTask, 'baseReward' | 'assignedAt'>,
   elapsed: number,
@@ -625,7 +629,7 @@ function advanceTask(
   const progress = Math.min(task.difficulty, roundedProgress(task.progress + speed))
   if (progress >= task.difficulty - 0.000001) {
     const completed = { ...task, progress: task.difficulty, nextApprovalAt: 0, approvalPrompt: null }
-    const successChance = Math.min(1, model.intelligence / task.complexity)
+    const successChance = taskSuccessChance(task, task.model ?? 'basic')
     if (successChance === 1) {
       return [{ ...completed, status: 'artifact' }, rng]
     }

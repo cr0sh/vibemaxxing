@@ -901,17 +901,18 @@
   min-width: 0;
 }
 
-.employment-task-kind {
+.employment-task-rating {
   flex: 0 0 auto;
-  padding: 0.18rem 0.35rem;
-  border: 1px solid rgba(214, 189, 252, 0.3);
-  border-radius: 0.28rem;
-  color: #d8c5f4;
-  font-size: 0.58rem;
-  font-weight: 750;
-  letter-spacing: 0.06em;
-  line-height: 1.15;
-  text-transform: uppercase;
+  color: #e9c776;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.employment-delivery-meta .employment-task-rating,
+.employment-failed-summary .employment-task-rating {
+  color: #8b642e;
 }
 
 .employment-architecture-attachment {

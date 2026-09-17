@@ -5,6 +5,7 @@ import {
   canFundTaskAttempt,
   MAX_TOKENS,
   taskReward,
+  taskSuccessChance,
   taskTokenCost,
   type EmploymentMessage,
   type EmploymentTaskSnapshot,
@@ -107,12 +108,17 @@ function taskModelLabel(task: WorkTask): string {
   return AGENT_MODELS[task.model]?.label ?? task.model
 }
 
-function taskSpeedLabel(task: WorkTask): string {
-  return task.fastMode ? 'Fast mode' : 'Standard pace'
-}
 function currentTerminalFastMode(state: GameState, task: WorkTask): boolean {
   if (task.terminalId === null) return task.fastMode
   return state.terminals.find((terminal) => terminal.id === task.terminalId)?.fastMode ?? task.fastMode
+}
+
+function TaskDifficulty({ complexity }: { complexity: number }) {
+  return (
+    <span className="employment-task-rating" role="img" aria-label={`${complexity} ${complexity === 1 ? 'star' : 'stars'}`}>
+      {'★'.repeat(complexity)}
+    </span>
+  )
 }
 
 function TaskAttachment({
@@ -132,7 +138,6 @@ function TaskAttachment({
   const rewardAt = archived ? task.assignedAt : elapsed
   const reward = taskReward(task, rewardAt)
   const cost = taskTokenCost(task, task.fastMode)
-  const kindLabel = task.kind === 'architecture' ? 'Architecture brief' : 'Standard brief'
   return (
     <div
       className={`employment-attachment employment-task-attachment employment-task-${task.status} ${task.kind === 'architecture' ? 'employment-architecture-attachment' : ''} ${archived ? 'employment-archived-attachment' : ''}`}
@@ -154,7 +159,7 @@ function TaskAttachment({
         dragSource.onDragStart(event)
       }}
       onDragEnd={dragSource.onDragEnd}
-      aria-label={`${kindLabel}: ${task.title}`}
+      aria-label={`Task: ${task.title}`}
     >
       <div className="employment-attachment-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" focusable="false">
@@ -164,7 +169,7 @@ function TaskAttachment({
       <div className="employment-attachment-copy">
         <div className="employment-attachment-title-row">
           <strong>{task.title}</strong>
-          <span className="employment-task-kind">{kindLabel}</span>
+          <TaskDifficulty complexity={task.complexity} />
         </div>
         <span>{task.description}</span>
         {task.baseReward > 0 && (
@@ -175,9 +180,8 @@ function TaskAttachment({
         </span>
         )}
         <span className="employment-attachment-meta employment-task-economy">
-          <span>{compactTokens.format(cost)} tokens{task.fastMode ? ' · 2×' : ''}</span>
-          {task.model !== null && <span>{taskModelLabel(task)}</span>}
-          {task.fastMode && <span>{taskSpeedLabel(task)}</span>}
+          <span>Cost: {compactTokens.format(cost)} tokens</span>
+          {!archived && <span>Success odds: {Math.round(taskSuccessChance(task, task.model ?? (state.reasoningUnlocked ? 'reasoning' : 'basic')) * 100)}%</span>}
         </span>
         <div className="employment-attachment-meta">
           <span>{archived ? 'Delivered' : taskStatusLabel(task)}</span>
@@ -461,7 +465,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
             <p>Delivered <strong>{message.task.artifactName}</strong>. Nice work — {message.completedTasks} assignment{message.completedTasks === 1 ? '' : 's'} complete.</p>
             {message.reward > 0 && <p className="employment-delivery-reward"><span aria-hidden="true">💰</span> Earned {formatMoney(message.reward)} completion bonus.</p>}
             <div className="employment-delivery-meta">
-              <span>{message.task.kind === 'architecture' ? 'Architecture milestone' : 'Standard assignment'}</span>
+              <TaskDifficulty complexity={message.task.complexity} />
               {message.task.model !== null && <span>{taskModelLabel(taskFromSnapshot(message.task))}</span>}
               {message.task.fastMode && <span>Fast mode</span>}
               <span>Attempt {Math.max(1, message.task.attempt)}</span>
@@ -490,8 +494,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
           <div className="message-body">
             <div className="message-meta"><strong>boss.exe</strong><span>promotion · {formatSeconds(message.elapsed)}</span></div>
-            <p>Fifty deliveries is a real milestone. You are promoted to <strong>Level 4</strong>; architecture briefs are now entering the queue.</p>
-            <span className="employment-milestone-label">Architecture lane unlocked</span>
+            <p>Fifty deliveries is a real milestone. You are promoted to <strong>Level 4</strong>. Keep shipping.</p>
           </div>
         </div>
       )
@@ -510,7 +513,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
             <div className="message-meta"><strong>agent-shell</strong><span>attempt failed · {formatSeconds(message.elapsed)}</span></div>
             <p><strong>{message.task.title}</strong> did not pass the completion check. No artifact or bonus was produced.</p>
             <div className="employment-failed-summary">
-              <span>{message.task.kind === 'architecture' ? 'Architecture brief' : 'Standard brief'}</span>
+              <TaskDifficulty complexity={message.task.complexity} />
               <span>{message.task.model === null ? 'Basic model' : taskModelLabel(taskFromSnapshot(message.task))}</span>
               <span>{message.task.fastMode ? 'Fast mode' : 'Standard pace'}</span>
               <span>Attempt {Math.max(1, message.task.attempt)}</span>
@@ -578,7 +581,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
         <div className="messenger-team">vibe<span>corp</span></div>
         <div className="employment-team-status">
           <span className="employment-level-badge">L{state.level}</span>
-          <span>{state.level === 4 ? 'Architecture track' : 'Intern'}</span>
+          <span>{state.level === 4 ? 'Engineer' : 'Intern'}</span>
         </div>
         <p className="sidebar-heading">Channels</p>
         <ChannelButton channel="general" active={channel === 'general'} unread={unreadCount > 0} onSelect={() => selectChannel('general')} />
@@ -708,7 +711,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
         <div className="employment-lane-task">
           <div className="employment-lane-title-row">
             <p><span className="terminal-prompt">~</span> task/{task.id} · {task.title}</p>
-            <span className="employment-task-kind">{task.kind === 'architecture' ? 'Architecture' : 'Standard'}</span>
+            <TaskDifficulty complexity={task.complexity} />
           </div>
           <p className="terminal-muted">{workPhrase(task)}</p>
           <div className={`employment-progress-wrap ${task.status === 'failed' ? 'employment-progress-failed' : ''}`} aria-label={`${Math.round(progress)} percent complete`}>
