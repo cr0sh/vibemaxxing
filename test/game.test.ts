@@ -66,9 +66,11 @@ describe('shop product discovery', () => {
     expect(purchased.shopDiscoveries).toContain('split')
   })
 
-  test('token discovery uses the smallest positive refill and never reveals a full inventory', () => {
+  test('token discovery uses a nominal pack at full inventory and prorates remaining capacity', () => {
+    const unfunded = gameReducer({ ...hire(), money: 0 }, { type: 'set-token-packs', packs: 1 })
+    expect(unfunded.shopDiscoveries).not.toContain('tokens')
     const full = gameReducer({ ...hire(), money: 100 }, { type: 'set-token-packs', packs: 1 })
-    expect(full.shopDiscoveries).not.toContain('tokens')
+    expect(full.shopDiscoveries).toContain('tokens')
 
     const partial = gameReducer({ ...hire(), money: 0.01, tokens: MAX_TOKENS - 1 }, { type: 'set-token-packs', packs: 1 })
     expect(partial.shopDiscoveries).toContain('tokens')
@@ -84,7 +86,7 @@ describe('shop product discovery', () => {
       ...beforeModel,
       advancedModelAnnouncedAt: 0,
       elapsed: 0,
-    }, { type: 'set-token-packs', packs: 1 })
+    }, { type: 'set-token-packs', packs: 5 })
     expect(modelSale.shopDiscoveries).toContain('advanced-model')
     expect(modelSale.shopDiscoveries).not.toContain('mercury')
 
@@ -96,7 +98,7 @@ describe('shop product discovery', () => {
       elapsed: 9,
     }, { type: 'set-token-packs', packs: 1 })
     expect(sparkBeforeSale.shopDiscoveries).not.toContain('spark')
-    const sparkOnSale = gameReducer({ ...sparkBeforeSale, elapsed: 10 }, { type: 'set-token-packs', packs: 1 })
+    const sparkOnSale = gameReducer({ ...sparkBeforeSale, elapsed: 10 }, { type: 'set-token-packs', packs: 5 })
     expect(sparkOnSale.shopDiscoveries).toContain('spark')
   })
 
@@ -111,8 +113,8 @@ describe('shop product discovery', () => {
       taskQueue: [],
       nextTaskAt: Number.MAX_SAFE_INTEGER,
     }
-    const ticked = gameReducer(state, { type: 'tick', seconds: 1 })
-    expect(ticked.money).toBe(4)
+    const ticked = gameReducer(state, { type: 'tick', seconds: 2 })
+    expect(ticked.money).toBe(9)
     expect(ticked.tokens).toBe(100_000)
     expect(ticked.shopDiscoveries).toContain('tokens')
   })

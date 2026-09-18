@@ -1377,7 +1377,7 @@ export function upgradePrice(state: GameState, upgrade: TerminalUpgrade, termina
 function affordableUpgrade(state: GameState, upgrade: Exclude<TerminalUpgrade, 'terminal'>): boolean {
   if (state.stage !== 'hired' || !Number.isFinite(state.money)) return false
   return state.terminals.some((terminal) => {
-    if (!cloudTerminalId(terminal.id)) return false
+    if (upgrade === 'split' && !cloudTerminalId(terminal.id)) return false
     const price = upgradePrice(state, upgrade, terminal.id)
     return price !== null && Number.isFinite(price) && state.money >= price
   })
@@ -1385,34 +1385,30 @@ function affordableUpgrade(state: GameState, upgrade: Exclude<TerminalUpgrade, '
 
 function affordableTokens(state: GameState): boolean {
   if (state.stage !== 'hired' || !Number.isFinite(state.money)) return false
-  const amount = tokenPurchaseAmount(state.tokens, 1)
+  const amount = tokenPurchaseAmount(state.tokens, 1) || TOKEN_PURCHASE_AMOUNT
   if (!Number.isFinite(amount) || amount <= 0) return false
   const cost = tokenPurchaseCost(amount, state)
   return Number.isFinite(cost) && cost > 0 && state.money >= cost
 }
 
 function shopItemEligible(state: GameState, item: ShopItemId): boolean {
-  const ownedSplit = state.terminals.some((terminal) => cloudTerminalId(terminal.id) && terminal.slots > 1)
-  const ownedYolo = state.terminals.some((terminal) => cloudTerminalId(terminal.id) && terminal.yolo)
-  const ownedTerminal = getTerminal(state, 'terminal-2') !== undefined
-  const ownedSpark = state.sparkPurchasedAt !== null || getTerminal(state, 'spark') !== undefined
-  const ownedSparkUltra = state.sparkUltraPurchasedAt !== null || getTerminal(state, 'spark-ultra') !== undefined
   const affordableMoney = (price: number): boolean => state.stage === 'hired' && Number.isFinite(state.money) && state.money >= price
   switch (item) {
     case 'split':
-      return ownedSplit || affordableUpgrade(state, 'split')
+      return state.terminals.some((terminal) => cloudTerminalId(terminal.id) && terminal.slots > 1) ||
+        affordableUpgrade(state, 'split')
     case 'yolo':
-      return ownedYolo || affordableUpgrade(state, 'yolo')
+      return state.terminals.some((terminal) => terminal.yolo) || affordableUpgrade(state, 'yolo')
     case 'terminal': {
       const price = upgradePrice(state, 'terminal', 'terminal')
-      return ownedTerminal || (price !== null && affordableMoney(price))
+      return getTerminal(state, 'terminal-2') !== undefined || (price !== null && affordableMoney(price))
     }
     case 'tokens':
       return affordableTokens(state)
     case 'fast-mode':
       return state.stage === 'hired' && state.fastModeUnlocked
     case 'spark':
-      return ownedSpark || (
+      return state.sparkPurchasedAt !== null || getTerminal(state, 'spark') !== undefined || (
         state.stage === 'hired' &&
         state.market !== null &&
         state.sparkAnnouncedAt !== null &&
@@ -1421,7 +1417,7 @@ function shopItemEligible(state: GameState, item: ShopItemId): boolean {
         affordableMoney(SPARK_PRICE)
       )
     case 'spark-ultra':
-      return ownedSparkUltra || (
+      return state.sparkUltraPurchasedAt !== null || getTerminal(state, 'spark-ultra') !== undefined || (
         state.stage === 'hired' &&
         state.market !== null &&
         state.sparkUltraAnnouncedAt !== null &&
@@ -1448,7 +1444,8 @@ function discoverShopProducts(state: GameState): GameState {
   let discoveries = state.shopDiscoveries
   for (const item of SHOP_ITEM_IDS) {
     if (discoveries.includes(item) || !shopItemEligible(state, item)) continue
-    discoveries = discoveries === state.shopDiscoveries ? [...discoveries, item] : [...discoveries, item]
+    if (discoveries === state.shopDiscoveries) discoveries = [...discoveries]
+    discoveries.push(item)
   }
   return discoveries === state.shopDiscoveries ? state : { ...state, shopDiscoveries: discoveries }
 }
@@ -1869,5 +1866,5 @@ function reduceGame(state: GameState, action: GameAction): GameState {
 export function gameReducer(state: GameState, action: GameAction): GameState {
   const discovered = discoverShopProducts(state)
   const next = reduceGame(discovered, action)
-  return discoverShopProducts(next)
+  return next === discovered ? state : discoverShopProducts(next)
 }
