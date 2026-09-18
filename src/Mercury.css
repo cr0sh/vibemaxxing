@@ -363,6 +363,7 @@
 
 .mercury-terminal-card {
   display: grid;
+  align-content: start;
   gap: 0.55rem;
 }
 
@@ -403,10 +404,15 @@
 .mercury-terminal-tags {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
   gap: 0.26rem;
 }
 
 .mercury-terminal-tags span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  line-height: 1.2;
   padding: 0.18rem 0.36rem;
   color: #5e4a82;
   border-radius: 0.3rem;
