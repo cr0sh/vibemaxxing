@@ -32,8 +32,9 @@
   text-transform: uppercase;
 }
 
-.shorts-header h2 {
+.shorts-content .shorts-header h2 {
   margin: 0.08rem 0 0;
+  color: var(--shorts-ink);
   font-size: clamp(1.05rem, 3vw, 1.42rem);
   letter-spacing: -0.03em;
 }
@@ -143,9 +144,11 @@
 }
 
 .shorts-media {
+  pointer-events: none;
   display: block;
   width: 100%;
   height: 100%;
+  object-fit: contain;
   border: 0;
   background: #0c0914;
 }

@@ -12,6 +12,17 @@ type ShortsProps = {
 }
 
 const lastCatalogIndex = SHORTS_CATALOG.length - 1
+
+function shuffledVideos(): ShortVideo[] {
+  const videos = [...SHORTS_CATALOG]
+  for (let index = videos.length - 1; index > 0; index--) {
+    const other = Math.floor(Math.random() * (index + 1))
+    const previous = videos[index]!
+    videos[index] = videos[other]!
+    videos[other] = previous
+  }
+  return videos
+}
 const navigationKeys: Record<string, true> = {
   ArrowDown: true,
   ArrowRight: true,
@@ -34,37 +45,28 @@ function nearestCardIndex(feed: HTMLDivElement): number {
   return clampIndex(Math.round(feed.scrollTop / feed.clientHeight))
 }
 
-function embedUrl(video: ShortVideo): string {
-  const params = new URLSearchParams({
-    autoplay: '1',
-    mute: '1',
-    playsinline: '1',
-    rel: '0',
-    modestbranding: '1',
-  })
-  return `${video.embedUrl}?${params.toString()}`
-}
-
 function VideoEmbed({ video }: { video: ShortVideo }) {
   return (
     <div className="shorts-media-frame">
-      <iframe
+      <video
         className="shorts-media"
-        src={embedUrl(video)}
-        title={`${video.title} by ${video.creator}`}
-        loading="eager"
-        allow="autoplay; encrypted-media; picture-in-picture"
-        referrerPolicy="strict-origin-when-cross-origin"
-        allowFullScreen
+        src={video.mediaUrl}
+        aria-label={video.title}
+        tabIndex={-1}
+        autoPlay
+        loop
+        muted
+        playsInline
       />
       <p className="shorts-media-note">
-        Playback is muted by default. If the embed is unavailable, <a href={video.sourceUrl} target="_blank" rel="noreferrer noopener">open the original on YouTube</a>.
+        Looping meme clip · <a href={video.sourceUrl} target="_blank" rel="noreferrer noopener">View on GIPHY</a>
       </p>
     </div>
   )
 }
 
 export function ShortsContent({ state, dispatch, active }: ShortsProps) {
+  const [videos] = useState(shuffledVideos)
   const feedRef = useRef<HTMLDivElement | null>(null)
   const activeIndexRef = useRef(0)
   const programmaticTargetRef = useRef<number | null>(null)
@@ -75,7 +77,7 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
 
-  const playbackActive = active && pageVisible
+  const playbackActive = active && pageVisible && state.stage === 'hired'
 
   useEffect(() => {
     const handleVisibilityChange = () => setPageVisible(!document.hidden)
@@ -89,6 +91,25 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
     if (programmaticResetTimerRef.current !== null) window.clearTimeout(programmaticResetTimerRef.current)
   }, [])
 
+  useEffect(() => {
+    if (playbackActive) return
+    userGestureRef.current = false
+    programmaticTargetRef.current = null
+    if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current)
+  }, [playbackActive])
+
+  useEffect(() => {
+    const feed = feedRef.current
+    if (!feed) return
+    const observer = new ResizeObserver(() => {
+      userGestureRef.current = false
+      if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current)
+      feed.scrollTo({ top: activeIndexRef.current * feed.clientHeight, behavior: 'instant' })
+    })
+    observer.observe(feed)
+    return () => observer.disconnect()
+  }, [])
+
   const clearGestureTimer = useCallback(() => {
     if (gestureTimerRef.current === null) return
     window.clearTimeout(gestureTimerRef.current)
@@ -96,6 +117,12 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
   }, [])
 
   const markUserGesture = useCallback(() => {
+    if (!playbackActive) return
+    programmaticTargetRef.current = null
+    if (programmaticResetTimerRef.current !== null) {
+      window.clearTimeout(programmaticResetTimerRef.current)
+      programmaticResetTimerRef.current = null
+    }
     userGestureRef.current = true
     clearGestureTimer()
     // A touch fling can keep scrolling after touchend. This only arms the
@@ -104,18 +131,19 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
       userGestureRef.current = false
       gestureTimerRef.current = null
     }, 1500)
-  }, [clearGestureTimer])
+  }, [clearGestureTimer, playbackActive])
 
   const announceUserNavigation = useCallback((index: number) => {
+    if (!playbackActive) return
     const nextIndex = clampIndex(index)
     if (nextIndex === activeIndexRef.current) return
     activeIndexRef.current = nextIndex
     setActiveIndex(nextIndex)
     if (state.stage === 'hired') dispatch({ type: 'scroll-short' })
-  }, [dispatch, state.stage])
+  }, [dispatch, state.stage, playbackActive])
 
   const scrollToIndex = useCallback((index: number) => {
-    if (!active) return
+    if (!playbackActive) return
     const feed = feedRef.current
     if (!feed) return
     const nextIndex = clampIndex(index)
@@ -137,7 +165,7 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
       top: nextIndex * feed.clientHeight,
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
     })
-  }, [active, announceUserNavigation, clearGestureTimer])
+  }, [playbackActive, announceUserNavigation, clearGestureTimer])
 
   const settleUserScroll = useCallback(() => {
     settleTimerRef.current = null
@@ -156,9 +184,16 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
   }, [settleUserScroll])
 
   const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
-    if (Math.abs(event.deltaY) < 1) return
+    if (!playbackActive || Math.abs(event.deltaY) < 1) return
     markUserGesture()
-  }, [markUserGesture])
+    if (activeIndexRef.current === lastCatalogIndex && event.deltaY > 0) {
+      scrollToIndex(0)
+      return
+    }
+    if (activeIndexRef.current === 0 && event.deltaY < 0) {
+      scrollToIndex(lastCatalogIndex)
+    }
+  }, [markUserGesture, playbackActive, scrollToIndex])
 
   const handlePointerDown = useCallback(() => {
     markUserGesture()
@@ -172,15 +207,14 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
     else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft' || event.key === 'PageUp' || event.key === 'k') target = current - 1
     else if (event.key === 'Home') target = 0
     else if (event.key === 'End') target = lastCatalogIndex
-    if (target === null || clampIndex(target) === current) return
+    if (target === null) return
+    if (target > lastCatalogIndex) target = 0
+    if (target < 0) target = lastCatalogIndex
+    if (target === current) return
     event.preventDefault()
     scrollToIndex(target)
   }, [scrollToIndex])
 
-  const handleCardFocus = useCallback((index: number) => {
-    if (clampIndex(index) === activeIndexRef.current) return
-    scrollToIndex(index)
-  }, [scrollToIndex])
 
   return (
     <section className="shorts-content" aria-label="Shorts" data-playback-active={playbackActive ? 'true' : 'false'}>
@@ -194,7 +228,7 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
         </span>
       </header>
       <p className="shorts-status" role="status" aria-live="polite">
-        {!pageVisible ? 'Playback paused while this window is hidden.' : !active ? 'Playback paused while Shorts is in the background.' : state.stage === 'hired' ? 'Muted playback · scroll or use the controls to browse.' : 'Run ended · Shorts is read-only.'}
+        {!pageVisible ? 'Playback paused while this window is hidden.' : state.stage !== 'hired' ? 'Run ended · Shorts is read-only.' : !active ? 'Playback paused while Shorts is in the background.' : 'Scroll to a new clip: +1 energy and reset the 3-second inactivity timer.'}
       </p>
       <div
         ref={feedRef}
@@ -205,9 +239,11 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
         onScroll={handleScroll}
         onWheel={handleWheel}
         onPointerDown={handlePointerDown}
+        onTouchMove={markUserGesture}
+        onTouchEnd={markUserGesture}
         onKeyDown={handleKeyDown}
       >
-        {SHORTS_CATALOG.map((video, index) => {
+        {videos.map((video, index) => {
           const isCurrent = index === activeIndex
           return (
             <article
@@ -216,7 +252,6 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
               aria-label={`${video.title}, ${video.creator}`}
               aria-current={isCurrent ? 'true' : undefined}
               tabIndex={-1}
-              onFocus={() => handleCardFocus(index)}
             >
               <div className="shorts-card-topline">
                 <span className="shorts-card-index">{String(index + 1).padStart(2, '0')}</span>
@@ -233,8 +268,8 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
         })}
       </div>
       <nav className="shorts-controls" aria-label="Short navigation">
-        <button type="button" onClick={() => scrollToIndex(activeIndex - 1)} disabled={!active || activeIndex === 0} aria-label="Previous short">↑ <span>Previous</span></button>
-        <button type="button" onClick={() => scrollToIndex(activeIndex + 1)} disabled={!active || activeIndex === lastCatalogIndex} aria-label="Next short"><span>Next</span> ↓</button>
+        <button type="button" onClick={() => scrollToIndex((activeIndex + videos.length - 1) % videos.length)} disabled={!playbackActive} aria-label="Previous short">↑ <span>Previous</span></button>
+        <button type="button" onClick={() => scrollToIndex((activeIndex + 1) % videos.length)} disabled={!playbackActive} aria-label="Next short"><span>Next</span> ↓</button>
       </nav>
     </section>
   )

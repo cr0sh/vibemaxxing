@@ -3,49 +3,43 @@ export type ShortVideo = {
   readonly title: string
   readonly creator: string
   readonly description: string
-  /** The original page a player can open when an embed is blocked. */
+  /** Public source and attribution for the hosted clip. */
   readonly sourceUrl: string
-  /** A native YouTube embed URL; query parameters are added by ShortsContent. */
-  readonly embedUrl: string
+  readonly mediaUrl: string
 }
 
-/**
- * A deliberately small catalog of durable, publicly embeddable originals.
- *
- * These are links, not downloaded media: YouTube remains responsible for
- * playback, rights, availability, captions, and any regional restrictions.
- */
+// Remote MP4 meme loops: only the foreground clip is loaded.
 export const SHORTS_CATALOG: readonly ShortVideo[] = [
   {
-    id: 'nyan-cat-original',
-    title: 'Nyan Cat [original]',
-    creator: 'saraj00n',
-    description: 'The looping pixel-art cat and its unmistakable space-rainbow soundtrack.',
-    sourceUrl: 'https://www.youtube.com/watch?v=QH2-TGUlwu4',
-    embedUrl: 'https://www.youtube-nocookie.com/embed/QH2-TGUlwu4',
+    id: 'typing-cat',
+    title: 'Shipping before the deadline',
+    creator: 'GIPHY',
+    description: 'The original keyboard-driven development workflow.',
+    sourceUrl: 'https://giphy.com/gifs/JIX9t2j0ZTN9S',
+    mediaUrl: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.mp4',
   },
   {
-    id: 'keyboard-cat-original',
-    title: 'Keyboard Cat',
-    creator: 'Charlie Schmidt',
-    description: 'A classic internet performance from the original Keyboard Cat upload.',
-    sourceUrl: 'https://www.youtube.com/watch?v=J---aiyznGQ',
-    embedUrl: 'https://www.youtube-nocookie.com/embed/J---aiyznGQ',
+    id: 'reviewer-cat',
+    title: 'Your code reviewer',
+    creator: 'GIPHY',
+    description: 'One small comment. Then another small comment.',
+    sourceUrl: 'https://giphy.com/gifs/VbnUQpnihPSIgIXuZv',
+    mediaUrl: 'https://media.giphy.com/media/VbnUQpnihPSIgIXuZv/giphy.mp4',
   },
   {
-    id: 'gangnam-style-official',
-    title: 'Gangnam Style (강남스타일)',
-    creator: 'official PSY video',
-    description: 'PSY’s official music video and one of the web’s defining dance moments.',
-    sourceUrl: 'https://www.youtube.com/watch?v=9bZkp7q19f0',
-    embedUrl: 'https://www.youtube-nocookie.com/embed/9bZkp7q19f0',
+    id: 'office-fire',
+    title: 'Production is warming up',
+    creator: 'GIPHY',
+    description: 'A completely normal day in IT.',
+    sourceUrl: 'https://giphy.com/gifs/13HgwGsXF0aiGY',
+    mediaUrl: 'https://media.giphy.com/media/13HgwGsXF0aiGY/giphy.mp4',
   },
   {
-    id: 'rick-astley-official',
-    title: 'Never Gonna Give You Up',
-    creator: 'Rick Astley',
-    description: 'The official music video behind the enduring rickroll internet meme.',
-    sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    embedUrl: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+    id: 'this-is-fine',
+    title: 'This is fine',
+    creator: 'GIPHY',
+    description: 'The deployment dashboard says everything is fine.',
+    sourceUrl: 'https://giphy.com/gifs/QMHoU66sBXqqLqYvGO',
+    mediaUrl: 'https://media.giphy.com/media/QMHoU66sBXqqLqYvGO/giphy.mp4',
   },
 ] as const
