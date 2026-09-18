@@ -28,21 +28,21 @@ The flow of the game is:
     "artifact" as the box like the attachment in the messenger UI, which can
     also be drag-and-dropped back to the messenger. It concludes the task. - The boss will be angry when you fail to deliver the artifact in the deadline
     that the boss specified. You'll lose.
-  - The boss pays you \$1 every second.
+  - Each employed job pays you \$5 every second.
 - The terminal can be "upgraded" with several features. Features are purchased
   by drag-and-dropping the item icon from the shop UI to the terminal.
   - Split window(\$200, $400, $1000): The window can be split at max 4. Agents
     can run simultaneously.
   - Yolo mode($420): By default, the terminal asks for command approval(yes/no) for
-    confirmation, randomly every 1-5 seconds. This lifts the restriction.
+    confirmation, randomly every 1–2 seconds of active work, including the opening. This lifts the restriction.
     Applies to window-wise. The terminal window border shines with rainbow color
     animation.
   - Multi-window($1000): One more window. The split window upgrade costs double
     here, \$400/\$800/\$2000 each.
-- The boss has an internal "expectation" value which represents the user's speed
-  of resolving the tasks each. The tasks each has a random "difficulty" value
-  here and the deadline is `1.5 * difficulty / expectation` in seconds. The expectation
-  value is updated based on the observed speed of player's resolving.
+- The boss has an internal "expectation" value governing assignment cadence and
+  deadlines. It rises with projected gross earnings, using the same \$5/s base
+  wage as actual pay plus expected task rewards. Opening grace and minimum
+  execution budgets are retained.
 - After solving first five tasks, the boss will enable "incentivized mode" and
   tell the player with the message. Then each tasks will have the dollar based reward (with cash bag emoji). The reward depreciates by 10% per 10 seconds, until it reaches the 5% of its initial value. The deadline system still counts.
 - Each solved tasks spend tokens worth `10000 * difficulty`. Tokens start at 10M and are capped at 10M
@@ -154,11 +154,11 @@ The flow of the game is:
   remains $100,000, with the same 15–60 second delivery rule as Spark.
 - L5 task rewards use a 600× multiplier instead of 200×. L4 remains at 100×;
   early-career rewards and existing purchase prices are unchanged.
-  With Mercury-gated Shorts and the relaxed inactivity intervals, seeded reducer
-  smoke runs (12345, 42, and 2026) reached Mercury in 6.1–7.4 minutes with
-  31–61 energy remaining, without injected cash or early Shorts access.
-  These runs allowed at most two actions per second and continued for one minute
-  after purchase; they are early-game pacing checks, not full-run human playtimes.
+  Two-minute reducer smoke runs (seeds 12345, 42, and 2026, at most two actions
+  per second) bought the first split at 40 seconds, down from 88–93 seconds.
+  After buying the split, they bought YOLO at 94–96 seconds. They encountered
+  24–31 approval prompts before YOLO and none afterward, versus 1–2 prompts
+  in the previous two-minute opening. All three remained employed.
 - The $4.242M victory threshold includes cash, trading USD, and BTC at its current
   market price, without double-counting transfers. Both endings freeze gameplay.
 - Shorts shuffles four remotely hosted GIPHY MP4 meme loops, recycles five cards
