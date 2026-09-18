@@ -111,3 +111,32 @@ The flow of the game is:
   enabled on all terminals(excluding the Spark's) and able to be choose the model window locally.
 
 - (Til the above the targeted playtime cumulative is 15 mins)
+
+- At this stage, most works are "fully autonomous" that requires no human
+  intervention. Eventually, the "Energy" resource starts to decline. In fact, on
+  every 3s without any "human interaction", energy declines by 1(this had been
+  working since the game start, but the user couldn't find there is such
+  system). Cumulative declines make the delta 2x, so -1, -2, -4, ... (max -16 at
+  single update). The exhaustive list of "human interaction" that resets the timer is:
+  - Purchasing an item with CLICKING (so token autopurchase is not counted)
+  - Realizing a positive PNL on BTC trading
+  - Scrolling "shorts"(explained below)
+
+  When "human interaction" is happened, the 3secs timer is reset and player
+  gains energy by 1.
+
+- Also, Tiro (eventually) announces "WE MONOPOLIZED THE FRONTIERS" and the token prices goes
+  up by 1.1x for every 5s. So the user should eventually lose more money than
+  the reward solving the tasks.
+
+- Some time later(like ≈1m?), Mapple announces another local LLM machine (Mapple
+  Spark Ultra) that costs \$100k, with intelligence=3. Same delivery delay
+  applies too. It'll be helpful after the user is lacking cloud based tokens.
+
+- When the energy goes lower than 80 for the first time(excluding the initial job applying stage), there will be a mobile-like viewport app called "Shorts", clapper board icon. It's scrollable and shows one of the random list of short-form videos(try obtaining a list of viral videos like subway surfers or memes).
+
+- When energy goes to 0, the player defeats. The end message is like "the user got
+  to depression".
+
+- When the user reaches \$4.242M, the user wins the game. End message like: "You are
+  now a multimillionare. No need to work"
