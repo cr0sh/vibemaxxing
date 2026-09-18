@@ -26,7 +26,7 @@ const windowDefaults: Record<string, Size & Point> = {
   spark: { width: 705, height: 500, x: 0.8, y: 0.18 },
   market: { width: 960, height: 600, x: 0.5, y: 0.1 },
   shop: { width: 546, height: 686.4, x: 0.5, y: 0.14 },
-  social: { width: 780, height: 600, x: 0.76, y: 0.12 },
+  social: { width: 468, height: 600, x: 0.76, y: 0.12 },
   mercury: { width: 960, height: 600, x: 0.5, y: 0.12 },
   defeat: { width: 645, height: 330, x: 0.5, y: 0.28 },
 }
