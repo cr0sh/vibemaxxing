@@ -70,7 +70,7 @@
 
 .shop-upgrade-product[draggable='true']:hover,
 .shop-upgrade-product[draggable='true']:focus-visible {
-  border-color: #d8c3ff;
+  border-color: var(--shop-update-border, #d8c3ff);
   transform: translateY(-1px);
   outline: 2px solid rgba(216, 195, 255, 0.4);
   outline-offset: 2px;
@@ -293,6 +293,21 @@
   border-color: #c48fca;
   background: linear-gradient(105deg, #4b2d5f, #33205d);
 }
+.shop-product-newly-discovered {
+  --shop-update-border: #f5d76e;
+  border-color: var(--shop-update-border);
+  box-shadow: 0 0 0.7rem rgba(245, 215, 110, 0.72), inset 0 0 0.25rem rgba(255, 239, 170, 0.2);
+  animation: shop-product-newly-discovered-glow 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes shop-product-newly-discovered-glow {
+  from {
+    box-shadow: 0 0 0.45rem rgba(245, 215, 110, 0.5), inset 0 0 0.2rem rgba(255, 239, 170, 0.14);
+  }
+  to {
+    box-shadow: 0 0 1rem rgba(245, 215, 110, 0.95), inset 0 0 0.4rem rgba(255, 239, 170, 0.32);
+  }
+}
 @media (max-width: 620px) {
 
   .shop-app {
@@ -314,5 +329,8 @@
   .shop-product,
   .shop-buy-button {
     transition-duration: 0.01ms;
+  }
+  .shop-product-newly-discovered {
+    animation: none;
   }
 }

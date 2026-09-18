@@ -6,6 +6,7 @@ import {
   canFundTaskAttempt,
   isLocalTerminal,
   MAX_TOKENS,
+  TOKEN_REFILL_INTERVAL_SECONDS,
   taskReward,
   taskSuccessChance,
   taskTokenCost,
@@ -1015,7 +1016,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode,
       onDrop={handleDrop}
     >
       <div className="employment-lane-heading">
-        <span>{task ? taskStatusLabel(task).toLowerCase() : yolo ? 'YOLO' : 'idle'}</span>
+        <span>{task ? taskStatusLabel(task).toLowerCase() : yolo ? 'YOLO!' : 'idle'}</span>
         {task && <span>attempt {Math.max(1, task.attempt)}</span>}
       </div>
       {task && (
@@ -1080,7 +1081,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
   const yolo = terminal?.yolo ?? false
   const fastMode = isLocal ? false : terminal?.fastMode ?? false
   const model = terminalModel(state, terminalId)
-  const refillIn = 100 - (state.elapsed % 100 || 0)
+  const refillIn = TOKEN_REFILL_INTERVAL_SECONDS - state.elapsed % TOKEN_REFILL_INTERVAL_SECONDS
   const terminalRef = useRef<HTMLDivElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
   const { error, showError, clearError } = useDropError()

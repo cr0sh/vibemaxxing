@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Dispatch } from 'react'
 import {
   ADVANCED_MODEL_PRICE,
@@ -27,6 +27,106 @@ type ShopProps = {
   state: GameState
   dispatch: Dispatch<GameAction>
 }
+type ShopHighlightProps = {
+  highlighted: boolean
+}
+
+const SHOP_HIGHLIGHT_DURATION_MS = 5_000
+
+const purchaseChanged = (previous: GameState, current: GameState, item: ShopItemId): boolean => {
+  switch (item) {
+    case 'split':
+      return current.terminals.some((terminal) => {
+        const prior = previous.terminals.find((candidate) => candidate.id === terminal.id)
+        return prior !== undefined && terminal.slots > prior.slots
+      })
+    case 'yolo':
+      return current.terminals.some((terminal) => {
+        const prior = previous.terminals.find((candidate) => candidate.id === terminal.id)
+        return prior !== undefined && !prior.yolo && terminal.yolo
+      })
+    case 'terminal':
+      return !previous.terminals.some((terminal) => terminal.id === 'terminal-2') &&
+        current.terminals.some((terminal) => terminal.id === 'terminal-2')
+    case 'tokens':
+      return current.tokens > previous.tokens && current.money < previous.money
+    case 'fast-mode':
+      return current.terminals.some((terminal) => {
+        const prior = previous.terminals.find((candidate) => candidate.id === terminal.id)
+        return prior !== undefined && !prior.fastMode && terminal.fastMode
+      })
+    case 'spark':
+      return previous.sparkPurchasedAt === null && current.sparkPurchasedAt !== null
+    case 'spark-ultra':
+      return previous.sparkUltraPurchasedAt === null && current.sparkUltraPurchasedAt !== null
+    case 'advanced-model':
+      return !previous.advancedModelUnlocked && current.advancedModelUnlocked
+    case 'mercury':
+      return !previous.mercuryOwned && current.mercuryOwned
+  }
+}
+
+const productClassName = (className: string, highlighted: boolean): string =>
+  highlighted ? `${className} shop-product-newly-discovered` : className
+
+function useShopHighlights(state: GameState): ReadonlySet<ShopItemId> {
+  const [highlighted, setHighlighted] = useState<ReadonlySet<ShopItemId>>(() => new Set())
+  const highlightedRef = useRef<ReadonlySet<ShopItemId>>(new Set())
+  const knownDiscoveries = useRef<Set<ShopItemId>>(new Set(state.shopDiscoveries))
+  const previousState = useRef<GameState | null>(null)
+  const timers = useRef(new Map<ShopItemId, number>())
+
+  useEffect(() => {
+    const prior = previousState.current
+    const newlyDiscovered = state.shopDiscoveries.filter((id) => !knownDiscoveries.current.has(id))
+    for (const id of state.shopDiscoveries) knownDiscoveries.current.add(id)
+
+    const toHighlight = newlyDiscovered.filter((id) => prior === null || !purchaseChanged(prior, state, id))
+    const purchased = prior === null
+      ? []
+      : state.shopDiscoveries.filter((id) => highlightedRef.current.has(id) && purchaseChanged(prior, state, id))
+
+    if (toHighlight.length > 0 || purchased.length > 0) {
+      setHighlighted((current) => {
+        const next = new Set(current)
+        for (const id of purchased) next.delete(id)
+        for (const id of toHighlight) next.add(id)
+        highlightedRef.current = next
+        return next
+      })
+    }
+
+    for (const id of purchased) {
+      const timer = timers.current.get(id)
+      clearTimeout(timer)
+      timers.current.delete(id)
+    }
+    for (const id of toHighlight) {
+      const existingTimer = timers.current.get(id)
+      clearTimeout(existingTimer)
+      const timer = window.setTimeout(() => {
+        timers.current.delete(id)
+        setHighlighted((current) => {
+          if (!current.has(id)) return current
+          const next = new Set(current)
+          next.delete(id)
+          highlightedRef.current = next
+          return next
+        })
+      }, SHOP_HIGHLIGHT_DURATION_MS)
+      timers.current.set(id, timer)
+    }
+
+    previousState.current = state
+  }, [state])
+
+  useEffect(() => () => {
+    for (const timer of timers.current.values()) clearTimeout(timer)
+  }, [])
+
+  return highlighted
+}
+
 
 type UpgradeProduct = {
   upgrade: TerminalUpgrade
@@ -62,12 +162,8 @@ function UpgradeProductCard({
   state,
   dispatch,
   targetTerminal,
-}: {
-  product: UpgradeProduct
-  state: GameState
-  dispatch: Dispatch<GameAction>
-  targetTerminal: TerminalId
-}) {
+  highlighted,
+}: ShopProps & { product: UpgradeProduct; targetTerminal: TerminalId } & ShopHighlightProps) {
   const { upgrade, icon, title, detail } = product
   const target = upgrade === 'terminal' ? 'terminal' : targetTerminal
   const localTarget = isLocalTerminal(target)
@@ -91,7 +187,7 @@ function UpgradeProductCard({
 
   return (
     <article
-      className={`shop-product shop-upgrade-product ${canInstall ? '' : 'shop-product-unavailable'}`}
+      className={productClassName(`shop-product shop-upgrade-product ${canInstall ? '' : 'shop-product-unavailable'}`, highlighted)}
       draggable={canInstall}
       tabIndex={canInstall ? 0 : undefined}
       onFocus={dragSource.onFocus}
@@ -124,7 +220,7 @@ function UpgradeProductCard({
   )
 }
 
-function SparkProduct({ state, dispatch }: ShopProps) {
+function SparkProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
   const announcedAt = state.sparkAnnouncedAt
   const purchased = state.sparkPurchasedAt !== null
   const delivered = state.terminals.some((terminal) => terminal.id === 'spark')
@@ -157,7 +253,7 @@ function SparkProduct({ state, dispatch }: ShopProps) {
   }
 
   return (
-    <article className={`shop-product shop-spark-product ${canBuy ? '' : 'shop-product-unavailable'}`} aria-label="Mapple Spark">
+    <article className={productClassName(`shop-product shop-spark-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label="Mapple Spark">
       <span className="shop-product-icon" aria-hidden="true">▣</span>
       <div className="shop-product-copy">
         <h3>Mapple Spark</h3>
@@ -170,7 +266,7 @@ function SparkProduct({ state, dispatch }: ShopProps) {
   )
 }
 
-function SparkUltraProduct({ state, dispatch }: ShopProps) {
+function SparkUltraProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
   const announcedAt = state.sparkUltraAnnouncedAt
   const purchased = state.sparkUltraPurchasedAt !== null
   const delivered = state.terminals.some((terminal) => terminal.id === 'spark-ultra')
@@ -203,7 +299,7 @@ function SparkUltraProduct({ state, dispatch }: ShopProps) {
   }
 
   return (
-    <article className={`shop-product shop-spark-ultra-product ${canBuy ? '' : 'shop-product-unavailable'}`} aria-label="Mapple Spark Ultra">
+    <article className={productClassName(`shop-product shop-spark-ultra-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label="Mapple Spark Ultra">
       <span className="shop-product-icon" aria-hidden="true">▣</span>
       <div className="shop-product-copy">
         <h3>Mapple Spark Ultra</h3>
@@ -216,7 +312,7 @@ function SparkUltraProduct({ state, dispatch }: ShopProps) {
   )
 }
 
-function AdvancedModelProduct({ state, dispatch }: ShopProps) {
+function AdvancedModelProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
   const canBuy = state.stage === 'hired' &&
     state.advancedModelAnnouncedAt !== null &&
     !state.advancedModelUnlocked &&
@@ -237,7 +333,7 @@ function AdvancedModelProduct({ state, dispatch }: ShopProps) {
   }
 
   return (
-    <article className={`shop-product shop-model-product ${canBuy ? '' : 'shop-product-unavailable'}`} aria-label="ConvexLM Pro model">
+    <article className={productClassName(`shop-product shop-model-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label="ConvexLM Pro model">
       <span className="shop-product-icon" aria-hidden="true">✦</span>
       <div className="shop-product-copy">
         <h3>ConvexLM Pro</h3>
@@ -250,7 +346,7 @@ function AdvancedModelProduct({ state, dispatch }: ShopProps) {
   )
 }
 
-function MercuryProduct({ state, dispatch }: ShopProps) {
+function MercuryProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
   const canBuy = state.stage === 'hired' && state.advancedModelUnlocked && !state.mercuryOwned && state.money >= MERCURY_PRICE
   const buyMercury = () => {
     if (canBuy) dispatch({ type: 'buy-mercury' })
@@ -260,7 +356,7 @@ function MercuryProduct({ state, dispatch }: ShopProps) {
   }
 
   return (
-    <article className={`shop-product shop-mercury-product ${canBuy || state.mercuryOwned ? '' : 'shop-product-unavailable'}`} aria-label="Mercury automatic handoffs">
+    <article className={productClassName(`shop-product shop-mercury-product ${canBuy || state.mercuryOwned ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label="Mercury automatic handoffs">
       <span className="shop-product-icon" aria-hidden="true">↔</span>
       <div className="shop-product-copy">
         <h3>Mercury</h3>
@@ -295,6 +391,7 @@ function MercuryProduct({ state, dispatch }: ShopProps) {
 
 export function ShopContent({ state, dispatch }: ShopProps) {
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
+  const highlighted = useShopHighlights(state)
   const hasDiscovery = (id: ShopItemId): boolean => state.shopDiscoveries.includes(id)
   const hasVisibleProduct = state.shopDiscoveries.length > 0
 
@@ -360,12 +457,13 @@ export function ShopContent({ state, dispatch }: ShopProps) {
             product={product}
             state={state}
             dispatch={dispatch}
+            highlighted={highlighted.has(product.upgrade)}
             targetTerminal={selectedTargetTerminal}
           />
         ))}
         {hasDiscovery('fast-mode') && (
           <article
-            className={`shop-product shop-fast-mode-product ${fastModeAvailable ? '' : 'shop-product-unavailable'}`}
+            className={productClassName(`shop-product shop-fast-mode-product ${fastModeAvailable ? '' : 'shop-product-unavailable'}`, highlighted.has('fast-mode'))}
             aria-label="Fast mode"
           >
             <span className="shop-product-icon shop-fast-mode-icon" aria-hidden="true">»</span>
@@ -386,13 +484,13 @@ export function ShopContent({ state, dispatch }: ShopProps) {
             </label>
           </article>
         )}
-        {hasDiscovery('spark') && <SparkProduct state={state} dispatch={dispatch} />}
-        {hasDiscovery('spark-ultra') && <SparkUltraProduct state={state} dispatch={dispatch} />}
-        {hasDiscovery('advanced-model') && <AdvancedModelProduct state={state} dispatch={dispatch} />}
-        {hasDiscovery('mercury') && <MercuryProduct state={state} dispatch={dispatch} />}
+        {hasDiscovery('spark') && <SparkProduct state={state} dispatch={dispatch} highlighted={highlighted.has('spark')} />}
+        {hasDiscovery('spark-ultra') && <SparkUltraProduct state={state} dispatch={dispatch} highlighted={highlighted.has('spark-ultra')} />}
+        {hasDiscovery('advanced-model') && <AdvancedModelProduct state={state} dispatch={dispatch} highlighted={highlighted.has('advanced-model')} />}
+        {hasDiscovery('mercury') && <MercuryProduct state={state} dispatch={dispatch} highlighted={highlighted.has('mercury')} />}
         {hasDiscovery('tokens') && (
           <article
-            className={`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`}
+            className={productClassName(`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`, highlighted.has('tokens'))}
             aria-label="Token refill"
           >
             <span className="shop-product-icon" aria-hidden="true">◇</span>
