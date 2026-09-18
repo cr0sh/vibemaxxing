@@ -7,6 +7,7 @@ import {
   gameReducer,
   initialGame,
   isLocalTerminal,
+  tokenPriceMultiplier,
   WIN_NET_WORTH,
   type Application,
   type DevJumpTarget,
@@ -420,6 +421,11 @@ function Desktop({
     dispatch({ type: 'reset' })
   }
 
+  const continueAfterWin = () => {
+    dispatch({ type: 'continue-after-win' })
+    openWindow('terminal')
+  }
+
   const submitApplication = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!event.currentTarget.checkValidity()) {
@@ -521,7 +527,7 @@ function Desktop({
       ? 'Your energy ran out'
       : 'You are fired'
   const endingBody = endingIsVictory
-    ? `Your liquid net worth is $${Math.round(gameNetWorth(state)).toLocaleString('en-US')}, meeting the $${WIN_NET_WORTH.toLocaleString('en-US')} finish line. You do not need to work anymore.`
+    ? `Your liquid net worth is $${Math.round(gameNetWorth(state)).toLocaleString('en-US')}, meeting the $${WIN_NET_WORTH.toLocaleString('en-US')} finish line. Your win is recorded. You can keep playing beyond the finish line.`
     : endingIsEnergyLoss
       ? 'Your energy reached zero and you fell into depression. This run is over. Take a real break before trying again.'
       : state.failure ?? 'The work ended before the artifact arrived. You can try again.'
@@ -749,7 +755,9 @@ function Desktop({
                     <span className="loss-icon" aria-hidden="true">{endingIcon}</span>
                     <h2>{endingHeading}</h2>
                     <p>{endingBody}</p>
-                    <button className="primary-button" type="button" onClick={retryGame}>Try again</button>
+                    <button className="primary-button" type="button" onClick={endingIsVictory ? continueAfterWin : retryGame}>
+                      {endingIsVictory ? 'Keep playing' : 'Try again'}
+                    </button>
                   </div>
                 </WindowFrame>
               )}
@@ -876,7 +884,7 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
             <div className="resource-widget resource-widget-money" aria-label={`Money ${state.money} dollars`} title={state.money.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}>
               <span className="resource-widget-icon" aria-hidden="true">$</span>
               <div>
-                <span className="widget-label">Money</span>
+                <span className="widget-label">{state.wonAt !== null ? 'Money · Won' : 'Money'}</span>
                 <span className="resource-values"><ResourceCounter value={state.money} prefix="$" formatter={state.money >= 100_000 ? tokenFormatter : undefined} /></span>
               </div>
             </div>
@@ -889,6 +897,11 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
             </div>
           </div>
         </div>
+        {showPaidResources && state.monopolyAnnouncedAt !== null && (
+          <div className="resource-widget token-price-widget" title="Token refill price multiplier">
+            <strong>PRICE ×{tokenPriceMultiplier(state).toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 2 })}</strong>
+          </div>
+        )}
         <div className="resource-widget resource-widget-energy" aria-label={`Energy ${state.energy}`}>
           <span className="resource-widget-icon" aria-hidden="true">⚡</span>
           <div>

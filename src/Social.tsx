@@ -263,7 +263,7 @@ function PostBody({
   if (post.type === 'monopoly') {
     return (
       <p className="social-post-copy">
-        <strong>WE MONOPOLIZED THE FRONTIERS</strong>. Token refills now rise 10% every five seconds. Keep earning, or trade your way out.
+        <strong>Where else are you going to go?</strong> The competition’s gone. Token refills cost 10% more every five seconds now. Pay up or stop working.
       </p>
     )
   }

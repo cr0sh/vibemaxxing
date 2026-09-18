@@ -134,6 +134,19 @@ button {
   border-radius: 0.85rem;
 }
 
+.resource-widget.token-price-widget {
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+  color: #8b1824;
+  white-space: nowrap;
+}
+
+.token-price-widget strong {
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
 .resource-widget-icon {
   display: grid;
   width: 2.15rem;
