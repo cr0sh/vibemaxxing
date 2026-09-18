@@ -270,7 +270,7 @@ button {
 }
 
 .new-game-button:hover {
-  animation: new-game-wiggle 420ms ease-in-out;
+  animation: new-game-wiggle 420ms ease-in-out infinite;
 }
 
 .primary-button,

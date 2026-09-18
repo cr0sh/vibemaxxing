@@ -23,6 +23,7 @@ type SocialHeartBurstState = {
   left: number
   top: number
   reducedMotion: boolean
+  likes: number
 }
 
 function SocialHeartBurst({ burst }: { burst: SocialHeartBurstState }) {
@@ -120,6 +121,23 @@ function PostBody({
     return () => window.clearTimeout(clearBurst)
   }, [likeBurst])
 
+  useEffect(() => {
+    if (likeBurst === null || post.likes <= likeBurst.likes ||
+      post.id !== activeLotteryId || likeBurst.reducedMotion) return
+    const shake = likeButtonRef.current?.animate(
+      [
+        { transform: 'translateX(0)' },
+        { transform: 'translateX(-6px)' },
+        { transform: 'translateX(6px)' },
+        { transform: 'translateX(-4px)' },
+        { transform: 'translateX(4px)' },
+        { transform: 'translateX(0)' },
+      ],
+      { duration: 320, easing: 'ease-in-out' },
+    )
+    return () => shake?.cancel()
+  }, [activeLotteryId, likeBurst, post.id, post.likes])
+
   const handleLike = () => {
     if (isReadOnly) return
 
@@ -131,6 +149,7 @@ function PostBody({
         left: buttonRect.left + buttonRect.width / 2,
         top: buttonRect.top + buttonRect.height / 2,
         reducedMotion: prefersReducedMotion,
+        likes: post.likes,
       })
     }
 
@@ -171,7 +190,8 @@ function PostBody({
         ) : (
           <p className="social-action-note">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'} · This giveaway has ended.</p>
         )}
-        {likeBurst && <SocialHeartBurst key={likeBurst.id} burst={likeBurst} />}
+        {likeBurst && post.likes > likeBurst.likes && !isActive &&
+          <SocialHeartBurst key={likeBurst.id} burst={likeBurst} />}
       </>
     )
   }
