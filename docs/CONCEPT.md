@@ -48,13 +48,16 @@ The flow of the game is:
   Mouse, touch, and stylus drops install the upgrade on the target terminal.
   Shop products appear the first time their prerequisites and purchase price
   are met, then remain visible after spending. Discovery is per product, not
-  per split tier or target terminal. Token packs use the smallest positive
-  refill price, or one nominal pack when inventory is full.
+  per split tier or target terminal. Token refill is always visible and never
+  triggers discovery highlights or dock notifications.
   Newly discovered products notify the Shop dock icon; balance fluctuations
   and already-discovered upgrades do not. Viewing Shop acknowledges its updates.
-  Newly discovered entries get a golden border/glow for five real seconds or
-  until that product is purchased, whichever comes first. Timers are independent
-  and continue while Shop is hidden; reduced motion keeps a static gold border.
+  Newly discovered entries wait until Shop is visible and focused, then get a
+  golden border/glow for five real seconds or until that product is purchased,
+  whichever comes first. Independent timers start immediately for discoveries
+  made while Shop is already focused. Once started, they continue while Shop is
+  hidden or unfocused and do not restart on refocus. Reduced motion keeps a static
+  gold border.
   - Split window(\$200, $400, $1000): The window can be split at max 4. Agents
     can run simultaneously.
   - Yolo mode($420): By default, the terminal asks for command approval(yes/no) for
@@ -197,6 +200,10 @@ The flow of the game is:
   host. Playback, focus changes, and layout changes do not restore energy.
 - Default-open and already-focused apps do not bounce in the dock. Unseen
   background updates and newly available unopened apps can still attract attention.
+- Every window resizes from all four edges and corners with directional cursors.
+  The opposite edge stays anchored at minimum-size and screen-boundary limits.
+  The lower-right handle remains the single keyboard resize control: arrow keys
+  change size by 8 pixels, or 32 with Shift. Title-bar dragging is unchanged.
 - Messenger and timeline updates use distinct original synthesized notification
   chimes, not copied phone recordings. Both respect the existing sound mute.
 - The New game button wiggles continuously while hovered and stops on pointer

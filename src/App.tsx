@@ -670,7 +670,7 @@ function Desktop({
                     onFocus={() => focusWindow('shop')}
                     onMinimize={() => minimizeWindow('shop')}
                   >
-                    <ShopContent state={state} dispatch={dispatch} />
+                    <ShopContent state={state} dispatch={dispatch} active={windows.shop && isWindowActive('shop')} />
                   </WindowFrame>
                   {state.mercuryOwned && (
                     <WindowFrame
