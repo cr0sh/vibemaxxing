@@ -1,0 +1,16 @@
+export const commerceEnglish = {
+  'market.usdUnavailable': 'USD —',
+  'market.max': 'MAX',
+  'market.quantityNotional': '(= {value})',
+  'market.transferHelp': 'Cash {cash} · wallet {wallet}',
+  'market.tradeHelp': 'USD wallet {usd} · BTC wallet {btc} BTC',
+  'market.buyBtc': 'Buy BTC',
+  'market.sellBtc': 'Sell BTC',
+  'mercury.terminal': 'Terminal',
+  'mercury.terminalTwo': 'Terminal 2',
+  'mercury.mercuryOn': 'Mercury on',
+  'mercury.mercuryOff': 'Mercury off',
+  'mercury.panesAria': '{label} panes',
+  'mercury.paused': 'Paused',
+  'mercury.failed': 'Failed',
+} as const
