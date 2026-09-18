@@ -116,7 +116,6 @@ export type SocialPost =
   | (SocialPostBase & { type: 'lottery'; lotteryVariant: number })
   | (SocialPostBase & { type: Exclude<SocialPostType, 'lottery'> })
 
-const SOCIAL_LOTTERY_DELAY = 5
 export const SOCIAL_LOTTERY_COPY: readonly string[] = [
   'Feeling generous today. Drop a Like and I might top your tokens back up to 10M. No luck? Try me again.',
   'Quick favor: leave a Like and I’ll roll the dice on a 10M-token top-up.',
