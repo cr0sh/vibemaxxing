@@ -95,14 +95,9 @@ export function advanceMarket(market: MarketState, elapsed: number): MarketState
   let trades = market.trades
   const retainedFrom = history[0]?.elapsed
   if (retainedFrom !== undefined && trades.length > 0) {
-    let hasExpired = false
-    for (const trade of trades) {
-      if (trade.elapsed < retainedFrom) {
-        hasExpired = true
-        break
-      }
-    }
-    if (hasExpired) trades = trades.filter((trade) => trade.elapsed >= retainedFrom)
+    let expired = 0
+    while (expired < trades.length && trades[expired]!.elapsed < retainedFrom) expired += 1
+    if (expired > 0) trades = trades.slice(expired)
   }
 
   return { ...market, price, history, trades, rng }

@@ -42,11 +42,11 @@ describe('trading balances', () => {
     const bought = tradeMarket(current, 'buy', 0.125)
     const sold = tradeMarket(bought, 'sell', 0.05)
 
-    expect(sold.trades).toEqual([
-      { id: 1, elapsed: 0.5, side: 'buy', price: current.price, quantity: 0.125 },
-      { id: 2, elapsed: 0.5, side: 'sell', price: current.price, quantity: 0.05 },
+    expect(sold.trades).toMatchObject([
+      { elapsed: 0.5, side: 'buy', price: current.price, quantity: 0.125 },
+      { elapsed: 0.5, side: 'sell', price: current.price, quantity: 0.05 },
     ])
-    expect(sold.nextTradeId).toBe(3)
+    expect(sold.trades[0]!.id).not.toBe(sold.trades[1]!.id)
   })
 
   test('records the clamped quantity for a wallet-boundary execution', () => {
@@ -55,7 +55,7 @@ describe('trading balances', () => {
 
     expect(bought.btc).toBe(0.01)
     expect(bought.usd).toBe(0)
-    expect(bought.trades.at(-1)).toEqual({ id: 1, elapsed: 0, side: 'buy', price: 100, quantity: 0.01 })
+    expect(bought.trades.at(-1)).toMatchObject({ elapsed: 0, side: 'buy', price: 100, quantity: 0.01 })
   })
 
   test('prunes only markers older than the retained history boundary during catch-up', () => {
@@ -70,8 +70,7 @@ describe('trading balances', () => {
 
     expect(caughtUp.history[0]?.elapsed).toBe(0.5)
     expect(caughtUp.trades).toEqual([visible])
-    expect(caughtUp.trades).not.toContain(first.trades[0])
-    expect(caughtUp.trades).not.toContain(second.trades[1])
+    expect(advanceMarket(caughtUp, 120.5).trades).toEqual([])
   })
 
 

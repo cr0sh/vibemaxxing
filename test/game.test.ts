@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   canFundMercuryRetry,
+  hasTokenDeficit,
   companies,
   gameReducer,
   initialGame,
@@ -816,6 +817,96 @@ describe('developer previews', () => {
   })
 })
  
+describe('token deficit detection', () => {
+  test('flags an above-threshold assignment blocked by its attempt cost and clears after funding', () => {
+    const source = hire().tasks[0]!
+    const pending: WorkTask = { ...source, id: 901, difficulty: 12, status: 'assigned', terminalId: null, slot: null }
+    const state: GameState = { ...hire(), tokens: 1_100_000, tasks: [pending], taskQueue: [], nextTaskAt: 1_000 }
+
+    expect(hasTokenDeficit(state)).toBe(true)
+    expect(hasTokenDeficit({ ...state, tokens: 1_200_000 })).toBe(false)
+  })
+
+  test('does not confuse occupied slots, approval waits, or retry delays with token deficits', () => {
+    const source = hire().tasks[0]!
+    const working: WorkTask = {
+      ...source,
+      id: 902,
+      difficulty: 12,
+      status: 'working',
+      terminalId: 'terminal',
+      slot: 0,
+      startedAt: 0,
+      model: 'basic',
+    }
+    const pending: WorkTask = { ...source, id: 903, difficulty: 12, status: 'assigned', terminalId: null, slot: null }
+    const full = { ...hire(), tokens: 1_100_000, tasks: [working, pending], taskQueue: [], nextTaskAt: 1_000 }
+    expect(hasTokenDeficit(full)).toBe(false)
+
+    const approval: WorkTask = { ...working, id: 904, status: 'approval', nextApprovalAt: 10, approvalPrompt: 'Approve the next command?' }
+    expect(hasTokenDeficit({ ...full, tasks: [approval] })).toBe(false)
+
+    const retry: WorkTask = { ...working, id: 905, status: 'failed', failedAt: 0 }
+    const retryState = { ...full, mercuryOwned: true, mercuryEnabled: true, elapsed: MERCURY_RETRY_DELAY - 1, tasks: [retry] }
+    expect(hasTokenDeficit(retryState)).toBe(false)
+    expect(hasTokenDeficit({ ...retryState, elapsed: MERCURY_RETRY_DELAY })).toBe(true)
+  })
+
+  test('counts Mercury return reservations when they block otherwise eligible work', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
+    const source = hire().tasks[0]!
+    const active: WorkTask = {
+      ...source,
+      id: 906,
+      status: 'working',
+      terminalId: 'terminal',
+      slot: 0,
+      startedAt: 0,
+      model: 'advanced',
+      mercuryAuto: true,
+    }
+    const pending: WorkTask = { ...source, id: 907, difficulty: 9, status: 'assigned', terminalId: null, slot: null }
+    const terminals = base.terminals
+      .filter((terminal) => terminal.id !== 'spark')
+      .map((terminal) => ({ ...terminal, fastMode: false }))
+    const state: GameState = {
+      ...base,
+      tokens: 1_700_000,
+      tasks: [active, pending],
+      taskQueue: [],
+      terminals,
+      nextTaskAt: 1_000,
+    }
+
+    expect(hasTokenDeficit(state)).toBe(true)
+    expect(hasTokenDeficit({ ...state, tokens: 1_800_000 })).toBe(false)
+  })
+
+  test('warns when active return fees or a waiting handoff exceed available tokens', () => {
+    const hired = hire()
+    const tasks: WorkTask[] = Array.from({ length: 4 }, (_, slot) => ({
+      ...hired.tasks[0]!,
+      id: 910 + slot,
+      status: 'working',
+      terminalId: 'terminal',
+      slot,
+      mercuryAuto: true,
+    }))
+    const state = {
+      ...hired, tokens: 1_100_000, mercuryOwned: true, mercuryEnabled: true, tasks,
+      terminals: [{ ...hired.terminals[0]!, slots: 4 }],
+    }
+    expect(hasTokenDeficit(state)).toBe(true)
+    expect(hasTokenDeficit({ ...state, tokens: 1_200_000 })).toBe(false)
+
+    const handoff = { ...state, tasks: tasks.map((task, index): WorkTask =>
+      index === 3 ? { ...task, status: 'artifact', mercuryAuto: false } : task) }
+    expect(hasTokenDeficit(handoff)).toBe(true)
+    expect(hasTokenDeficit({ ...handoff, tokens: 1_200_000 })).toBe(false)
+    expect(hasTokenDeficit({ ...handoff, mercuryEnabled: false })).toBe(false)
+  })
+})
+
 describe('extended engine contracts', () => {
   test('Mercury retries wait ten seconds, reserve return fees, and yield to manual retries', () => {
     const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })

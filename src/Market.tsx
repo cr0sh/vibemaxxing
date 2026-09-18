@@ -163,7 +163,7 @@ export function MarketContent({ state, dispatch }: MarketProps) {
             title="Cash + Trading USD + Trading BTC × current BTC / USD price"
             aria-label={`Total portfolio value ${formatUsd(portfolioValue)}`}
           >
-            <span>Total</span>
+            <span>Total portfolio</span>
             <strong>{formatUsd(portfolioValue)}</strong>
           </div>
           <div className="market-current-price" aria-label={`Current Bitcoin price ${formatUsd(market?.price)}`}>
@@ -217,8 +217,8 @@ export function MarketContent({ state, dispatch }: MarketProps) {
               >
                 <title>{description}</title>
                 {marker.side === 'buy'
-                  ? <path d="M 0,-9 L 7,4 L -7,4 Z" />
-                  : <path d="M 0,9 L 7,-4 L -7,-4 Z" />}
+                  ? <path d="M 0,1 L 6,10 L -6,10 Z" />
+                  : <path d="M 0,-1 L 6,-10 L -6,-10 Z" />}
               </g>
             )
           })}
