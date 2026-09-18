@@ -245,7 +245,6 @@ function MercuryProduct({ state, dispatch }: ShopProps) {
 
 export function ShopContent({ state, dispatch }: ShopProps) {
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
-  const [tokenPacks, setTokenPacks] = useState<TokenPackCount>(10)
 
   const selectedTargetTerminal = state.terminals.some((terminal) => terminal.id === targetTerminal)
     ? targetTerminal
@@ -256,13 +255,13 @@ export function ShopContent({ state, dispatch }: ShopProps) {
     state.fastModeUnlocked &&
     selectedTerminal !== undefined &&
     selectedTerminal.id !== 'spark'
-  const refillAmount = tokenPurchaseAmount(state.tokens, tokenPacks)
+  const refillAmount = tokenPurchaseAmount(state.tokens, state.tokenPacks)
   const refillCost = tokenPurchaseCost(refillAmount)
   const refillPrice = moneyLabel(refillCost)
   const canBuyTokens = state.stage === 'hired' && state.money >= refillCost && refillAmount > 0
 
   const buyTokens = () => {
-    if (canBuyTokens) dispatch({ type: 'buy-tokens', packs: tokenPacks })
+    if (canBuyTokens) dispatch({ type: 'buy-tokens', packs: state.tokenPacks })
   }
 
   const setFastMode = (enabled: boolean) => {
@@ -334,12 +333,30 @@ export function ShopContent({ state, dispatch }: ShopProps) {
           <span className="shop-product-icon" aria-hidden="true">◇</span>
           <div className="shop-product-copy">
             <h3>Token refill</h3>
-            <label className="shop-pack-size">
-              Pack size
-              <select value={tokenPacks} disabled={state.stage !== 'hired'} onChange={(event) => setTokenPacks(Number(event.currentTarget.value) as TokenPackCount)}>
-                {TOKEN_PACK_COUNTS.map((packs) => <option key={packs} value={packs}>{packs === 100 ? 'Fill balance · 10M max' : `${(TOKEN_PURCHASE_AMOUNT * packs).toLocaleString()} tokens · $${TOKEN_PURCHASE_COST * packs}`}</option>)}
-              </select>
-            </label>
+            <div className="shop-token-options">
+              <label className="shop-pack-size">
+                Pack size
+                <select
+                  value={state.tokenPacks}
+                  disabled={state.stage !== 'hired'}
+                  onChange={(event) => dispatch({ type: 'set-token-packs', packs: Number(event.currentTarget.value) as TokenPackCount })}
+                >
+                  {TOKEN_PACK_COUNTS.map((packs) => <option key={packs} value={packs}>{packs === 100 ? 'Fill balance · 10M max' : `${(TOKEN_PURCHASE_AMOUNT * packs).toLocaleString()} tokens · $${TOKEN_PURCHASE_COST * packs}`}</option>)}
+                </select>
+              </label>
+              <label className="shop-fast-mode-toggle shop-auto-buy-toggle">
+                <span className="shop-auto-buy-name">Auto-buy</span>
+                <span className="shop-fast-mode-toggle-label">{state.tokenAutoBuy ? 'On' : 'Off'}</span>
+                <input
+                  type="checkbox"
+                  checked={state.tokenAutoBuy}
+                  disabled={state.stage !== 'hired'}
+                  onChange={(event) => dispatch({ type: 'set-token-auto-buy', enabled: event.currentTarget.checked })}
+                  aria-label="Automatically buy tokens when balance is low"
+                />
+                <span className="shop-toggle-track" aria-hidden="true"><span /></span>
+              </label>
+            </div>
             <p>{refillAmount > 0 ? `${refillAmount.toLocaleString()} tokens received · partial packs prorated` : 'Inventory is at the 10M token limit.'}</p>
           </div>
           <button className="shop-buy-button" type="button" onClick={buyTokens} disabled={!canBuyTokens}>

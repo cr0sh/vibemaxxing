@@ -128,6 +128,48 @@ describe('employment transitions', () => {
     expect(batch.money).toBe(20)
   })
 
+  test('fractional ticks accumulate without double-paying or double-working', () => {
+    let state = hire()
+    state = {
+      ...state,
+      terminals: state.terminals.map((terminal) => ({ ...terminal, yolo: true })),
+    }
+    const id = taskWith(state, 1).id
+    state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
+    const half = gameReducer(state, { type: 'tick', seconds: 0.5 })
+    expect(half.elapsed).toBe(0)
+    expect(half.tickRemainder).toBe(0.5)
+    expect(half.money).toBe(0)
+    expect(taskWith(half, id).progress).toBe(0)
+    const whole = gameReducer(half, { type: 'tick', seconds: 0.5 })
+    expect(whole.elapsed).toBe(1)
+    expect(whole.tickRemainder).toBe(0)
+    expect(whole.money).toBe(1)
+    expect(taskWith(whole, id).progress).toBe(1)
+  })
+
+  test('token auto-buy uses the selected pack once per simulation second', () => {
+    let state = { ...hire(), money: 199, tokens: 0 }
+    state = gameReducer(state, { type: 'set-token-packs', packs: 1 })
+    expect(state.tokenPacks).toBe(1)
+    state = gameReducer(state, { type: 'set-token-auto-buy', enabled: true })
+    expect(state.tokenAutoBuy).toBe(true)
+    expect(state.tokens).toBe(100_000)
+    expect(state.money).toBe(99)
+    state = gameReducer(state, { type: 'tick', seconds: 0.5 })
+    expect(state.tokens).toBe(100_000)
+    expect(state.money).toBe(99)
+    state = gameReducer(state, { type: 'tick', seconds: 0.5 })
+    expect(state.tokens).toBe(200_000)
+    expect(state.money).toBe(0)
+    const unaffordable = gameReducer({ ...state, tokens: 0 }, { type: 'tick', seconds: 1 })
+    expect(unaffordable.money).toBe(1)
+    const off = gameReducer({ ...state, tokenAutoBuy: false, tokens: 0, money: 200 }, { type: 'tick', seconds: 1 })
+    expect(off.tokens).toBe(0)
+    const lost = gameReducer({ ...state, stage: 'lost', tokens: 0, money: 200 }, { type: 'tick', seconds: 1 })
+    expect(lost).toEqual({ ...state, stage: 'lost', tokens: 0, money: 200 })
+  })
+
   test('duplicate task starts and deliveries cannot spend or award twice', () => {
     let state = hire()
     const id = taskWith(state, 1).id
@@ -309,6 +351,8 @@ describe('employment transitions', () => {
     expect(lost.stage).toBe('lost')
     expect(lost.tasks).toContainEqual(task)
     expect(lost.messages.at(-1)?.type).toBe('firing')
+    expect(lost.failure).toContain(task.title)
+    expect(lost.failure).toContain(hired.company!)
     expect(gameReducer(lost, { type: 'tick', seconds: 100 })).toEqual(lost)
   })
   test('task-free employment remains active during extended elapsed time', () => {
@@ -705,6 +749,13 @@ describe('extended progression boundaries', () => {
 })
  
 describe('developer previews', () => {
+
+  test('developer loss keeps the firing narrative tied to the company', () => {
+    const lost = gameReducer(initialGame, { type: 'dev-jump', stage: 'lost' })
+    expect(lost.stage).toBe('lost')
+    expect(lost.failure).toContain('hiring bar')
+    expect(lost.failure).toContain(lost.company!)
+  })
   test('Tiro replaces a stale loss with a usable campaign', () => {
     const hired = hire(91)
     const stale = gameReducer({
@@ -1060,6 +1111,40 @@ describe('extended engine contracts', () => {
     const forwarded = gameReducer(state, { type: 'tick', seconds: 1 })
     expect(taskWith(forwarded, task.id)).toMatchObject({ status: 'working', terminalId: 'terminal-2' })
     expect(forwarded.tokens).toBe(300_000)
+  })
+
+  test('Mercury dispatches all affordable assignments across every terminal slot', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const source = hire().tasks[0]!
+    const tasks = Array.from({ length: 6 }, (_, index) => ({
+      ...source,
+      id: 700 + index,
+      difficulty: 1,
+      deadlineAt: 100,
+      status: 'assigned' as const,
+      terminalId: null,
+      slot: null,
+    }))
+    const state: GameState = {
+      ...base,
+      tokens: 10_000_000,
+      tasks,
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      mercuryOwned: true,
+      mercuryEnabled: true,
+      terminals: [
+        { id: 'terminal', slots: 2, model: 'advanced', fastMode: false, yolo: true },
+        { id: 'terminal-2', slots: 2, model: 'advanced', fastMode: false, yolo: true },
+        { id: 'spark', slots: 2, model: 'reasoning', fastMode: false, yolo: true },
+      ],
+    }
+    const dispatched = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(dispatched.tasks.every((task) => task.status === 'working')).toBe(true)
+    expect(dispatched.tasks.map((task) => `${task.terminalId}:${task.slot}`)).toHaveLength(6)
+    for (const terminal of state.terminals) {
+      expect(dispatched.tasks.filter((task) => task.terminalId === terminal.id)).toHaveLength(terminal.slots)
+    }
   })
 
   test('Mercury delivers a ready artifact before spending the last forwarding fee', () => {
