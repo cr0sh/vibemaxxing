@@ -134,7 +134,7 @@ describe('employment transitions', () => {
       individual = gameReducer(individual, { type: 'tick', seconds: 1 })
     }
     expect(batch).toEqual(individual)
-    expect(batch.money).toBe(20)
+    expect(batch.money).toBe(100)
   })
 
   test('fractional ticks accumulate without double-paying or double-working', () => {
@@ -153,7 +153,7 @@ describe('employment transitions', () => {
     const whole = gameReducer(half, { type: 'tick', seconds: 0.5 })
     expect(whole.elapsed).toBe(1)
     expect(whole.tickRemainder).toBe(0)
-    expect(whole.money).toBe(1)
+    expect(whole.money).toBe(5)
     expect(taskWith(whole, id).progress).toBe(1)
   })
 
@@ -170,9 +170,9 @@ describe('employment transitions', () => {
     expect(state.money).toBe(99)
     state = gameReducer(state, { type: 'tick', seconds: 0.5 })
     expect(state.tokens).toBe(200_000)
-    expect(state.money).toBe(0)
+    expect(state.money).toBe(4)
     const unaffordable = gameReducer({ ...state, tokens: 0 }, { type: 'tick', seconds: 1 })
-    expect(unaffordable.money).toBe(1)
+    expect(unaffordable.money).toBe(9)
     const off = gameReducer({ ...state, tokenAutoBuy: false, tokens: 0, money: 200 }, { type: 'tick', seconds: 1 })
     expect(off.tokens).toBe(0)
     const lost = gameReducer({ ...state, stage: 'lost', tokens: 0, money: 200 }, { type: 'tick', seconds: 1 })
@@ -380,7 +380,7 @@ describe('employment transitions', () => {
     expect(longRunning.stage).toBe('hired')
     expect(longRunning.failure).toBeNull()
     expect(longRunning.elapsed).toBe(10_000)
-    expect(longRunning.money).toBe(10_000)
+    expect(longRunning.money).toBe(50_000)
     expect(longRunning.tasks).toHaveLength(0)
   })
 
