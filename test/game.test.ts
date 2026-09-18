@@ -826,25 +826,41 @@ describe('extended engine contracts', () => {
     expect(delivered.messages.filter((message) => message.type === 'delivery').map((message) => message.task.id)).toEqual([earlier.id, later.id])
   })
 
-  test('disabling Mercury keeps manual forwarding free and resumes reserved automatic forwarding when enabled', () => {
+  test('disabling Mercury releases reservations for manual work and restores safe dispatch when enabled', () => {
     const source = hire().tasks[0]!
     const assigned: WorkTask = { ...source, id: 705, difficulty: 1, deadlineAt: 100, status: 'assigned' }
     const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
-    const disabled = gameReducer(base, { type: 'set-mercury', enabled: false })
-    const waiting = gameReducer({ ...disabled, tokens: 0, tasks: [assigned], taskQueue: [], nextTaskAt: 1_000 }, { type: 'tick', seconds: 1 })
-    expect(taskWith(waiting, 705).status).toBe('assigned')
-    const resumed = gameReducer(waiting, { type: 'set-mercury', enabled: true })
-    expect(taskWith(resumed, 705).status).toBe('assigned')
-    const manuallyStarted = gameReducer(resumed, { type: 'start-task', id: 705, terminalId: 'spark', slot: 0 })
-    expect(taskWith(manuallyStarted, 705).local).toBe(true)
-    expect(manuallyStarted.tokens).toBe(0)
-    const automaticallyStarted = gameReducer({
+    const autoStarted = gameReducer({ ...base, tokens: 600_000, tasks: [assigned], taskQueue: [], nextTaskAt: 1_000 }, { type: 'tick', seconds: 1 })
+    expect(taskWith(autoStarted, assigned.id)).toMatchObject({ status: 'working', mercuryAuto: true })
+    expect(autoStarted.tokens).toBe(300_000)
+    const disabled = gameReducer(autoStarted, { type: 'set-mercury', enabled: false })
+    const manualCandidate: WorkTask = { ...assigned, id: 706, deadlineAt: 200 }
+    const manuallyStarted = gameReducer({
+      ...disabled,
+      tokens: 300_000,
+      tasks: [...disabled.tasks, manualCandidate],
+    }, { type: 'start-task', id: manualCandidate.id, terminalId: 'terminal', slot: 0 })
+    expect(taskWith(manuallyStarted, manualCandidate.id)).toMatchObject({ status: 'working', local: false, mercuryAuto: false })
+    expect(manuallyStarted.tokens).toBe(200_000)
+    const manualArtifact: WorkTask = { ...source, id: 707, status: 'artifact', progress: source.difficulty }
+    const manuallyDelivered = gameReducer({
       ...manuallyStarted,
+      tokens: 0,
+      tasks: [...manuallyStarted.tasks, manualArtifact],
+    }, { type: 'deliver-task', id: manualArtifact.id })
+    expect(manuallyDelivered.tokens).toBe(0)
+    const reenabled = gameReducer({
+      ...disabled,
       tokens: 600_000,
-      tasks: [...manuallyStarted.tasks, { ...assigned, id: 706 }],
-    }, { type: 'tick', seconds: 1 })
-    expect(taskWith(automaticallyStarted, 706)).toMatchObject({ status: 'working', mercuryAuto: true })
-    expect(automaticallyStarted.tokens).toBe(300_000)
+      tasks: [...disabled.tasks, { ...assigned, id: 708, deadlineAt: 200 }],
+    }, { type: 'set-mercury', enabled: true })
+    const blocked = gameReducer(reenabled, { type: 'tick', seconds: 1 })
+    expect(taskWith(blocked, 708).status).toBe('assigned')
+    expect(blocked.tokens).toBe(600_000)
+    const restored = gameReducer(blocked, { type: 'tick', seconds: 1 })
+    expect(taskWith(restored, 708).status).toBe('assigned')
+    expect(restored.tasks.some((task) => task.id === assigned.id)).toBe(false)
+    expect(restored.tokens).toBe(300_000)
   })
 
   test('Mercury reserves an in-flight return fee instead of stranding its artifact', () => {

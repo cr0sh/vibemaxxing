@@ -469,7 +469,8 @@ function updateAssignmentArtifact(state: GameState, task: WorkTask): GameState {
 }
 
 const PRIMARY_TERMINAL: TerminalState = { id: 'terminal', slots: 1, yolo: false, fastMode: false, model: 'basic' }
-function mercuryReturnReservations(tasks: readonly WorkTask[]): number {
+function mercuryReturnReservations(tasks: readonly WorkTask[], enabled = true): number {
+  if (!enabled) return 0
   return tasks.reduce((total, task) => total + (
     task.mercuryAuto === true && task.status !== 'assigned' && task.status !== 'failed'
       ? MERCURY_FORWARD_COST
@@ -515,7 +516,7 @@ export function terminalModel(state: GameState, terminalId: TerminalId): AgentMo
 }
 
 export function canFundTaskAttempt(
-  state: Pick<GameState, 'tasks' | 'tokens'> & Partial<Pick<GameState, 'terminals' | 'reasoningUnlocked' | 'advancedModelUnlocked' | 'frontierModelUnlocked'>>,
+  state: Pick<GameState, 'tasks' | 'tokens'> & Partial<Pick<GameState, 'terminals' | 'reasoningUnlocked' | 'advancedModelUnlocked' | 'frontierModelUnlocked' | 'mercuryEnabled'>>,
   task: WorkTask,
   fastMode: boolean,
   terminalId?: TerminalId,
@@ -539,7 +540,7 @@ export function canFundTaskAttempt(
       : 0),
     0,
   )
-  const otherReservations = assignedReservations + mercuryReturnReservations(state.tasks)
+  const otherReservations = assignedReservations + mercuryReturnReservations(state.tasks, state.mercuryEnabled !== false)
   const cost = taskTokenCost(task, fastMode, model, local)
   return Number.isFinite(cost) && cost >= 0 && Number.isFinite(otherReservations) &&
     Number.isFinite(state.tokens) && state.tokens >= 0 && (local || state.tokens >= cost + otherReservations)
