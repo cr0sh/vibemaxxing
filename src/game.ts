@@ -220,7 +220,7 @@ const TIRO_PREVIEW_TOKENS = 1_900_000
 export const SPARK_PRICE = 15_000
 export const ADVANCED_MODEL_PRICE = 5_000
 export const MERCURY_PRICE = 8_000
-const MERCURY_FORWARD_COST = 300_000
+export const MERCURY_FORWARD_COST = 300_000
 const MARKET_TASK_GATE = 55
 const MARKET_ARCHITECTURE_GATE = 8
 const SECOND_JOB_TASK_GATE = 100
@@ -469,7 +469,7 @@ function updateAssignmentArtifact(state: GameState, task: WorkTask): GameState {
 }
 
 const PRIMARY_TERMINAL: TerminalState = { id: 'terminal', slots: 1, yolo: false, fastMode: false, model: 'basic' }
-function mercuryReturnReservations(tasks: readonly WorkTask[], enabled = true): number {
+export function mercuryReturnReservations(tasks: readonly WorkTask[], enabled = true): number {
   if (!enabled) return 0
   return tasks.reduce((total, task) => total + (
     task.mercuryAuto === true && task.status !== 'assigned' && task.status !== 'failed'
@@ -515,6 +515,18 @@ export function terminalModel(state: GameState, terminalId: TerminalId): AgentMo
   }
 }
 
+function assignedTaskReservations(
+  state: Pick<GameState, 'tasks'> & Partial<Pick<GameState, 'terminals'>>,
+  task: WorkTask,
+): number {
+  if (state.terminals?.some((terminal) => terminal.id === 'spark')) return 0
+  return state.tasks.reduce((total, candidate) => total + (
+    candidate.id !== task.id && candidate.status === 'assigned'
+      ? taskTokenCost(candidate, false, 'basic', candidate.local)
+      : 0
+  ), 0)
+}
+
 export function canFundTaskAttempt(
   state: Pick<GameState, 'tasks' | 'tokens'> & Partial<Pick<GameState, 'terminals' | 'reasoningUnlocked' | 'advancedModelUnlocked' | 'frontierModelUnlocked' | 'mercuryEnabled'>>,
   task: WorkTask,
@@ -534,16 +546,26 @@ export function canFundTaskAttempt(
   } else if (state.reasoningUnlocked) {
     model = 'reasoning'
   }
-  const assignedReservations = state.terminals?.some((terminal) => terminal.id === 'spark') ? 0 : state.tasks.reduce(
-    (total, candidate) => total + (candidate.id !== task.id && candidate.status === 'assigned'
-      ? taskTokenCost(candidate, false, 'basic', candidate.local)
-      : 0),
-    0,
-  )
+  const assignedReservations = assignedTaskReservations(state, task)
   const otherReservations = assignedReservations + mercuryReturnReservations(state.tasks, state.mercuryEnabled !== false)
   const cost = taskTokenCost(task, fastMode, model, local)
   return Number.isFinite(cost) && cost >= 0 && Number.isFinite(otherReservations) &&
     Number.isFinite(state.tokens) && state.tokens >= 0 && (local || state.tokens >= cost + otherReservations)
+}
+
+export function canFundMercuryAttempt(state: GameState, task: WorkTask, terminalId: TerminalId): boolean {
+  if (!state.mercuryOwned || !state.mercuryEnabled || task.status !== 'assigned') return false
+  const terminal = getTerminal(state, terminalId)
+  if (terminal === undefined) return false
+  const local = terminalId === 'spark'
+  const fastMode = local ? false : terminal.fastMode === true
+  const model = local ? 'reasoning' : terminalModel(state, terminalId)
+  const attemptCost = taskTokenCost(task, fastMode, model, local)
+  const reserved = mercuryReturnReservations(state.tasks)
+  const assigned = assignedTaskReservations(state, task)
+  const required = MERCURY_FORWARD_COST + attemptCost + MERCURY_FORWARD_COST + reserved + assigned
+  return Number.isFinite(attemptCost) && attemptCost >= 0 && Number.isFinite(required) &&
+    Number.isFinite(state.tokens) && state.tokens >= required
 }
 
 function issueAvailableAssignments(state: GameState): GameState {
@@ -856,13 +878,7 @@ function processMercury(state: GameState): GameState {
     for (const terminal of terminals) {
       const slot = firstFreeSlot(current, terminal)
       if (slot === null) continue
-      const local = terminal.id === 'spark'
-      const fastMode = local ? false : terminal.fastMode === true
-      const model = local ? 'reasoning' : terminalModel(current, terminal.id)
-      const attemptCost = taskTokenCost(task, fastMode, model, local)
-      const available = current.tokens - mercuryReturnReservations(current.tasks)
-      const required = MERCURY_FORWARD_COST + attemptCost + MERCURY_FORWARD_COST
-      if (!Number.isFinite(attemptCost) || attemptCost < 0 || available < required) continue
+      if (!canFundMercuryAttempt(current, task, terminal.id)) continue
       const funded = { ...current, tokens: current.tokens - MERCURY_FORWARD_COST }
       const started = startTaskAttempt(funded, taskIndex, terminal.id, slot, true)
       if (started !== funded) return started
