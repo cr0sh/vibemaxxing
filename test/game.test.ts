@@ -5,8 +5,10 @@ import {
   gameReducer,
   initialGame,
   MAX_TOKENS,
+  SOCIAL_LOTTERY_COPY,
   MERCURY_FORWARD_COST,
   MERCURY_RETRY_DELAY,
+  mercuryReturnReservations,
   taskReward,
   taskTokenCost,
   type EmploymentJob,
@@ -620,7 +622,7 @@ describe('extended progression boundaries', () => {
     expect(below.watercoolerUnlocked).toBe(true)
   })
 
-  test('campaign reset applies on install while lottery wins remain immediate', () => {
+  test('campaign reset applies on install while lottery wins refresh the active post', () => {
     let state: GameState = {
       ...hire(), watercoolerUnlocked: true, tokens: 100,
       tasks: [], taskQueue: [], nextTaskAt: 1_000,
@@ -629,24 +631,41 @@ describe('extended progression boundaries', () => {
     expect(state.tokens).toBe(MAX_TOKENS)
     expect(state.socialPosts.filter((post) => post.type === 'campaign')).toHaveLength(1)
     expect(state.socialPosts.filter((post) => post.type === 'reset')).toHaveLength(1)
-    expect(gameReducer(state, { type: 'like-reset' })).toBe(state)
+    expect(gameReducer(state, { type: 'like-reset', postId: 'missing-lottery' })).toBe(state)
     state = gameReducer({ ...state, tokens: 100 }, { type: 'tick', seconds: 4 })
     expect(state.socialPosts.some((post) => post.type === 'lottery')).toBe(false)
     state = gameReducer(state, { type: 'tick', seconds: 1 })
+    const firstLottery = state.socialPosts.find((post) => post.type === 'lottery')
+    if (firstLottery === undefined || firstLottery.type !== 'lottery') throw new Error('First lottery post was not appended')
     expect(state.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(1)
 
     // Seeded draws immediately below and above the one-percent boundary.
-    const missed = gameReducer({ ...state, rng: 1962 }, { type: 'like-reset' })
+    const missed = gameReducer({ ...state, rng: 1962 }, { type: 'like-reset', postId: firstLottery.id })
     expect(missed.tokens).toBe(100)
-    const won = gameReducer({ ...missed, rng: 978 }, { type: 'like-reset' })
+    expect(missed.socialPosts.find((post) => post.id === firstLottery.id)?.likes).toBe(1)
+    const won = gameReducer({ ...missed, rng: 978 }, { type: 'like-reset', postId: firstLottery.id })
     expect(won.tokens).toBe(MAX_TOKENS)
     expect(won.socialPosts.filter((post) => post.type === 'reset')).toHaveLength(2)
-    expect(won.socialPosts.find((post) => post.type === 'lottery')?.likes).toBe(2)
+    expect(won.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(2)
+    const refreshedLottery = won.socialPosts.findLast((post) => post.type === 'lottery')
+    if (refreshedLottery === undefined || refreshedLottery.type !== 'lottery') throw new Error('Winning Like did not append a new lottery post')
+    expect(refreshedLottery.id).not.toBe(firstLottery.id)
+    expect(SOCIAL_LOTTERY_COPY[refreshedLottery.lotteryVariant]).not.toBe(SOCIAL_LOTTERY_COPY[firstLottery.lotteryVariant])
+    expect(won.socialPosts.find((post) => post.id === firstLottery.id)?.likes).toBe(2)
+    expect(refreshedLottery.likes).toBe(0)
+
+    // Historical posts retain their likes but cannot trigger another attempt.
+    expect(gameReducer(won, { type: 'like-reset', postId: firstLottery.id })).toBe(won)
+    const activeMiss = gameReducer({ ...won, tokens: 100, rng: 1962 }, { type: 'like-reset', postId: refreshedLottery.id })
+    expect(activeMiss.tokens).toBe(100)
+    expect(activeMiss.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(2)
+    expect(activeMiss.socialPosts.find((post) => post.id === refreshedLottery.id)?.likes).toBe(1)
+
     const waiting = gameReducer({ ...won, tokens: 100 }, { type: 'tick', seconds: 94 })
     expect(waiting.tokens).toBe(100)
     const refilled = gameReducer(waiting, { type: 'tick', seconds: 1 })
     expect(refilled.tokens).toBe(MAX_TOKENS)
-    expect(refilled.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(1)
+    expect(refilled.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(2)
   })
 
   test('architecture frequency rises by delivery count but remains capped at eighty percent', () => {
@@ -1141,6 +1160,86 @@ describe('extended engine contracts', () => {
     for (const terminal of state.terminals) {
       expect(dispatched.tasks.filter((task) => task.terminalId === terminal.id)).toHaveLength(terminal.slots)
     }
+  })
+
+  test('Mercury ignores inactive assignment reservations for automatic dispatch without spending the return reserve', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
+    const source = hire().tasks[0]!
+    const assigned = (id: number): WorkTask => ({
+      ...source,
+      id,
+      difficulty: 1,
+      deadlineAt: 100,
+      status: 'assigned',
+      terminalId: null,
+      slot: null,
+    })
+    const state: GameState = {
+      ...base,
+      tokens: 700_000,
+      tasks: [assigned(801), assigned(802)],
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      sparkDeliveryAt: null,
+      terminals: [
+        { id: 'terminal', slots: 1, model: 'advanced', fastMode: false, yolo: true },
+        { id: 'terminal-2', slots: 1, model: 'advanced', fastMode: false, yolo: true },
+      ],
+    }
+    const forwarded = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(forwarded, 801)).toMatchObject({ status: 'working', terminalId: 'terminal', slot: 0, mercuryAuto: true })
+    expect(taskWith(forwarded, 802).status).toBe('assigned')
+    expect(forwarded.tokens).toBe(300_000)
+    expect(mercuryReturnReservations(forwarded.tasks)).toBe(MERCURY_FORWARD_COST)
+  })
+
+  test('Mercury balances pending work across mixed-cost terminals before reusing the best lane', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const source = hire().tasks[0]!
+    const tasks = Array.from({ length: 5 }, (_, index) => ({
+      ...source,
+      id: 810 + index,
+      difficulty: 11,
+      complexity: 4,
+      deadlineAt: 1_000,
+      status: 'assigned' as const,
+      terminalId: null,
+      slot: null,
+    }))
+    const state: GameState = {
+      ...base,
+      tokens: MAX_TOKENS,
+      tasks,
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      secondJob: null,
+      terminals: [
+        { id: 'terminal', slots: 4, model: 'frontier', fastMode: true, yolo: true },
+        { id: 'terminal-2', slots: 4, model: 'advanced', fastMode: false, yolo: true },
+        { id: 'spark', slots: 2, model: 'reasoning', fastMode: false, yolo: true },
+      ],
+    }
+    const dispatched = gameReducer(state, { type: 'tick', seconds: 1 })
+    const started = tasks.map((task) => taskWith(dispatched, task.id))
+    expect(started.every((task) => task.status === 'working')).toBe(true)
+    expect(new Set(started.map((task) => task.terminalId))).toEqual(new Set(['terminal', 'terminal-2', 'spark']))
+    expect(dispatched.tokens).toBe(1_900_000)
+    expect(mercuryReturnReservations(dispatched.tasks)).toBe(5 * MERCURY_FORWARD_COST)
+  })
+
+  test('Mercury starts a newly issued assignment in the same simulation second', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
+    const state: GameState = {
+      ...base,
+      tokens: 600_000,
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: 0,
+    }
+    const forwarded = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(forwarded.tasks).toHaveLength(1)
+    expect(forwarded.tasks[0]).toMatchObject({ status: 'working', terminalId: 'spark', slot: 0, mercuryAuto: true })
+    expect(forwarded.tokens).toBe(MERCURY_FORWARD_COST)
   })
 
   test('Mercury delivers a ready artifact before spending the last forwarding fee', () => {

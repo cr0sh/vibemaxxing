@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import type { Dispatch } from 'react'
 import {
+  SOCIAL_LOTTERY_COPY,
   type GameAction,
   type GameState,
   type SocialPost,
@@ -50,7 +51,17 @@ function ProfileAvatar({ post, state }: { post: SocialPost; state: GameState }) 
   )
 }
 
-function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameState; dispatch: Dispatch<GameAction> }) {
+function PostBody({
+  post,
+  state,
+  dispatch,
+  activeLotteryId,
+}: {
+  post: SocialPost
+  state: GameState
+  dispatch: Dispatch<GameAction>
+  activeLotteryId: string | null
+}) {
   const isLost = state.stage === 'lost'
 
   if (post.type === 'campaign') {
@@ -62,25 +73,31 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   }
 
   if (post.type === 'lottery') {
+    const isActive = post.id === activeLotteryId
+    const copy = SOCIAL_LOTTERY_COPY[post.lotteryVariant] ?? SOCIAL_LOTTERY_COPY[0]
     return (
       <>
-        <p className="social-post-copy">
-          Feeling generous today. Drop a like and I might top your tokens back up to 10M. No luck? Try me again.
-        </p>
-        <div className="social-lottery-actions">
-          <button
-            className="social-heart-button"
-            type="button"
-            disabled={isLost}
-            onClick={() => dispatch({ type: 'like-reset' })}
-            aria-label={`Like Tiro’s post. ${post.likes.toLocaleString()} ${post.likes === 1 ? 'like' : 'likes'} so far.`}
-          >
-            <span aria-hidden="true">♥</span>
-            <span>Like</span>
-          </button>
-          <span className="social-like-count" aria-live="polite">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'}</span>
-        </div>
-        {isLost && <p className="social-action-note">Your work account is read-only now.</p>}
+        <p className="social-post-copy">{copy}</p>
+        {isActive ? (
+          <>
+            <div className="social-lottery-actions">
+              <button
+                className="social-heart-button"
+                type="button"
+                disabled={isLost}
+                onClick={() => dispatch({ type: 'like-reset', postId: post.id })}
+                aria-label={`Like Tiro’s post. ${post.likes.toLocaleString()} ${post.likes === 1 ? 'like' : 'likes'} so far.`}
+              >
+                <span aria-hidden="true">♥</span>
+                <span>Like</span>
+              </button>
+              <span className="social-like-count" aria-live="polite">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'}</span>
+            </div>
+            {isLost && <p className="social-action-note">Your work account is read-only now.</p>}
+          </>
+        ) : (
+          <p className="social-action-note">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'} · This giveaway has ended.</p>
+        )}
       </>
     )
   }
@@ -164,7 +181,17 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   )
 }
 
-function SocialPostCard({ post, state, dispatch }: { post: SocialPost; state: GameState; dispatch: Dispatch<GameAction> }) {
+function SocialPostCard({
+  post,
+  state,
+  dispatch,
+  activeLotteryId,
+}: {
+  post: SocialPost
+  state: GameState
+  dispatch: Dispatch<GameAction>
+  activeLotteryId: string | null
+}) {
   return (
     <article className={`social-post social-post-${post.type}`} aria-label={`${postAuthor(post)} post at ${elapsedLabel(post.elapsed)}`}>
       <div className="social-post-rail" aria-hidden="true">
@@ -177,7 +204,7 @@ function SocialPostCard({ post, state, dispatch }: { post: SocialPost; state: Ga
             {elapsedLabel(post.elapsed)}
           </time>
         </header>
-        <PostBody post={post} state={state} dispatch={dispatch} />
+        <PostBody post={post} state={state} dispatch={dispatch} activeLotteryId={activeLotteryId} />
       </div>
     </article>
   )
@@ -186,6 +213,7 @@ function SocialPostCard({ post, state, dispatch }: { post: SocialPost; state: Ga
 export function SocialContent({ state, dispatch }: SocialProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const posts = state.socialPosts
+  const activeLotteryId = posts.findLast((post) => post.type === 'lottery')?.id ?? null
   const { unreadCount, scrollToLatest } = useUnreadMessages(posts.map((post) => post.id), scrollRef)
 
   return (
@@ -206,7 +234,7 @@ export function SocialContent({ state, dispatch }: SocialProps) {
         <UnreadIndicator count={unreadCount} onClick={scrollToLatest} />
       </div>
       <div className="social-feed" ref={scrollRef} role="log" aria-label="Vibemaxxers' Social Network timeline" aria-live="polite">
-        {posts.map((post) => <SocialPostCard key={post.id} post={post} state={state} dispatch={dispatch} />)}
+        {posts.map((post) => <SocialPostCard key={post.id} post={post} state={state} dispatch={dispatch} activeLotteryId={activeLotteryId} />)}
       </div>
     </section>
   )
