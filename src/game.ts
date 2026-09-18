@@ -955,14 +955,12 @@ function terminalWorkload(state: GameState, terminalId: TerminalId): number {
 }
 
 function mercuryTerminalOrder(state: GameState, task: WorkTask): TerminalState[] {
-  return [...state.terminals]
-    .filter((terminal) => firstFreeSlot(state, terminal) !== null && canFundMercuryAttempt(state, task, terminal.id))
-    .sort((a, b) => {
-      const workload = terminalWorkload(state, a.id) - terminalWorkload(state, b.id)
-      if (workload !== 0) return workload
-      const quality = taskSuccessChance(task, terminalModel(state, b.id)) - taskSuccessChance(task, terminalModel(state, a.id))
-      return quality !== 0 ? quality : a.id.localeCompare(b.id)
-    })
+  return [...state.terminals].sort((a, b) => {
+    const workload = terminalWorkload(state, a.id) - terminalWorkload(state, b.id)
+    if (workload !== 0) return workload
+    const quality = taskSuccessChance(task, terminalModel(state, b.id)) - taskSuccessChance(task, terminalModel(state, a.id))
+    return quality !== 0 ? quality : a.id.localeCompare(b.id)
+  })
 }
 
 function processMercury(state: GameState): GameState {

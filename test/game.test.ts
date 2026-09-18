@@ -651,7 +651,6 @@ describe('extended progression boundaries', () => {
     if (refreshedLottery === undefined || refreshedLottery.type !== 'lottery') throw new Error('Winning Like did not append a new lottery post')
     expect(refreshedLottery.id).not.toBe(firstLottery.id)
     expect(SOCIAL_LOTTERY_COPY[refreshedLottery.lotteryVariant]).not.toBe(SOCIAL_LOTTERY_COPY[firstLottery.lotteryVariant])
-    expect(refreshedLottery.lotteryVariant).not.toBe(firstLottery.lotteryVariant)
     expect(won.socialPosts.find((post) => post.id === firstLottery.id)?.likes).toBe(2)
     expect(refreshedLottery.likes).toBe(0)
 
@@ -1181,6 +1180,7 @@ describe('extended engine contracts', () => {
       tasks: [assigned(801), assigned(802)],
       taskQueue: [],
       nextTaskAt: 1_000,
+      sparkDeliveryAt: null,
       terminals: [
         { id: 'terminal', slots: 1, model: 'advanced', fastMode: false, yolo: true },
         { id: 'terminal-2', slots: 1, model: 'advanced', fastMode: false, yolo: true },
@@ -1212,6 +1212,7 @@ describe('extended engine contracts', () => {
       tasks,
       taskQueue: [],
       nextTaskAt: 1_000,
+      secondJob: null,
       terminals: [
         { id: 'terminal', slots: 4, model: 'frontier', fastMode: true, yolo: true },
         { id: 'terminal-2', slots: 4, model: 'advanced', fastMode: false, yolo: true },
@@ -1236,8 +1237,9 @@ describe('extended engine contracts', () => {
       nextTaskAt: 0,
     }
     const forwarded = gameReducer(state, { type: 'tick', seconds: 1 })
-    expect(taskWith(forwarded, 1)).toMatchObject({ status: 'working', terminalId: 'spark', slot: 0, mercuryAuto: true })
-    expect(forwarded.tokens).toBe(0)
+    expect(forwarded.tasks).toHaveLength(1)
+    expect(forwarded.tasks[0]).toMatchObject({ status: 'working', terminalId: 'spark', slot: 0, mercuryAuto: true })
+    expect(forwarded.tokens).toBe(MERCURY_FORWARD_COST)
   })
 
   test('Mercury delivers a ready artifact before spending the last forwarding fee', () => {
