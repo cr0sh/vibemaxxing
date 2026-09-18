@@ -1015,7 +1015,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode,
       onDrop={handleDrop}
     >
       <div className="employment-lane-heading">
-        <span>{task ? taskStatusLabel(task).toLowerCase() : yolo ? 'YOLO' : 'idle'}</span>
+        <span>{task ? taskStatusLabel(task).toLowerCase() : yolo ? 'YOLO!' : 'idle'}</span>
         {task && <span>attempt {Math.max(1, task.attempt)}</span>}
       </div>
       {task && (
