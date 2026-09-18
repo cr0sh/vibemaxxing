@@ -115,10 +115,10 @@ describe('trading balances', () => {
     expect(partialSale.btcCostBasis).toBe(200)
     expect(partialSale.realizedPnl).toBe(250)
 
-    const fullSale = tradeMarket({ ...partialSale, price: 150 }, 'sell', partialSale.btc)
+    const fullSale = tradeMarket({ ...partialSale, price: 50 }, 'sell', partialSale.btc)
     expect(fullSale.btc).toBe(0)
     expect(fullSale.btcCostBasis).toBe(0)
-    expect(fullSale.realizedPnl).toBe(275)
+    expect(fullSale.realizedPnl).toBe(125)
   })
 
   test('retains lifetime realized PnL through transfers and marker eviction', () => {
@@ -135,6 +135,13 @@ describe('trading balances', () => {
     expect(caughtUp.trades).toEqual([])
     expect(caughtUp.realizedPnl).toBe(150)
     expect(caughtUp.btcCostBasis).toBe(0)
+  })
+
+  test('a large break-even sale preserves previously realized profit', () => {
+    const market = { ...createMarket(17, 0), btc: 1e14, btcCostBasis: 1e16, realizedPnl: 0.25 }
+    const sold = tradeMarket(market, 'sell', market.btc)
+    expect(sold.btc).toBe(0)
+    expect(sold.realizedPnl).toBe(0.25)
   })
 
   test('invalid trades and transfers cannot poison or overdraw either wallet', () => {

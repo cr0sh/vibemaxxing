@@ -142,11 +142,11 @@ export function tradeMarket(market: MarketState, side: 'buy' | 'sell', amount: n
   if (latest === undefined || !Number.isFinite(latest.elapsed)) return market
   const value = quantity * market.price
   const soldCostBasis = side === 'sell'
-    ? quantity === market.btc ? market.btcCostBasis : market.btcCostBasis * quantity / market.btc
+    ? quantity === market.btc ? market.btcCostBasis : market.btcCostBasis * (quantity / market.btc)
     : 0
   const nextUsd = side === 'buy' ? Math.max(0, market.usd - value) : market.usd + value
   const nextBtc = side === 'buy' ? market.btc + quantity : market.btc - quantity
-  const nextRealizedPnl = side === 'sell' ? market.realizedPnl + value - soldCostBasis : market.realizedPnl
+  const nextRealizedPnl = side === 'sell' ? market.realizedPnl + (value - soldCostBasis) : market.realizedPnl
   const nextBtcCostBasis = side === 'buy'
     ? market.btcCostBasis + value
     : quantity === market.btc ? 0 : market.btcCostBasis - soldCostBasis
@@ -160,24 +160,15 @@ export function tradeMarket(market: MarketState, side: 'buy' | 'sell', amount: n
     quantity,
   }
   const trades = [...market.trades, marker]
-  return side === 'buy'
-    ? {
-      ...market,
-      usd: nextUsd,
-      btc: nextBtc,
-      btcCostBasis: nextBtcCostBasis,
-      trades,
-      nextTradeId: market.nextTradeId + 1,
-    }
-    : {
-      ...market,
-      usd: nextUsd,
-      btc: nextBtc,
-      realizedPnl: nextRealizedPnl,
-      btcCostBasis: nextBtcCostBasis,
-      trades,
-      nextTradeId: market.nextTradeId + 1,
-    }
+  return {
+    ...market,
+    usd: nextUsd,
+    btc: nextBtc,
+    realizedPnl: nextRealizedPnl,
+    btcCostBasis: nextBtcCostBasis,
+    trades,
+    nextTradeId: market.nextTradeId + 1,
+  }
 }
 
 export function transferMarket(
