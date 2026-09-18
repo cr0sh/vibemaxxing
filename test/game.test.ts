@@ -5,6 +5,7 @@ import {
   gameReducer,
   initialGame,
   MAX_TOKENS,
+  SOCIAL_LOTTERY_COPY,
   MERCURY_FORWARD_COST,
   MERCURY_RETRY_DELAY,
   taskReward,
@@ -620,7 +621,7 @@ describe('extended progression boundaries', () => {
     expect(below.watercoolerUnlocked).toBe(true)
   })
 
-  test('campaign reset applies on install while lottery wins remain immediate', () => {
+  test('campaign reset applies on install while lottery wins refresh the active post', () => {
     let state: GameState = {
       ...hire(), watercoolerUnlocked: true, tokens: 100,
       tasks: [], taskQueue: [], nextTaskAt: 1_000,
@@ -629,24 +630,42 @@ describe('extended progression boundaries', () => {
     expect(state.tokens).toBe(MAX_TOKENS)
     expect(state.socialPosts.filter((post) => post.type === 'campaign')).toHaveLength(1)
     expect(state.socialPosts.filter((post) => post.type === 'reset')).toHaveLength(1)
-    expect(gameReducer(state, { type: 'like-reset' })).toBe(state)
+    expect(gameReducer(state, { type: 'like-reset', postId: 'missing-lottery' })).toBe(state)
     state = gameReducer({ ...state, tokens: 100 }, { type: 'tick', seconds: 4 })
     expect(state.socialPosts.some((post) => post.type === 'lottery')).toBe(false)
     state = gameReducer(state, { type: 'tick', seconds: 1 })
+    const firstLottery = state.socialPosts.find((post) => post.type === 'lottery')
+    if (firstLottery === undefined || firstLottery.type !== 'lottery') throw new Error('First lottery post was not appended')
     expect(state.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(1)
 
     // Seeded draws immediately below and above the one-percent boundary.
-    const missed = gameReducer({ ...state, rng: 1962 }, { type: 'like-reset' })
+    const missed = gameReducer({ ...state, rng: 1962 }, { type: 'like-reset', postId: firstLottery.id })
     expect(missed.tokens).toBe(100)
-    const won = gameReducer({ ...missed, rng: 978 }, { type: 'like-reset' })
+    expect(missed.socialPosts.find((post) => post.id === firstLottery.id)?.likes).toBe(1)
+    const won = gameReducer({ ...missed, rng: 978 }, { type: 'like-reset', postId: firstLottery.id })
     expect(won.tokens).toBe(MAX_TOKENS)
     expect(won.socialPosts.filter((post) => post.type === 'reset')).toHaveLength(2)
-    expect(won.socialPosts.find((post) => post.type === 'lottery')?.likes).toBe(2)
+    expect(won.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(2)
+    const refreshedLottery = won.socialPosts.findLast((post) => post.type === 'lottery')
+    if (refreshedLottery === undefined || refreshedLottery.type !== 'lottery') throw new Error('Winning Like did not append a new lottery post')
+    expect(refreshedLottery.id).not.toBe(firstLottery.id)
+    expect(SOCIAL_LOTTERY_COPY[refreshedLottery.lotteryVariant]).not.toBe(SOCIAL_LOTTERY_COPY[firstLottery.lotteryVariant])
+    expect(refreshedLottery.lotteryVariant).not.toBe(firstLottery.lotteryVariant)
+    expect(won.socialPosts.find((post) => post.id === firstLottery.id)?.likes).toBe(2)
+    expect(refreshedLottery.likes).toBe(0)
+
+    // Historical posts retain their likes but cannot trigger another attempt.
+    expect(gameReducer(won, { type: 'like-reset', postId: firstLottery.id })).toBe(won)
+    const activeMiss = gameReducer({ ...won, tokens: 100, rng: 1962 }, { type: 'like-reset', postId: refreshedLottery.id })
+    expect(activeMiss.tokens).toBe(100)
+    expect(activeMiss.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(2)
+    expect(activeMiss.socialPosts.find((post) => post.id === refreshedLottery.id)?.likes).toBe(1)
+
     const waiting = gameReducer({ ...won, tokens: 100 }, { type: 'tick', seconds: 94 })
     expect(waiting.tokens).toBe(100)
     const refilled = gameReducer(waiting, { type: 'tick', seconds: 1 })
     expect(refilled.tokens).toBe(MAX_TOKENS)
-    expect(refilled.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(1)
+    expect(refilled.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(2)
   })
 
   test('architecture frequency rises by delivery count but remains capped at eighty percent', () => {
