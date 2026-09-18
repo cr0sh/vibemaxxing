@@ -195,12 +195,18 @@
   grid-template-columns: auto minmax(0, 1fr);
 }
 
+.employment-task-attachment,
+.employment-task-attachment *,
+.employment-artifact-attachment,
+.employment-artifact-attachment * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .employment-task-attachment[draggable='true'],
 .employment-artifact-attachment[draggable='true'] {
   cursor: grab;
   touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 .employment-task-attachment[draggable='true']:active,
@@ -287,6 +293,21 @@
 .employment-artifact-attachment {
   border-color: rgba(109, 220, 160, 0.48);
   background: linear-gradient(145deg, rgba(30, 90, 70, 0.62), rgba(27, 46, 56, 0.76));
+}
+.employment-forwarded-attachment {
+  border-color: rgba(174, 161, 197, 0.34);
+  background: linear-gradient(145deg, rgba(61, 51, 79, 0.78), rgba(37, 32, 50, 0.82));
+  box-shadow: 0 0.45rem 1rem rgba(16, 7, 32, 0.14);
+}
+
+.employment-forwarded-attachment .employment-attachment-meta {
+  color: #c9bdd8;
+}
+
+.employment-forwarded-cue {
+  color: #b7d8ca;
+  font-size: 0.68rem;
+  font-weight: 700;
 }
 
 .employment-compact-attachment {
@@ -871,24 +892,33 @@
   min-height: 2.35rem;
   margin-top: 0.35rem;
   padding: 0.52rem 0.76rem;
-  border: 1px solid rgba(143, 232, 198, 0.52);
+  border: 1px solid rgba(174, 255, 216, 0.84);
   border-radius: 0.5rem;
-  background: rgba(35, 123, 96, 0.48);
-  color: #e8fff4;
+  background: rgba(38, 145, 111, 0.74);
+  color: #f4fff9;
   cursor: pointer;
   font-size: 0.75rem;
   font-weight: 750;
+  box-shadow: 0 0 0 1px rgba(39, 109, 87, 0.34);
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, opacity 160ms ease;
 }
 
-.employment-social-open-button:hover,
-.employment-social-open-button:focus-visible {
-  border-color: rgba(174, 255, 216, 0.9);
-  background: rgba(38, 145, 111, 0.7);
+.employment-social-open-button:not(:disabled):hover,
+.employment-social-open-button:not(:disabled):focus-visible {
+  border-color: #d1ffe8;
+  background: rgba(48, 170, 130, 0.9);
+  box-shadow: 0 0 0 2px rgba(174, 255, 216, 0.22);
+  transform: translateY(-1px);
 }
 
 .employment-social-open-button:disabled {
+  border-color: rgba(145, 169, 160, 0.34);
+  background: rgba(69, 82, 78, 0.48);
+  color: #aebbb5;
   cursor: not-allowed;
-  opacity: 0.48;
+  opacity: 0.58;
+  box-shadow: none;
+  transform: none;
 }
 
 .employment-attachment-title-row,

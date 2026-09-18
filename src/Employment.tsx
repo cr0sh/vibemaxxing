@@ -86,6 +86,9 @@ const taskStatusLabel = (task: WorkTask): string => {
       return 'Attempt failed'
   }
 }
+const isForwardedTask = (task: Pick<WorkTask, 'status' | 'terminalId'>): boolean => (
+  task.terminalId !== null && task.status !== 'assigned'
+)
 
 const taskProgressLabel = (task: WorkTask): string => {
   if (task.status === 'assigned') return 'Not started'
@@ -139,6 +142,7 @@ function TaskAttachment({
   archived?: boolean
 }) {
   const isAssigned = task.status === 'assigned' && task.terminalId === null && task.slot === null
+  const forwarded = !archived && isForwardedTask(task)
   const canStart = state.stage === 'hired' && !archived && isAssigned && state.terminals.some((terminal) => (
     canFundTaskAttempt(state, task, terminal.fastMode, terminal.id)
   ))
@@ -147,7 +151,7 @@ function TaskAttachment({
   const reward = taskReward(task, rewardAt)
   return (
     <div
-      className={`employment-attachment employment-task-attachment employment-task-${task.status} ${task.kind === 'architecture' ? 'employment-architecture-attachment' : ''} ${archived ? 'employment-archived-attachment' : ''}`}
+      className={`employment-attachment employment-task-attachment employment-task-${task.status} ${task.kind === 'architecture' ? 'employment-architecture-attachment' : ''} ${archived ? 'employment-archived-attachment' : ''} ${forwarded ? 'employment-forwarded-attachment' : ''}`}
       draggable={canStart}
       tabIndex={canStart ? 0 : undefined}
       onFocus={dragSource.onFocus}
@@ -208,6 +212,7 @@ function TaskAttachment({
           <span>{archived ? 'Delivered' : taskStatusLabel(task)}</span>
           <span>{archived ? 'Complete' : taskProgressLabel(task)}</span>
           {!archived && <span>{taskDeadline(task, elapsed)}</span>}
+          {forwarded && <span className="employment-forwarded-cue">Forwarded to terminal</span>}
         </div>
       </div>
     </div>
@@ -239,6 +244,7 @@ function ArtifactAttachment({
   disabled = false,
   archived = false,
   compact = false,
+  messenger = false,
 }: {
   state: GameState
   task: WorkTask
@@ -246,11 +252,13 @@ function ArtifactAttachment({
   disabled?: boolean
   archived?: boolean
   compact?: boolean
+  messenger?: boolean
 }) {
+  const forwarded = messenger && !archived && isForwardedTask(task)
   const dragSource = useDragDropSource({ kind: 'artifact', id: String(task.id) }, !disabled)
   return (
     <div
-      className={`employment-attachment employment-artifact-attachment ${task.kind === 'architecture' ? 'employment-architecture-attachment' : ''} ${archived ? 'employment-archived-attachment' : ''} ${compact ? 'employment-compact-attachment' : ''}`}
+      className={`employment-attachment employment-artifact-attachment ${task.kind === 'architecture' ? 'employment-architecture-attachment' : ''} ${archived ? 'employment-archived-attachment' : ''} ${forwarded ? 'employment-forwarded-attachment' : ''} ${compact ? 'employment-compact-attachment' : ''}`}
       draggable={!disabled}
       tabIndex={!disabled ? 0 : undefined}
       onFocus={dragSource.onFocus}
@@ -279,6 +287,7 @@ function ArtifactAttachment({
       <div className="employment-attachment-copy">
         <strong>{task.artifactName}</strong>
         <span className="employment-employer-line">{employerName(state, task.jobId)}{task.local ? ' · Local terminal' : ''}</span>
+        {forwarded && <span className="employment-forwarded-cue">Forwarded to terminal</span>}
         {!compact && (
           <>
             <span>{archived ? 'Delivered artifact' : 'Ready for delivery'}</span>
@@ -501,6 +510,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
                 disabled={currentTask.archived || state.stage !== 'hired'}
                 archived={currentTask.archived}
                 compact
+                messenger
               />
             )}
           </div>
