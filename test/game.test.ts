@@ -1004,6 +1004,22 @@ describe('developer previews', () => {
     const lottery = gameReducer(beforeLottery, { type: 'tick', seconds: 1 })
     expect(lottery.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(1)
   })
+
+  test('won preview continues as a live run with its first victory recorded', () => {
+    const won = gameReducer(initialGame, { type: 'dev-jump', stage: 'won' })
+    expect(won.stage).toBe('won')
+    expect(won.wonAt).toBe(won.elapsed)
+    expect(won.nextTaskAt).not.toBe(Number.MAX_SAFE_INTEGER)
+    expect(won.tasks.length).toBeGreaterThan(0)
+
+    const continued = gameReducer(won, { type: 'continue-after-win' })
+    expect(continued.stage).toBe('hired')
+    expect(continued.wonAt).toBe(won.wonAt)
+    const ticked = gameReducer(continued, { type: 'tick', seconds: 1 })
+    expect(ticked.stage).toBe('hired')
+    expect(ticked.elapsed).toBeGreaterThan(continued.elapsed)
+    expect(ticked.wonAt).toBe(won.wonAt)
+  })
 })
  
 describe('token deficit detection', () => {
@@ -1724,7 +1740,7 @@ describe('extended engine contracts', () => {
     expect(state.tokens).toBe(0)
   })
 
-  test('win accounting marks cash, trading USD, and BTC once and freezes gameplay', () => {
+  test('win pauses for acknowledgment, then continues without retriggering', () => {
     const base = gameReducer(hire(), { type: 'dev-jump', stage: 'market' })
     const state = {
       ...base,
@@ -1737,8 +1753,34 @@ describe('extended engine contracts', () => {
     expect(gameNetWorth(state)).toBe(WIN_NET_WORTH)
     const won = gameReducer(state, { type: 'tick', seconds: 1 })
     expect(won.stage).toBe('won')
+    expect(won.wonAt).toBe(won.elapsed)
     expect(won.lossReason).toBeNull()
     expect(gameReducer(won, { type: 'tick', seconds: 100 })).toEqual(won)
+
+    const continued = gameReducer(won, { type: 'continue-after-win' })
+    expect(continued.stage).toBe('hired')
+    expect(continued.wonAt).toBe(won.wonAt)
+    expect(continued.money).toBe(won.money)
+    expect(continued.tasks).toEqual(won.tasks)
+    expect(gameReducer(continued, { type: 'continue-after-win' })).toBe(continued)
+
+    const acted = gameReducer({ ...continued, tokens: 0 }, { type: 'buy-tokens', packs: 1 })
+    expect(acted.stage).toBe('hired')
+    expect(acted.wonAt).toBe(won.wonAt)
+
+    const belowThreshold = { ...acted, money: 0, market: null }
+    expect(gameNetWorth(belowThreshold)).toBe(0)
+    const reCrossed = { ...belowThreshold, money: WIN_NET_WORTH }
+    expect(gameNetWorth(reCrossed)).toBe(WIN_NET_WORTH)
+    const running = gameReducer(reCrossed, { type: 'tick', seconds: 1 })
+    expect(running.stage).toBe('hired')
+    expect(running.wonAt).toBe(won.wonAt)
+
+    const exhausted = gameReducer({ ...running, energy: 1, inactivityElapsed: 19 }, { type: 'tick', seconds: 1 })
+    expect(exhausted.stage).toBe('lost')
+    expect(gameReducer(exhausted, { type: 'continue-after-win' })).toBe(exhausted)
+    expect(gameReducer(exhausted, { type: 'reset' }).wonAt).toBeNull()
+    expect(gameReducer(exhausted, { type: 'dev-jump', stage: 'hired' }).wonAt).toBeNull()
   })
 
   test('idle energy caps each penalty at sixteen and stops the run at zero', () => {

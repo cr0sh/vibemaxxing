@@ -141,6 +141,7 @@ export type GameState = {
   money: number
   shopDiscoveries: ShopItemId[]
   elapsed: number
+  wonAt: number | null
   tickRemainder: number
   tasks: WorkTask[]
   taskQueue: TaskDescriptor[]
@@ -200,6 +201,7 @@ export type GameAction =
   | { type: 'start'; seed: number }
   | { type: 'submit'; roll: number; companyIndex: number }
   | { type: 'accept' }
+  | { type: 'continue-after-win' }
   | { type: 'reset' }
   | { type: 'dev-jump'; stage: DevJumpTarget }
   | { type: 'tick'; seconds: number }
@@ -849,6 +851,7 @@ function createHiredState(state: GameState): GameState {
     energy: MAX_ENERGY,
     shopDiscoveries: [],
     tickRemainder: 0,
+    wonAt: null,
     tasks: [],
     taskQueue: [],
     terminals: [{ ...PRIMARY_TERMINAL }],
@@ -960,7 +963,7 @@ function lose(state: GameState, failure: string, reason: 'deadline' | 'energy', 
 
 export const initialGame: GameState = {
   stage: 'ready', tiroAvatar: TIRO_AVATARS[0]!, submissions: 0, company: null, lastResult: null, energy: MAX_ENERGY,
-  tokens: MAX_TOKENS, money: 0, shopDiscoveries: [], elapsed: 0, tickRemainder: 0, tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }],
+  tokens: MAX_TOKENS, money: 0, shopDiscoveries: [], elapsed: 0, wonAt: null, tickRemainder: 0, tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }],
   completedTasks: 0, level: 3, completedArchitectureTasks: 0, reasoningUnlocked: false, fastModeUnlocked: false,
   watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
   socialPosts: [], nextTaskId: 1, nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
@@ -1303,8 +1306,8 @@ function applyIdleTime(
 }
 
 function maybeWin(state: GameState): GameState {
-  return state.stage === 'hired' && gameNetWorth(state) >= WIN_NET_WORTH
-    ? { ...state, stage: 'won', failure: null, lossReason: null }
+  return state.stage === 'hired' && state.wonAt === null && gameNetWorth(state) >= WIN_NET_WORTH
+    ? { ...state, stage: 'won', wonAt: state.elapsed, failure: null, lossReason: null }
     : state
 }
 
@@ -1465,6 +1468,7 @@ function resetEmploymentPreview(state: GameState, stage: 'applying' | 'offer'): 
     stage,
     company: stage === 'offer' ? (state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null) : null,
     tickRemainder: 0,
+    wonAt: null,
     tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }], completedTasks: 0, level: 3, completedArchitectureTasks: 0,
     reasoningUnlocked: false, fastModeUnlocked: false, watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
     shopDiscoveries: [],
@@ -1491,8 +1495,13 @@ function previewHired(state: GameState): GameState {
 }
 
 function reduceGame(state: GameState, action: GameAction): GameState {
-  if ((state.stage === 'lost' || state.stage === 'won') && action.type !== 'reset' && action.type !== 'dev-jump') return state
+  if ((state.stage === 'lost' || state.stage === 'won') &&
+    action.type !== 'reset' &&
+    action.type !== 'dev-jump' &&
+    !(state.stage === 'won' && action.type === 'continue-after-win')) return state
   switch (action.type) {
+    case 'continue-after-win':
+      return state.stage === 'won' ? { ...state, stage: 'hired' } : state
     case 'start':
       return state.stage === 'ready'
         ? { ...initialGame, stage: 'applying', tiroAvatar: avatarForSeed(action.seed), rng: normalizeSeed(action.seed), socialRng: normalizeSeed(normalizeSeed(action.seed) ^ 0x9e3779b9) }
@@ -1546,7 +1555,8 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         return { ...preview, stage: 'lost', energy: 0, shortsUnlocked: true, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER, failure: 'You ran out of energy and got to depression.', lossReason: 'energy' }
       }
       if (action.stage === 'won') {
-        return { ...previewHired(state), stage: 'won', money: WIN_NET_WORTH, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER, failure: null, lossReason: null }
+        const preview = previewHired(state)
+        return { ...preview, stage: 'won', wonAt: preview.elapsed, money: WIN_NET_WORTH, failure: null, lossReason: null }
       }
       if (action.stage === 'hired' ) return createHiredState({ ...state, company: state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null })
       if (action.stage === 'market' || action.stage === 'spark' || action.stage === 'mercury' || action.stage === 'second-job' || action.stage === 'frontier' || action.stage === 'monopoly' || action.stage === 'spark-ultra') {
