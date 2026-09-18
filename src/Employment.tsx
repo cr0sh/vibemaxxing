@@ -65,11 +65,19 @@ const compactTokens = (amount: number, locale: string): string => new Intl.Numbe
   maximumFractionDigits: 1,
 }).format(Math.max(0, amount))
 
-const employerName = (state: GameState, jobId: JobId): string => (
-  jobId === 'secondary' ? state.secondJob?.company ?? 'Second employer' : state.company ?? 'Primary employer'
+const employerName = (state: GameState, jobId: JobId, t: Translate): string => (
+  jobId === 'secondary'
+    ? state.secondJob?.company ?? t('employment.employer.fallbackSecondary')
+    : state.company ?? t('employment.employer.fallbackPrimary')
 )
 
 const employerBoss = (jobId: JobId): string => jobId === 'secondary' ? 'boss.dmg' : 'boss.exe'
+const terminalLabel = (terminalId: TerminalId, t: Translate): string => {
+  if (terminalId === 'terminal-2') return t('employment.terminal.nameTwo')
+  if (terminalId === 'spark-ultra') return t('employment.terminal.nameSparkUltra')
+  if (terminalId === 'spark') return t('employment.terminal.nameSpark')
+  return t('employment.terminal.name')
+}
 
 const employerLevel = (state: GameState, jobId: JobId): 3 | 4 | 5 => (
   jobId === 'secondary' ? state.secondJob?.level ?? 3 : state.level
@@ -102,9 +110,9 @@ const isPendingActionTask = (task: WorkTask): boolean => (
 )
 
 const pendingActionDescription = (task: WorkTask, t: Translate): string => {
-  if (task.status === 'assigned') return t('employment.pending.start', { title: task.titleKey ? t(task.titleKey) : task.title })
+  if (task.status === 'assigned') return t('employment.pending.start', { title: t(task.titleKey) })
   if (task.status === 'artifact') return t('employment.pending.deliver', { artifact: task.artifactName })
-  return t('employment.pending.retry', { title: task.titleKey ? t(task.titleKey) : task.title })
+  return t('employment.pending.retry', { title: t(task.titleKey) })
 }
 
 type PendingActionItem = {
@@ -340,7 +348,7 @@ function TaskAttachment({
         dragSource.onDragStart(event)
       }}
       onDragEnd={dragSource.onDragEnd}
-      aria-label={t('employment.task.aria', { title: task.titleKey ? t(task.titleKey) : task.title, company: employerName(state, task.jobId) })}
+      aria-label={t('employment.task.aria', { title: t(task.titleKey), company: employerName(state, task.jobId, t) })}
     >
       <div className="employment-attachment-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" focusable="false">
@@ -349,11 +357,11 @@ function TaskAttachment({
       </div>
       <div className="employment-attachment-copy">
         <div className="employment-attachment-title-row">
-          <strong>{task.titleKey ? t(task.titleKey) : task.title}</strong>
+          <strong>{t(task.titleKey)}</strong>
           <TaskDifficulty complexity={task.complexity} />
         </div>
-        <span className="employment-employer-line">{employerName(state, task.jobId)}{task.local ? t('employment.task.local') : ''}</span>
-        <span>{task.descriptionKey ? t(task.descriptionKey) : task.description}</span>
+        <span className="employment-employer-line">{employerName(state, task.jobId, t)}{task.local ? t('employment.task.local') : ''}</span>
+        <span>{t(task.descriptionKey)}</span>
         {task.baseReward > 0 && (
         <span className="employment-reward-line">
           {archived
@@ -365,7 +373,7 @@ function TaskAttachment({
         {isAssigned && !archived ? state.terminals.map((terminal) => {
           const local = isLocalTerminal(terminal.id)
           const model = terminalModel(state, terminal.id)
-          const label = local ? terminal.id === 'spark-ultra' ? 'Spark Ultra' : 'Spark' : terminal.id === 'terminal-2' ? 'Terminal 2' : 'Terminal'
+          const label = terminalLabel(terminal.id, t)
           return (
             <div className="employment-attachment-meta employment-task-economy" key={terminal.id}>
               {state.terminals.length > 1 && <span>{label}</span>}
@@ -396,7 +404,7 @@ function taskFromSnapshot(snapshot: EmploymentTaskSnapshot): WorkTask {
     nextApprovalAt: 0,
     terminalId: null,
     slot: null,
-    approvalPrompt: null,
+    approvalPromptKey: null,
   }
 }
 
@@ -449,7 +457,7 @@ function ArtifactAttachment({
         dragSource.onDragStart(event)
       }}
       onDragEnd={dragSource.onDragEnd}
-      aria-label={t('employment.artifact.aria', { artifact: task.artifactName, company: employerName(state, task.jobId) })}
+      aria-label={t('employment.artifact.aria', { artifact: task.artifactName, company: employerName(state, task.jobId, t) })}
     >
       <div className="employment-attachment-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" focusable="false">
@@ -458,7 +466,7 @@ function ArtifactAttachment({
       </div>
       <div className="employment-attachment-copy">
         <strong>{task.artifactName}</strong>
-        <span className="employment-employer-line">{employerName(state, task.jobId)}{task.local ? t('employment.task.local') : ''}</span>
+        <span className="employment-employer-line">{employerName(state, task.jobId, t)}{task.local ? t('employment.task.local') : ''}</span>
         {forwarded && <span className="employment-forwarded-cue">{t('employment.task.forwarded')}</span>}
         {!compact && (
           <>
@@ -674,7 +682,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
   }
 
   const renderGeneralMessage = (message: EmploymentMessage) => {
-    const owner = employerName(state, message.jobId)
+    const owner = employerName(state, message.jobId, t)
     const boss = employerBoss(message.jobId)
     const targetClass = pendingTargetClass(activeHighlightedTaskId, message)
     if (message.type === 'welcome') {
@@ -793,7 +801,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
           <div className="message-body">
             <div className="message-meta"><strong>agent-shell</strong><span>{owner} · {t('employment.message.attemptFailed')} · {formatSeconds(message.elapsed, t)}</span></div>
-            <p>{t('employment.message.attemptFailedCopy', { title: message.task.titleKey ? t(message.task.titleKey) : message.task.title })}</p>
+            <p>{t('employment.message.attemptFailedCopy', { title: t(message.task.titleKey) })}</p>
             <div className="employment-failed-summary">
               <TaskDifficulty complexity={message.task.complexity} />
               <span>{t('employment.message.cost', { amount: compactTokens(taskCost(message.task), locale) })}</span>
@@ -821,7 +829,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
         <div className="avatar boss-avatar" aria-hidden="true">B</div>
         <div className="message-body">
           <div className="message-meta"><strong>{boss}</strong><span>{owner} · {t('employment.message.now')}</span></div>
-          <p>{t('employment.message.fired', { reason: message.failureKey ? t(message.failureKey, message.failureParams) : message.failure })}</p>
+          <p>{t('employment.message.fired', { reason: t(message.failure) })}</p>
         </div>
       </div>
     )
@@ -850,7 +858,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
             onClick={() => setActiveJobId('primary')}
           >
             <span className="employment-level-badge">L{employerLevel(state, 'primary')}</span>
-            <span>{employerName(state, 'primary')}</span>
+            <span>{employerName(state, 'primary', t)}</span>
             {activeJobId === 'primary' ? activeEmployerCue > 0 && <span className="employment-employer-cue">{activeEmployerCue}</span> : otherEmployerCue > 0 && <span className="employment-employer-cue">{otherEmployerCue}</span>}
           </button>
           {state.secondJob !== null && (
@@ -862,7 +870,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
               onClick={() => setActiveJobId('secondary')}
             >
               <span className="employment-level-badge">L{employerLevel(state, 'secondary')}</span>
-              <span>{employerName(state, 'secondary')}</span>
+              <span>{employerName(state, 'secondary', t)}</span>
               {activeJobId === 'secondary' ? activeEmployerCue > 0 && <span className="employment-employer-cue">{activeEmployerCue}</span> : otherEmployerCue > 0 && <span className="employment-employer-cue">{otherEmployerCue}</span>}
             </button>
           )}
@@ -878,7 +886,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
             <strong>#{t(`employment.channel.${channel}` as 'employment.channel.general' | 'employment.channel.watercooler')}</strong>
             <span>{channel === 'general' ? t('employment.channel.teamChat') : t('employment.channel.colleagueChat')}</span>
           </div>
-          <span className="employment-chat-state">{employerName(state, activeJobId)} · {state.stage === 'hired' ? t('employment.status.online') : t('employment.status.archived')}</span>
+          <span className="employment-chat-state">{employerName(state, activeJobId, t)} · {state.stage === 'hired' ? t('employment.status.online') : t('employment.status.archived')}</span>
           {state.secondJob !== null && (
             <select
               className="employment-mobile-employer"
@@ -886,8 +894,8 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
               value={activeJobId}
               onChange={(event) => setActiveJobId(event.currentTarget.value as JobId)}
             >
-              <option value="primary">L{employerLevel(state, 'primary')} · {employerName(state, 'primary')} ({activeJobId === 'primary' ? activeEmployerCue : otherEmployerCue})</option>
-              <option value="secondary">L{employerLevel(state, 'secondary')} · {employerName(state, 'secondary')} ({activeJobId === 'secondary' ? activeEmployerCue : otherEmployerCue})</option>
+              <option value="primary">L{employerLevel(state, 'primary')} · {employerName(state, 'primary', t)} ({activeJobId === 'primary' ? activeEmployerCue : otherEmployerCue})</option>
+              <option value="secondary">L{employerLevel(state, 'secondary')} · {employerName(state, 'secondary', t)} ({activeJobId === 'secondary' ? activeEmployerCue : otherEmployerCue})</option>
             </select>
           )}
           <nav className="employment-mobile-channel-tabs" aria-label={t('employment.channel.aria')}>
@@ -930,7 +938,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
         </div>
         <UnreadIndicator count={channel === 'general' ? unreadCount : 0} onClick={scrollToLatest} />
       </div>
-      <DragDropHint visible={artifactDropVisible}>Drop artifact here</DragDropHint>
+      <DragDropHint visible={artifactDropVisible}>{t('employment.drop.artifact')}</DragDropHint>
     </div>
   )
 }
@@ -1036,10 +1044,10 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode,
       {task && (
         <div className="employment-lane-task">
           <div className="employment-lane-title-row">
-            <p><span className="terminal-prompt">~</span> {t('employment.terminal.task', { id: task.id, title: task.titleKey ? t(task.titleKey) : task.title })}</p>
+            <p><span className="terminal-prompt">~</span> {t('employment.terminal.task', { id: task.id, title: t(task.titleKey) })}</p>
             <TaskDifficulty complexity={task.complexity} />
           </div>
-          <p className="employment-terminal-employer" title={employerName(state, task.jobId)}>{employerName(state, task.jobId)}</p>
+          <p className="employment-terminal-employer" title={employerName(state, task.jobId, t)}>{employerName(state, task.jobId, t)}</p>
           <div className={`employment-progress-wrap ${task.status === 'failed' ? 'employment-progress-failed' : ''}`} aria-label={t('employment.terminal.percentComplete', { percent: Math.round(progress) })}>
             <div className="employment-progress-bar" style={{ width: `${progress}%` }} />
           </div>
@@ -1051,7 +1059,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode,
 
           {task.status === 'approval' && !yolo && (
             <div className="employment-terminal-action-block employment-approval-block">
-              <p className="terminal-muted">{task.approvalPromptKey ? t(task.approvalPromptKey) : task.approvalPrompt}</p>
+              {task.approvalPromptKey !== null && <p className="terminal-muted">{t(task.approvalPromptKey)}</p>}
               <div className="employment-button-row">
                 <button className="employment-terminal-button" type="button" onClick={() => approval(true)} disabled={state.stage !== 'hired'}>{t('employment.terminal.approve')}</button>
                 <button className="employment-terminal-button employment-danger-button" type="button" onClick={() => approval(false)} disabled={state.stage !== 'hired'}>{t('employment.terminal.deny')}</button>
@@ -1060,7 +1068,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode,
           )}
           {task.status === 'blocked' && !yolo && (
             <div className="employment-terminal-action-block employment-approval-block">
-              <p className="terminal-muted">{task.approvalPromptKey ? t(task.approvalPromptKey) : task.approvalPrompt}</p>
+              {task.approvalPromptKey !== null && <p className="terminal-muted">{t(task.approvalPromptKey)}</p>}
               <button className="employment-terminal-button" type="button" onClick={() => approval(true)} disabled={state.stage !== 'hired'}>{t('employment.terminal.approveResume')}</button>
             </div>
           )}

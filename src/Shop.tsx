@@ -161,11 +161,16 @@ const upgradeProducts: readonly UpgradeProduct[] = [
   { upgrade: 'terminal', icon: '🖥️', titleKey: 'shop.terminal.title', detailKey: 'shop.terminal.detail' },
 ]
 
-const terminalLabel = (terminalId: TerminalId): string => {
-  if (terminalId === 'terminal-2') return 'Terminal 2'
-  if (terminalId === 'spark-ultra') return 'Mapple Spark Ultra'
-  if (terminalId === 'spark') return 'Mapple Spark'
-  return 'Terminal'
+const sparkProduct = { titleKey: 'shop.spark.title' } as const
+const sparkUltraProduct = { titleKey: 'shop.sparkUltra.title' } as const
+const advancedModelProduct = { titleKey: 'shop.advancedModel.title' } as const
+const mercuryProduct = { titleKey: 'shop.mercury.title' } as const
+
+const terminalLabel = (terminalId: TerminalId, t: Translate): string => {
+  if (terminalId === 'terminal-2') return t('employment.terminal.nameTwo')
+  if (terminalId === 'spark-ultra') return t('employment.terminal.nameSparkUltra')
+  if (terminalId === 'spark') return t('employment.terminal.nameSpark')
+  return t('employment.terminal.name')
 }
 
 const moneyLabel = (amount: number, locale: string): string => new Intl.NumberFormat(locale, {
@@ -174,12 +179,15 @@ const moneyLabel = (amount: number, locale: string): string => new Intl.NumberFo
   maximumFractionDigits: 2,
 }).format(Math.max(0, amount))
 
-const durationLabel = (seconds: number, locale: string): string => {
+const durationLabel = (seconds: number, t: Translate): string => {
   const safeSeconds = Math.max(0, Math.ceil(seconds))
   const minutes = Math.floor(safeSeconds / 60)
   const remainder = safeSeconds % 60
-  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+  return minutes > 0
+    ? t('common.durationMinutes', { minutes, seconds: String(remainder).padStart(2, '0') })
+    : t('common.durationSeconds', { seconds: remainder })
 }
+
 
 function UpgradeProductCard({
   product,
@@ -231,7 +239,7 @@ function UpgradeProductCard({
       onPointerDown={dragSource.onPointerDown}
       onPointerCancel={dragSource.onPointerCancel}
       onLostPointerCapture={dragSource.onLostPointerCapture}
-      aria-label={`${t(titleKey)} upgrade`}
+      aria-label={t('shop.upgrade.aria', { title: t(titleKey) })}
     >
       <span className="shop-product-icon" aria-hidden="true">{icon}</span>
       <div className="shop-product-copy">
@@ -260,8 +268,8 @@ function SparkProduct({ state, dispatch, highlighted }: ShopProps & ShopHighligh
   let detail = t('shop.notAnnounced')
   let buttonLabel = t('common.unavailable')
   if (announcedAt !== null && !available) {
-    detail = t('shop.shopOpens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, locale), price: moneyLabel(SPARK_PRICE, locale) })
-    buttonLabel = t('shop.opens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, locale) })
+    detail = t('shop.shopOpens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, t), price: moneyLabel(SPARK_PRICE, locale) })
+    buttonLabel = t('shop.opens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, t) })
   } else if (delivered) {
     detail = t('shop.deliveredSpark', { model: AGENT_MODELS.reasoning.label })
     buttonLabel = t('common.owned')
@@ -269,8 +277,8 @@ function SparkProduct({ state, dispatch, highlighted }: ShopProps & ShopHighligh
     const deliveryAt = state.sparkDeliveryAt
     detail = deliveryAt === null
       ? t('shop.paidDeliveryPending')
-      : t('shop.paidDelivery', { price: moneyLabel(SPARK_PRICE, locale), time: durationLabel(deliveryAt - state.elapsed, locale) })
-    buttonLabel = deliveryAt === null ? t('shop.delivering') : t('common.eta', { time: durationLabel(deliveryAt - state.elapsed, locale) })
+      : t('shop.paidDelivery', { price: moneyLabel(SPARK_PRICE, locale), time: durationLabel(deliveryAt - state.elapsed, t) })
+    buttonLabel = deliveryAt === null ? t('shop.delivering') : t('common.eta', { time: durationLabel(deliveryAt - state.elapsed, t) })
   } else {
     detail = t('shop.modelNoCloudTokens', { price: moneyLabel(SPARK_PRICE, locale), model: AGENT_MODELS.reasoning.label })
     if (state.stage === 'hired') buttonLabel = state.money >= SPARK_PRICE
@@ -279,10 +287,10 @@ function SparkProduct({ state, dispatch, highlighted }: ShopProps & ShopHighligh
   }
 
   return (
-    <article className={productClassName(`shop-product shop-spark-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label="Mapple Spark">
+    <article className={productClassName(`shop-product shop-spark-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label={t(sparkProduct.titleKey)}>
       <span className="shop-product-icon" aria-hidden="true">▣</span>
       <div className="shop-product-copy">
-        <h3>Mapple Spark</h3>
+        <h3>{t(sparkProduct.titleKey)}</h3>
         <p>{detail}</p>
       </div>
       <button className="shop-buy-button" type="button" onClick={buySpark} disabled={!canBuy}>{buttonLabel}</button>
@@ -303,8 +311,8 @@ function SparkUltraProduct({ state, dispatch, highlighted }: ShopProps & ShopHig
   let detail = t('shop.notAnnounced')
   let buttonLabel = t('common.unavailable')
   if (announcedAt !== null && !available) {
-    detail = t('shop.saleOpens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, locale), price: moneyLabel(SPARK_ULTRA_PRICE, locale) })
-    buttonLabel = t('shop.opens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, locale) })
+    detail = t('shop.saleOpens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, t), price: moneyLabel(SPARK_ULTRA_PRICE, locale) })
+    buttonLabel = t('shop.opens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, t) })
   } else if (delivered) {
     detail = t('shop.deliveredSpark', { model: AGENT_MODELS.advanced.label })
     buttonLabel = t('common.owned')
@@ -312,8 +320,8 @@ function SparkUltraProduct({ state, dispatch, highlighted }: ShopProps & ShopHig
     const deliveryAt = state.sparkUltraDeliveryAt
     detail = deliveryAt === null
       ? t('shop.paidDeliveryPending')
-      : t('shop.paidDelivery', { price: moneyLabel(SPARK_ULTRA_PRICE, locale), time: durationLabel(deliveryAt - state.elapsed, locale) })
-    buttonLabel = deliveryAt === null ? t('shop.delivering') : t('common.eta', { time: durationLabel(deliveryAt - state.elapsed, locale) })
+      : t('shop.paidDelivery', { price: moneyLabel(SPARK_ULTRA_PRICE, locale), time: durationLabel(deliveryAt - state.elapsed, t) })
+    buttonLabel = deliveryAt === null ? t('shop.delivering') : t('common.eta', { time: durationLabel(deliveryAt - state.elapsed, t) })
   } else {
     detail = t('shop.modelNoCloudTokens', { price: moneyLabel(SPARK_ULTRA_PRICE, locale), model: AGENT_MODELS.advanced.label })
     if (state.stage === 'hired') buttonLabel = state.money >= SPARK_ULTRA_PRICE
@@ -321,10 +329,10 @@ function SparkUltraProduct({ state, dispatch, highlighted }: ShopProps & ShopHig
       : t('shop.need', { price: moneyLabel(SPARK_ULTRA_PRICE, locale) })
   }
   return (
-    <article className={productClassName(`shop-product shop-spark-ultra-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label="Mapple Spark Ultra">
+    <article className={productClassName(`shop-product shop-spark-ultra-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label={t(sparkUltraProduct.titleKey)}>
       <span className="shop-product-icon" aria-hidden="true">▣</span>
       <div className="shop-product-copy">
-        <h3>Mapple Spark Ultra</h3>
+        <h3>{t(sparkUltraProduct.titleKey)}</h3>
         <p>{detail}</p>
       </div>
       <button className="shop-buy-button" type="button" onClick={buySparkUltra} disabled={!canBuy}>{buttonLabel}</button>
@@ -351,10 +359,10 @@ function AdvancedModelProduct({ state, dispatch, highlighted }: ShopProps & Shop
       : t('shop.need', { price: moneyLabel(ADVANCED_MODEL_PRICE, locale) })
   }
   return (
-    <article className={productClassName(`shop-product shop-model-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label="ConvexLM Pro model">
+    <article className={productClassName(`shop-product shop-model-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label={t(advancedModelProduct.titleKey)}>
       <span className="shop-product-icon" aria-hidden="true">✦</span>
       <div className="shop-product-copy">
-        <h3>ConvexLM Pro</h3>
+        <h3>{t(advancedModelProduct.titleKey)}</h3>
         <p>{detail}</p>
       </div>
       <button className="shop-buy-button" type="button" onClick={buyModel} disabled={!canBuy}>{buttonLabel}</button>
@@ -371,10 +379,10 @@ function MercuryProduct({ state, dispatch, highlighted }: ShopProps & ShopHighli
     if (state.stage === 'hired' && state.mercuryOwned) dispatch({ type: 'set-mercury', enabled })
   }
   return (
-    <article className={productClassName(`shop-product shop-mercury-product ${canBuy || state.mercuryOwned ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label={t('shop.mercuryAria')}>
+    <article className={productClassName(`shop-product shop-mercury-product ${canBuy || state.mercuryOwned ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label={t(mercuryProduct.titleKey)}>
       <span className="shop-product-icon" aria-hidden="true">↔</span>
       <div className="shop-product-copy">
-        <h3>Mercury</h3>
+        <h3>{t(mercuryProduct.titleKey)}</h3>
         <p>{t('shop.mercuryDetail')}</p>
         <p>{state.mercuryOwned
           ? t('shop.mercuryOwnedDetail')
@@ -418,6 +426,7 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
     selectedTerminal !== undefined &&
     !isLocalTerminal(selectedTerminal.id)
   const refillAmount = tokenPurchaseAmount(state.tokens, state.tokenPacks)
+  const refillCost = tokenPurchaseCost(refillAmount, state)
   const refillPrice = moneyLabel(refillCost, locale)
   const canBuyTokens = state.stage === 'hired' && state.money >= refillCost && refillAmount > 0
   const tokenMultiplier = tokenPriceMultiplier(state)
@@ -451,7 +460,7 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
           disabled={state.stage !== 'hired'}
           onChange={(event) => setTargetTerminal(event.currentTarget.value as TerminalId)}
         >
-          {state.terminals.map((terminal) => <option key={terminal.id} value={terminal.id}>{terminalLabel(terminal.id)}</option>)}
+          {state.terminals.map((terminal) => <option key={terminal.id} value={terminal.id}>{terminalLabel(terminal.id, t)}</option>)}
         </select>
       </div>
 
@@ -484,7 +493,7 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
                 checked={selectedTerminal?.fastMode ?? false}
                 disabled={!fastModeAvailable}
                 onChange={(event) => setFastMode(event.currentTarget.checked)}
-                aria-label={t('shop.fastModeFor', { terminal: terminalLabel(selectedTargetTerminal) })}
+                aria-label={t('shop.fastModeFor', { terminal: terminalLabel(selectedTargetTerminal, t) })}
               />
               <span className="shop-toggle-track" aria-hidden="true"><span /></span>
             </label>
@@ -537,7 +546,7 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
               : t('shop.inventoryFull')}</p>
             {monopolyActive && (
               <p className="shop-token-rate">
-                {t('shop.monopolyRate', { multiplier: tokenMultiplier.toFixed(2), seconds: secondsToNextTokenIncrease })}
+                {t('shop.monopolyRate', { multiplier: tokenMultiplier.toFixed(2), seconds: formatNumber(secondsToNextTokenIncrease ?? 0) })}
               </p>
             )}
           </div>
