@@ -39,9 +39,44 @@ function formatUsd(value: number | undefined): string {
   return value !== undefined && Number.isFinite(value) ? `$${usdFormatter.format(value)}` : '$—'
 }
 
+function formatSignedUsd(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '$—'
+  if (value === 0) return '$0.00'
+  return `${value > 0 ? '+' : '-'}$${usdFormatter.format(Math.abs(value))}`
+}
+
 function formatBtc(value: number | undefined): string {
   return value !== undefined && Number.isFinite(value) ? btcFormatter.format(value) : '—'
 }
+
+const compactUsdFormatter = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  maximumFractionDigits: 2,
+})
+
+
+function pnlTone(value: number | undefined): 'positive' | 'negative' | 'neutral' {
+  if (value === undefined || !Number.isFinite(value) || value === 0) return 'neutral'
+  return value > 0 ? 'positive' : 'negative'
+}
+
+function marketValue(
+  usd: number | undefined,
+  btc: number | undefined,
+  price: number | undefined,
+): number | undefined {
+  if (
+    usd === undefined ||
+    btc === undefined ||
+    price === undefined ||
+    !Number.isFinite(usd) ||
+    !Number.isFinite(btc) ||
+    !Number.isFinite(price)
+  ) return undefined
+  const value = usd + btc * price
+  return Number.isFinite(value) ? value : undefined
+}
+
 
 function buildChart(
   history: readonly { elapsed: number; price: number }[],
@@ -128,13 +163,26 @@ export function MarketContent({ state, dispatch }: MarketProps) {
   const history = market?.history ?? EMPTY_HISTORY
   const trades = market?.trades ?? EMPTY_TRADES
   const chart = useMemo(() => buildChart(history, trades), [history, trades])
-  const portfolioValue = market !== null &&
-    Number.isFinite(state.money) &&
-    Number.isFinite(market.usd) &&
+  const portfolioValue = marketValue(market?.usd, market?.btc, market?.price)
+  const realizedPnl = market !== null && Number.isFinite(market.realizedPnl) ? market.realizedPnl : undefined
+  const unrealizedPnl = market !== null &&
     Number.isFinite(market.btc) &&
-    Number.isFinite(market.price)
-    ? state.money + market.usd + market.btc * market.price
+    Number.isFinite(market.price) &&
+    Number.isFinite(market.btcCostBasis) &&
+    Number.isFinite(market.btc * market.price - market.btcCostBasis)
+    ? market.btc * market.price - market.btcCostBasis
     : undefined
+  const lifetimePnl = realizedPnl !== undefined &&
+    unrealizedPnl !== undefined &&
+    Number.isFinite(realizedPnl + unrealizedPnl)
+    ? realizedPnl + unrealizedPnl
+    : undefined
+  const btcNotional = btcValue !== null && market !== null &&
+    Number.isFinite(market.price) &&
+    Number.isFinite(btcValue * market.price) &&
+    btcValue * market.price > 0
+    ? btcValue * market.price
+    : null
 
   const submitTransfer = (direction: 'deposit' | 'withdraw') => (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -159,12 +207,13 @@ export function MarketContent({ state, dispatch }: MarketProps) {
         <h2>Market</h2>
         <div className="market-header-values">
           <div
-            className="market-portfolio"
-            title="Cash + Trading USD + Trading BTC × current BTC / USD price"
-            aria-label={`Total portfolio value ${formatUsd(portfolioValue)}`}
+            className={`market-pnl market-pnl-${pnlTone(lifetimePnl)}`}
+            title={`Lifetime P&L ${formatSignedUsd(lifetimePnl)}; realized ${formatSignedUsd(realizedPnl)}; unrealized ${formatSignedUsd(unrealizedPnl)}`}
+            aria-label={`Lifetime P&L ${formatSignedUsd(lifetimePnl)}; realized ${formatSignedUsd(realizedPnl)}; unrealized ${formatSignedUsd(unrealizedPnl)}`}
           >
-            <span>Total portfolio</span>
-            <strong>{formatUsd(portfolioValue)}</strong>
+            <span>Lifetime P&amp;L</span>
+            <strong>{formatSignedUsd(lifetimePnl)}</strong>
+            <small>Realized {formatSignedUsd(realizedPnl)} · Unrealized {formatSignedUsd(unrealizedPnl)}</small>
           </div>
           <div className="market-current-price" aria-label={`Current Bitcoin price ${formatUsd(market?.price)}`}>
             <span>BTC / USD</span>
@@ -175,20 +224,24 @@ export function MarketContent({ state, dispatch }: MarketProps) {
 
       <div className="market-layout">
         <div className="market-main">
-      <section className="market-balances" aria-label="Balances">
-        <div className="market-balance market-balance-cash">
-          <span>Cash</span>
-          <strong>{formatUsd(state.money)}</strong>
-        </div>
-        <div className="market-balance market-balance-usd">
-          <span>Trading USD</span>
-          <strong>{formatUsd(market?.usd)}</strong>
-        </div>
-        <div className="market-balance market-balance-btc">
-          <span>Trading BTC</span>
-          <strong>{formatBtc(market?.btc)} <small>BTC</small></strong>
-        </div>
-      </section>
+          <section className="market-balances" aria-label="Balances">
+            <div
+              className="market-balance market-balance-portfolio"
+              title="Trading USD + Trading BTC × current BTC / USD price; excludes cash"
+              aria-label={`Total portfolio value ${formatUsd(portfolioValue)}, excluding cash`}
+            >
+              <span>Total portfolio</span>
+              <strong>{formatUsd(portfolioValue)}</strong>
+            </div>
+            <div className="market-balance market-balance-usd">
+              <span>Trading USD</span>
+              <strong>{formatUsd(market?.usd)}</strong>
+            </div>
+            <div className="market-balance market-balance-btc">
+              <span>Trading BTC</span>
+              <strong>{formatBtc(market?.btc)} <small>BTC</small></strong>
+            </div>
+          </section>
       <figure className="market-chart">
         <figcaption>BTC / USD</figcaption>
         <svg
@@ -264,16 +317,22 @@ export function MarketContent({ state, dispatch }: MarketProps) {
           <h3 id="market-trade-heading">Trade</h3>
           <form className="market-form" onSubmit={submitTrade('buy')}>
             <label htmlFor="market-btc-amount">Quantity <span>(BTC)</span></label>
-            <input
-              id="market-btc-amount"
-              type="number"
-              min="0.00000001"
-              step="any"
-              inputMode="decimal"
-              value={btcAmount}
-              onChange={(event) => setBtcAmount(event.currentTarget.value)}
-            />
-            <span className="market-form-help">USD wallet {formatUsd(market?.usd)} · BTC wallet {formatBtc(market?.btc)} BTC</span>
+            <div className={`market-quantity-control${btcNotional === null ? ' market-quantity-control-empty' : ''}`}>
+              <input
+                id="market-btc-amount"
+                type="number"
+                min="0.00000001"
+                step="any"
+                inputMode="decimal"
+                value={btcAmount}
+                onChange={(event) => setBtcAmount(event.currentTarget.value)}
+                aria-describedby="market-btc-help market-btc-notional"
+              />
+              <span id="market-btc-notional" className="market-quantity-hint" aria-live="polite">
+                {btcNotional !== null ? `(= ${compactUsdFormatter.format(btcNotional)} USD)` : ''}
+              </span>
+            </div>
+            <span id="market-btc-help" className="market-form-help">USD wallet {formatUsd(market?.usd)} · BTC wallet {formatBtc(market?.btc)} BTC</span>
             <div className="market-actions">
               <button type="submit" disabled={!canBuy}>Buy BTC</button>
               <button type="button" disabled={!canSell} onClick={() => executeTrade('sell')}>Sell BTC</button>
