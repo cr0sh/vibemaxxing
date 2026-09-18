@@ -1632,6 +1632,9 @@ textarea:focus-visible {
 .mercury-window-frame .window-content {
   overflow: hidden;
 }
+.shop-window-frame .window-content {
+  overflow: hidden;
+}
 
 .terminal-window-spark .terminal-topline {
   background: linear-gradient(180deg, #292040, #211533);
