@@ -574,6 +574,7 @@ export function canFundTaskAttempt(
   task: WorkTask,
   fastMode: boolean,
   terminalId?: TerminalId,
+  preserveAssignedReservations = true,
 ): boolean {
   if (terminalId !== undefined && state.terminals !== undefined && state.terminals.every((terminal) => terminal.id !== terminalId)) return false
   const local = terminalId === 'spark'
@@ -588,7 +589,8 @@ export function canFundTaskAttempt(
   } else if (state.reasoningUnlocked) {
     model = 'reasoning'
   }
-  const otherReservations = assignedTaskReservations(state, task) + mercuryReturnReservations(state.tasks, state.mercuryEnabled !== false)
+  const assigned = preserveAssignedReservations ? assignedTaskReservations(state, task) : 0
+  const otherReservations = assigned + mercuryReturnReservations(state.tasks, state.mercuryEnabled !== false)
   const cost = taskTokenCost(task, fastMode, model, local)
   return Number.isFinite(cost) && cost >= 0 && Number.isFinite(otherReservations) &&
     Number.isFinite(state.tokens) && state.tokens >= 0 && (local || state.tokens >= cost + otherReservations)
@@ -603,8 +605,7 @@ export function canFundMercuryAttempt(state: GameState, task: WorkTask, terminal
   const model = local ? 'reasoning' : terminalModel(state, terminalId)
   const attemptCost = taskTokenCost(task, fastMode, model, local)
   const reserved = mercuryReturnReservations(state.tasks)
-  const assigned = assignedTaskReservations(state, task)
-  const required = MERCURY_FORWARD_COST + attemptCost + MERCURY_FORWARD_COST + reserved + assigned
+  const required = MERCURY_FORWARD_COST + attemptCost + MERCURY_FORWARD_COST + reserved
   return Number.isFinite(attemptCost) && attemptCost >= 0 && Number.isFinite(required) &&
     Number.isFinite(state.tokens) && state.tokens >= required
 }
@@ -617,10 +618,11 @@ export function canFundMercuryRetry(state: GameState, task: WorkTask): boolean {
   const model = local ? 'reasoning' : terminalModel(state, task.terminalId)
   const attemptCost = taskTokenCost(task, fastMode, model, local)
   const required = attemptCost + MERCURY_FORWARD_COST +
-    mercuryReturnReservations(state.tasks) + assignedTaskReservations(state, task)
+    mercuryReturnReservations(state.tasks)
   return Number.isFinite(attemptCost) && attemptCost >= 0 && Number.isFinite(required) &&
     Number.isFinite(state.tokens) && state.tokens >= required
 }
+
 
 function issueAvailableAssignments(state: GameState): GameState {
   if (state.stage !== 'hired') return state
@@ -833,7 +835,8 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
   const fastMode = local ? false : terminal.fastMode === true
   const model = local ? 'reasoning' : terminalModel(state, terminalId)
   const cost = taskTokenCost(task, fastMode, model, local)
-  if (!canFundTaskAttempt(state, task, fastMode, terminalId) || !Number.isFinite(cost) || state.tokens < cost) return state
+  const preserveAssignedReservations = !automatic
+  if (!canFundTaskAttempt(state, task, fastMode, terminalId, preserveAssignedReservations) || !Number.isFinite(cost) || state.tokens < cost) return state
   let nextRng = state.rng
   let nextApprovalAt = 0
   let nextApprovalPrompt: string | null = null
@@ -920,12 +923,14 @@ function terminalWorkload(state: GameState, terminalId: TerminalId): number {
 }
 
 function mercuryTerminalOrder(state: GameState, task: WorkTask): TerminalState[] {
-  return [...state.terminals].sort((a, b) => {
-    const quality = taskSuccessChance(task, terminalModel(state, b.id)) - taskSuccessChance(task, terminalModel(state, a.id))
-    if (quality !== 0) return quality
-    const workload = terminalWorkload(state, a.id) - terminalWorkload(state, b.id)
-    return workload !== 0 ? workload : a.id.localeCompare(b.id)
-  })
+  return [...state.terminals]
+    .filter((terminal) => firstFreeSlot(state, terminal) !== null && canFundMercuryAttempt(state, task, terminal.id))
+    .sort((a, b) => {
+      const workload = terminalWorkload(state, a.id) - terminalWorkload(state, b.id)
+      if (workload !== 0) return workload
+      const quality = taskSuccessChance(task, terminalModel(state, b.id)) - taskSuccessChance(task, terminalModel(state, a.id))
+      return quality !== 0 ? quality : a.id.localeCompare(b.id)
+    })
 }
 
 function processMercury(state: GameState): GameState {
@@ -1021,10 +1026,10 @@ function tickHired(state: GameState, seconds: number): GameState {
         id: `attempt-failed-${after.id}-${after.attempt}`, type: 'attempt-failed', jobId: after.jobId, elapsed: current.elapsed, task: snapshotTask(after),
       })
     }
-    current = processMercury(current)
     current = appendLotteryIfDue(current)
     current = maybeUnlockProgression(current)
     current = issueAvailableAssignments(current)
+    current = processMercury(current)
     if (current.market !== null) current = { ...current, market: advanceMarket(current.market, current.elapsed) }
   }
   if (current.stage !== 'hired') return current
