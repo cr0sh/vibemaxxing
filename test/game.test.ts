@@ -48,6 +48,89 @@ function hireForApproval(): GameState {
   return { ...state, tasks: state.tasks.map((task) => ({ ...task, difficulty: 30, deadlineAt: 1_000 })) }
 }
 
+describe('shop product discovery', () => {
+  test('reveals upgrades only at their affordability threshold', () => {
+    const unavailable = gameReducer({ ...hire(), money: 199 }, { type: 'set-token-packs', packs: 1 })
+    expect(unavailable.shopDiscoveries).not.toContain('split')
+
+    const available = gameReducer({ ...hire(), money: 200 }, { type: 'set-token-packs', packs: 1 })
+    expect(available.shopDiscoveries).toContain('split')
+    expect(available.shopDiscoveries).not.toContain('yolo')
+    expect(available.shopDiscoveries).not.toContain('terminal')
+  })
+
+  test('retains a discovery after the purchase spends below its threshold', () => {
+    const state = gameReducer({ ...hire(), money: 200 }, { type: 'set-token-packs', packs: 1 })
+    const purchased = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'click' })
+    expect(purchased.money).toBe(0)
+    expect(purchased.shopDiscoveries).toContain('split')
+  })
+
+  test('token discovery uses the smallest positive refill and never reveals a full inventory', () => {
+    const full = gameReducer({ ...hire(), money: 100 }, { type: 'set-token-packs', packs: 1 })
+    expect(full.shopDiscoveries).not.toContain('tokens')
+
+    const partial = gameReducer({ ...hire(), money: 0.01, tokens: MAX_TOKENS - 1 }, { type: 'set-token-packs', packs: 1 })
+    expect(partial.shopDiscoveries).toContain('tokens')
+  })
+
+  test('gated products stay hidden until their existing prerequisites and sale windows open', () => {
+    const hired = hire()
+    const beforeModel = gameReducer({ ...hired, money: 5_000 }, { type: 'set-token-packs', packs: 1 })
+    expect(beforeModel.shopDiscoveries).not.toContain('advanced-model')
+    expect(beforeModel.shopDiscoveries).not.toContain('mercury')
+
+    const modelSale = gameReducer({
+      ...beforeModel,
+      advancedModelAnnouncedAt: 0,
+      elapsed: 0,
+    }, { type: 'set-token-packs', packs: 1 })
+    expect(modelSale.shopDiscoveries).toContain('advanced-model')
+    expect(modelSale.shopDiscoveries).not.toContain('mercury')
+
+    const sparkBeforeSale = gameReducer({
+      ...hired,
+      money: 15_000,
+      market: createMarket(hired.rng, 0),
+      sparkAnnouncedAt: 0,
+      elapsed: 9,
+    }, { type: 'set-token-packs', packs: 1 })
+    expect(sparkBeforeSale.shopDiscoveries).not.toContain('spark')
+    const sparkOnSale = gameReducer({ ...sparkBeforeSale, elapsed: 10 }, { type: 'set-token-packs', packs: 1 })
+    expect(sparkOnSale.shopDiscoveries).toContain('spark')
+  })
+
+  test('captures transient affordability before automatic token spending in a batched tick', () => {
+    const state = {
+      ...hire(),
+      money: 99,
+      tokens: 0,
+      tokenPacks: 1 as const,
+      tokenAutoBuy: true,
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+    }
+    const ticked = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(ticked.money).toBe(4)
+    expect(ticked.tokens).toBe(100_000)
+    expect(ticked.shopDiscoveries).toContain('tokens')
+  })
+
+  test('reset clears discoveries and dev previews include owned products', () => {
+    const discovered = gameReducer({ ...hire(), money: 420 }, { type: 'set-token-packs', packs: 1 })
+    expect(discovered.shopDiscoveries).toContain('yolo')
+    expect(gameReducer(discovered, { type: 'reset' })).toBe(initialGame)
+
+    const tiro = gameReducer(initialGame, { type: 'dev-jump', stage: 'tiro' })
+    expect(tiro.shopDiscoveries).toEqual(expect.arrayContaining(['split', 'yolo', 'terminal']))
+  })
+  test('preserves identity for a genuine no-op with no newly eligible product', () => {
+    const state = hire()
+    expect(gameReducer(state, { type: 'set-token-packs', packs: 10 })).toBe(state)
+  })
+})
+
 describe('job applications', () => {
   test('offer odds double after the ninth submission', () => {
     let state = gameReducer(initialGame, { type: 'start', seed: 12345 })
