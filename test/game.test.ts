@@ -1012,7 +1012,7 @@ describe('extended engine contracts', () => {
     const failed: WorkTask = {
       ...source,
       id: 901,
-      difficulty: 1,
+      difficulty: 3,
       complexity: 4,
       deadlineAt: 100,
       status: 'failed',

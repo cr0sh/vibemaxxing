@@ -950,6 +950,7 @@ export const initialGame: GameState = {
   sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null,
   sparkUltraAnnouncedAt: null, sparkUltraPurchasedAt: null, sparkUltraDeliveryAt: null,
   taskBags: { standard: [], architecture: [] }, lastTaskBlueprint: { standard: null, architecture: null },
+  shortsUnlocked: false, inactivityElapsed: 0, inactivityDecay: 1,
   mercuryOwned: false, mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null,
   lossReason: null,
 }
