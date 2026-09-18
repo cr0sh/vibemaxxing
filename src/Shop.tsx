@@ -75,7 +75,6 @@ function useShopHighlights(state: GameState, active: boolean): ReadonlySet<ShopI
   const highlightedRef = useRef<ReadonlySet<ShopItemId>>(new Set())
   const knownDiscoveries = useRef<Set<ShopItemId>>(new Set(state.shopDiscoveries))
   const pendingDiscoveries = useRef<Set<ShopItemId>>(new Set())
-  const startedTimers = useRef<Set<ShopItemId>>(new Set())
   const previousState = useRef<GameState | null>(null)
   const timers = useRef(new Map<ShopItemId, number>())
 
@@ -98,7 +97,6 @@ function useShopHighlights(state: GameState, active: boolean): ReadonlySet<ShopI
     const cancelled = new Set<ShopItemId>([...removed, ...purchased])
     for (const id of cancelled) {
       pendingDiscoveries.current.delete(id)
-      startedTimers.current.delete(id)
       const timer = timers.current.get(id)
       if (timer !== undefined) {
         window.clearTimeout(timer)
@@ -112,8 +110,7 @@ function useShopHighlights(state: GameState, active: boolean): ReadonlySet<ShopI
     const startedNow: ShopItemId[] = []
     if (active) {
       for (const id of pendingDiscoveries.current) {
-        if (startedTimers.current.has(id)) continue
-        startedTimers.current.add(id)
+        if (timers.current.has(id)) continue
         const timer = window.setTimeout(() => {
           timers.current.delete(id)
           pendingDiscoveries.current.delete(id)
