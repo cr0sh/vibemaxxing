@@ -111,6 +111,23 @@
   line-height: 1.35;
 }
 
+.shop-token-options {
+  display: flex;
+  align-items: end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.shop-auto-buy-toggle {
+  margin-bottom: 0.4rem;
+}
+.shop-auto-buy-name {
+  color: #e4d4fa;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+
 .shop-pack-size {
   display: grid;
   gap: 0.3rem;
