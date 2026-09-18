@@ -2,8 +2,10 @@ import { useState, type Dispatch } from 'react'
 import {
   AGENT_MODELS,
   canFundMercuryAttempt,
+  canFundTaskAttempt,
   mercuryReturnReservations,
   MERCURY_FORWARD_COST,
+  MERCURY_RETRY_DELAY,
   taskReward,
   taskTokenCost,
   terminalModel,
@@ -54,7 +56,52 @@ const taskStatus = (task: WorkTask): string => {
   }
 }
 
+const canFundFailedRetry = (state: GameState, task: WorkTask): boolean => (
+  state.stage === 'hired' &&
+  task.status === 'failed' &&
+  task.terminalId !== null &&
+  task.slot !== null &&
+  canFundTaskAttempt(state, task, task.fastMode, task.terminalId)
+)
+
+const failedRetryNote = (state: GameState, task: WorkTask): string => {
+  if (state.stage !== 'hired' || !state.mercuryOwned) return 'Retry immediately in the terminal. Mercury automatic retries are unavailable.'
+  if (!state.mercuryEnabled) return 'Retry immediately in the terminal. Mercury automatic retry is off.'
+  if (task.failedAt === null) return 'Retry immediately in the terminal. Automatic retry timing is unavailable for this attempt.'
+  const retryIn = task.failedAt + MERCURY_RETRY_DELAY - state.elapsed
+  if (retryIn > 0) return `Mercury automatic retry in ${formatTime(retryIn)}.`
+  return canFundFailedRetry(state, task)
+    ? 'Mercury automatic retry is ready.'
+    : 'Mercury automatic retry is waiting for funds.'
+}
+
 const taskProgress = (task: WorkTask): number => Math.round(Math.min(1, task.progress / Math.max(1, task.difficulty)) * 100)
+
+function failedTaskLabel(count: number): string {
+  return `${count} failed attempt${count === 1 ? '' : 's'}`
+}
+
+function FailedRetryNotice({ state, failedTasks, dispatch }: {
+  state: GameState
+  failedTasks: readonly WorkTask[]
+  dispatch: Dispatch<GameAction>
+}) {
+  if (failedTasks.length === 0) return null
+  const canRetry = state.stage === 'hired' && failedTasks.some((task) => canFundFailedRetry(state, task))
+  const automatic = state.stage === 'hired' && state.mercuryOwned && state.mercuryEnabled
+  const message = automatic
+    ? `${failedTaskLabel(failedTasks.length)}. Automatic retry starts after ${MERCURY_RETRY_DELAY}s; manual retries are immediate in the terminal.`
+    : `${failedTaskLabel(failedTasks.length)}. Retry immediately in the terminal.`
+  return (
+    <div className="mercury-waiting mercury-failed-notice" role="status">
+      <span>{message}</span>
+      <button type="button" onClick={() => dispatch({ type: 'retry-all' })} disabled={state.stage === 'lost' || !canRetry}>
+        Retry all
+      </button>
+    </div>
+  )
+}
+
 
 function TaskCard({ state, task }: { state: GameState; task: WorkTask }) {
   const modelId = taskSnapshotModel(task)
@@ -93,7 +140,7 @@ function TaskCard({ state, task }: { state: GameState; task: WorkTask }) {
       )}
       {task.status === 'approval' && <p className="mercury-task-note">Approve or deny in the terminal.</p>}
       {task.status === 'blocked' && <p className="mercury-task-note">Resume this attempt in the terminal.</p>}
-      {task.status === 'failed' && <p className="mercury-task-note">Retry in the terminal. Mercury does not retry.</p>}
+      {task.status === 'failed' && <p className="mercury-task-note mercury-task-retry-note">{failedRetryNote(state, task)}</p>}
       {task.status === 'artifact' && <p className="mercury-task-note">Automatic return: {formatTokens(MERCURY_FORWARD_COST)}. Manual delivery is free.</p>}
     </article>
   )
@@ -109,9 +156,7 @@ function TaskGroup({ state, title, tasks, empty }: {
   return (
     <section className="mercury-task-group">
       <div className="mercury-section-heading">
-        <div>
-          <h3>{title}</h3>
-        </div>
+        <h3>{title}</h3>
         <span className="mercury-count">{tasks.length}</span>
       </div>
       {tasks.length > 0 ? (
@@ -178,11 +223,10 @@ function TerminalCard({ state, terminalId }: { state: GameState; terminalId: Ter
   )
 }
 
-function WaitingReason({ state, queuedTasks, pausedTasks, failedTasks, artifacts, reservedReturnTokens }: {
+function WaitingReason({ state, queuedTasks, pausedTasks, artifacts, reservedReturnTokens }: {
   state: GameState
   queuedTasks: readonly WorkTask[]
   pausedTasks: readonly WorkTask[]
-  failedTasks: readonly WorkTask[]
   artifacts: readonly WorkTask[]
   reservedReturnTokens: number
 }) {
@@ -198,8 +242,6 @@ function WaitingReason({ state, queuedTasks, pausedTasks, failedTasks, artifacts
     reason = `A return is waiting for ${formatTokens(MERCURY_FORWARD_COST - unreservedTokens)} more. You can also deliver it manually for free.`
   } else if (pausedTasks.length > 0) {
     reason = `${pausedTasks.length} paused task${pausedTasks.length === 1 ? '' : 's'} need${pausedTasks.length === 1 ? 's' : ''} attention in the terminal.`
-  } else if (failedTasks.length > 0) {
-    reason = `${failedTasks.length} failed attempt${failedTasks.length === 1 ? '' : 's'} need${failedTasks.length === 1 ? 's' : ''} a manual retry.`
   } else if (queuedTasks.length > 0) {
     const freeTerminals = state.terminals.filter((terminal) => (
       state.tasks.filter((task) => task.terminalId === terminal.id && task.slot !== null && task.status !== 'assigned').length < terminal.slots
@@ -240,7 +282,8 @@ export function MercuryContent({ state, dispatch }: MercuryProps) {
         <div><span>Balance</span><strong>{formatTokens(state.tokens)}</strong><small>300K per handoff</small></div>
         <div><span>Reserved returns</span><strong>{formatTokens(reservedReturnTokens)}</strong><small>{reservedReturnCount} automatic task{reservedReturnCount === 1 ? '' : 's'}</small></div>
       </div>
-      <WaitingReason state={state} queuedTasks={queuedTasks} pausedTasks={pausedTasks} failedTasks={failedTasks} artifacts={artifacts} reservedReturnTokens={reservedReturnTokens} />
+      <FailedRetryNotice state={state} failedTasks={failedTasks} dispatch={dispatch} />
+      <WaitingReason state={state} queuedTasks={queuedTasks} pausedTasks={pausedTasks} artifacts={artifacts} reservedReturnTokens={reservedReturnTokens} />
       <nav className="mercury-views" aria-label="Mercury views">
         <button type="button" aria-pressed={view === 'active'} onClick={() => setView('active')}>Active tasks · {state.tasks.length - queuedTasks.length}</button>
         <button type="button" aria-pressed={view === 'queued'} onClick={() => setView('queued')}>Queue · {queuedTasks.length}</button>
@@ -255,7 +298,7 @@ export function MercuryContent({ state, dispatch }: MercuryProps) {
             <TaskGroup state={state} title="Running" tasks={runningTasks} empty="No tasks are running." />
           </>
         )}
-        {view === 'queued' && <TaskGroup state={state} title="Boss-assigned queue" tasks={queuedTasks} empty="No assignments are waiting." />}
+        {view === 'queued' && <TaskGroup state={state} title="Task assignment queue" tasks={queuedTasks} empty="No assignments are waiting." />}
         {view === 'terminals' && (
           <div className="mercury-terminal-grid">
             {state.terminals.map((terminal) => <TerminalCard key={terminal.id} state={state} terminalId={terminal.id} />)}
