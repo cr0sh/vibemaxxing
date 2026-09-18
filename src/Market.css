@@ -1,12 +1,29 @@
 .market-app {
-  display: flex;
+  container-type: inline-size;
+  display: grid;
   min-height: 100%;
-  flex-direction: column;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 0.8rem;
   padding: 1rem;
   overflow: auto;
   background: #111c22;
   color: #edf6f7;
+}
+
+.market-layout {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1.25fr) minmax(15.5rem, 0.85fr);
+  gap: 0.8rem;
+}
+
+.market-main {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.65rem;
 }
 
 .market-header {
@@ -147,16 +164,20 @@
 
 .market-panels {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto auto;
   gap: 0.65rem;
 }
 
 .market-panel {
   display: grid;
-  align-content: start;
-  gap: 0.65rem;
   min-width: 0;
-  padding: 0.75rem;
+  min-height: 0;
+  align-content: start;
+  gap: 0.45rem;
+  overflow: visible;
+  padding: 0.6rem;
   border: 1px solid #2d4950;
   border-radius: 0.62rem;
   background: #18282f;
@@ -169,15 +190,9 @@
 
 .market-form {
   display: grid;
-  gap: 0.42rem;
+  gap: 0.3rem;
 }
 
-.market-form + .market-form,
-.market-sell-form {
-  margin-top: 0.4rem;
-  padding-top: 0.7rem;
-  border-top: 1px solid #2d4950;
-}
 
 .market-form label {
   color: #d4e4e5;
@@ -192,14 +207,25 @@
 
 .market-form input {
   width: 100%;
-  min-height: 2.2rem;
+  min-height: 1.9rem;
   box-sizing: border-box;
   border: 1px solid #517078;
   border-radius: 0.42rem;
-  padding: 0.42rem 0.55rem;
+  padding: 0.3rem 0.5rem;
   background: #0d181d;
   color: #f4fbfa;
   font-size: 0.82rem;
+}
+
+.market-input-control {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+}
+
+.market-input-control input {
+  min-width: 0;
 }
 
 .market-form input:focus-visible {
@@ -216,20 +242,24 @@
 .market-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.45rem;
+  gap: 0.35rem;
 }
 
 .market-form button {
-  min-height: 2.2rem;
+  min-height: 1.9rem;
   border: 1px solid #59b998;
   border-radius: 0.42rem;
-  padding: 0.4rem 0.55rem;
+  padding: 0.3rem 0.5rem;
   background: #226851;
   color: #f4fffc;
   cursor: pointer;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 800;
   transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.market-max-button {
+  min-width: 3.1rem;
 }
 
 .market-form button:hover,
@@ -247,8 +277,20 @@
   transform: none;
 }
 
-.market-withdraw-all {
-  grid-column: 1 / -1;
+
+@container (max-width: 700px) {
+  .market-layout {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
+  }
+
+  .market-main {
+    grid-template-rows: auto auto;
+  }
+
+  .market-panels {
+    grid-template-rows: auto auto;
+  }
 }
 
 @media (max-width: 620px) {
@@ -263,10 +305,6 @@
 
   .market-balance-btc {
     grid-column: 1 / -1;
-  }
-
-  .market-panels {
-    grid-template-columns: 1fr;
   }
 
   .market-chart {

@@ -64,30 +64,43 @@ function buildChart(history: readonly { elapsed: number; price: number }[]): Cha
 export function MarketContent({ state, dispatch }: MarketProps) {
   const market = state.market
   const [transferAmount, setTransferAmount] = useState('100')
-  const [buyAmount, setBuyAmount] = useState('100')
-  const [sellAmount, setSellAmount] = useState('0.001')
-  const transferValue = parseAmount(transferAmount)
-  const buyValue = parseAmount(buyAmount)
-  const sellValue = parseAmount(sellAmount)
+  const [btcAmount, setBtcAmount] = useState('0.001')
   const canUseMarket = state.stage === 'hired' && market !== null
-  const canDeposit = canUseMarket && transferValue !== null && transferValue <= state.money
-  const canWithdraw = canUseMarket && transferValue !== null && transferValue <= (market?.usd ?? 0)
-  const canBuy = canUseMarket && buyValue !== null && buyValue <= (market?.usd ?? 0)
-  const canSell = canUseMarket && sellValue !== null && sellValue <= (market?.btc ?? 0)
+  const transferMax = transferAmount === 'MAX'
+  const transferValue = parseAmount(transferAmount)
+  const transferValueFor = (direction: 'deposit' | 'withdraw') => {
+    if (!canUseMarket) return null
+    if (transferMax) {
+      const available = direction === 'deposit' ? state.money : market.usd
+      return parseAmount(String(available))
+    }
+    return transferValue
+  }
+  const depositValue = transferValueFor('deposit')
+  const withdrawValue = transferValueFor('withdraw')
+  const btcValue = parseAmount(btcAmount)
+  const canDeposit = depositValue !== null && depositValue <= state.money
+  const canWithdraw = withdrawValue !== null && withdrawValue <= (market?.usd ?? 0)
+  const canBuy = canUseMarket && btcValue !== null && Number.isFinite(btcValue * (market?.price ?? Number.NaN)) && btcValue * (market?.price ?? Number.NaN) <= (market?.usd ?? 0)
+  const canSell = canUseMarket && btcValue !== null && btcValue <= (market?.btc ?? 0)
   const history = market?.history ?? EMPTY_HISTORY
   const chart = useMemo(() => buildChart(history), [history])
 
   const submitTransfer = (direction: 'deposit' | 'withdraw') => (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!canUseMarket || transferValue === null) return
-    dispatch({ type: 'market-transfer', direction, amount: transferValue })
+    const amount = direction === 'deposit' ? depositValue : withdrawValue
+    if (!canUseMarket || amount === null) return
+    dispatch({ type: 'market-transfer', direction, amount })
+  }
+
+  const executeTrade = (side: 'buy' | 'sell') => {
+    if (!canUseMarket || btcValue === null || (side === 'buy' ? !canBuy : !canSell)) return
+    dispatch({ type: 'market-trade', side, amount: btcValue })
   }
 
   const submitTrade = (side: 'buy' | 'sell') => (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const amount = side === 'buy' ? buyValue : sellValue
-    if (!canUseMarket || amount === null) return
-    dispatch({ type: 'market-trade', side, amount })
+    executeTrade(side)
   }
 
   return (
@@ -100,6 +113,8 @@ export function MarketContent({ state, dispatch }: MarketProps) {
         </div>
       </header>
 
+      <div className="market-layout">
+        <div className="market-main">
       <section className="market-balances" aria-label="Balances">
         <div className="market-balance market-balance-cash">
           <span>Cash</span>
@@ -135,34 +150,31 @@ export function MarketContent({ state, dispatch }: MarketProps) {
           <span>High {formatUsd(chart.max ?? undefined)}</span>
         </div>
       </figure>
+        </div>
 
       <div className="market-panels">
         <section className="market-panel" aria-labelledby="market-transfer-heading">
           <h3 id="market-transfer-heading">USD wallet</h3>
           <form className="market-form" onSubmit={submitTransfer('deposit')}>
             <label htmlFor="market-transfer-amount">Amount <span>(USD)</span></label>
-            <input
-              id="market-transfer-amount"
-              type="number"
-              min="0.01"
-              step="0.01"
-              inputMode="decimal"
-              value={transferAmount}
-              onChange={(event) => setTransferAmount(event.currentTarget.value)}
-              aria-describedby="market-transfer-help"
-            />
+            <div className="market-input-control">
+              <input
+                id="market-transfer-amount"
+                type="text"
+                inputMode="decimal"
+                value={transferAmount}
+                onChange={(event) => setTransferAmount(event.currentTarget.value)}
+                aria-describedby="market-transfer-help"
+              />
+              <button className="market-max-button" type="button" onClick={() => setTransferAmount('MAX')} disabled={!canUseMarket}>MAX</button>
+            </div>
             <span id="market-transfer-help" className="market-form-help">Cash {formatUsd(state.money)} · wallet {formatUsd(market?.usd)}</span>
             <div className="market-actions">
-              <button type="submit" disabled={!canDeposit}>Deposit USD</button>
-              <button type="button" disabled={!canWithdraw} onClick={(event) => {
-                event.preventDefault()
-                if (canUseMarket && transferValue !== null) {
-                  dispatch({ type: 'market-transfer', direction: 'withdraw', amount: transferValue })
-                }
-              }}>Withdraw USD</button>
-              <button className="market-withdraw-all" type="button" disabled={!canUseMarket || !market || market.usd <= 0} onClick={() => {
-                if (market) dispatch({ type: 'market-transfer', direction: 'withdraw', amount: market.usd })
-              }}>Withdraw all</button>
+              <button type="submit" disabled={!canDeposit}>{transferMax ? 'Deposit MAX' : 'Deposit USD'}</button>
+              <button type="button" disabled={!canWithdraw} onClick={() => {
+                if (!canUseMarket || withdrawValue === null) return
+                dispatch({ type: 'market-transfer', direction: 'withdraw', amount: withdrawValue })
+              }}>{transferMax ? 'Withdraw MAX' : 'Withdraw USD'}</button>
             </div>
           </form>
         </section>
@@ -170,39 +182,25 @@ export function MarketContent({ state, dispatch }: MarketProps) {
         <section className="market-panel" aria-labelledby="market-trade-heading">
           <h3 id="market-trade-heading">Trade</h3>
           <form className="market-form" onSubmit={submitTrade('buy')}>
-            <label htmlFor="market-buy-amount">Buy BTC with <span>(USD)</span></label>
+            <label htmlFor="market-btc-amount">BTC quantity <span>(BTC)</span></label>
             <input
-              id="market-buy-amount"
-              type="number"
-              min="0.01"
-              step="0.01"
-              inputMode="decimal"
-              value={buyAmount}
-              onChange={(event) => setBuyAmount(event.currentTarget.value)}
-            />
-            <span className="market-form-help">USD wallet {formatUsd(market?.usd)}</span>
-            <button type="submit" disabled={!canBuy}>Buy BTC</button>
-          </form>
-          <form className="market-form market-sell-form" onSubmit={submitTrade('sell')}>
-            <label htmlFor="market-sell-amount">Sell BTC <span>(BTC)</span></label>
-            <input
-              id="market-sell-amount"
+              id="market-btc-amount"
               type="number"
               min="0.00000001"
               step="0.00000001"
               inputMode="decimal"
-              value={sellAmount}
-              onChange={(event) => setSellAmount(event.currentTarget.value)}
+              value={btcAmount}
+              onChange={(event) => setBtcAmount(event.currentTarget.value)}
             />
-            <span className="market-form-help">BTC wallet {formatBtc(market?.btc)} BTC</span>
+            <span className="market-form-help">USD wallet {formatUsd(market?.usd)} · BTC wallet {formatBtc(market?.btc)} BTC</span>
             <div className="market-actions">
-              <button type="submit" disabled={!canSell}>Sell BTC</button>
-              <button type="button" disabled={!canUseMarket || !market || market.btc <= 0} onClick={() => {
-                if (market) dispatch({ type: 'market-trade', side: 'sell', amount: market.btc })
-              }}>Sell all</button>
+              <button type="submit" disabled={!canBuy}>Buy BTC</button>
+              <button type="button" disabled={!canSell} onClick={() => executeTrade('sell')}>Sell BTC</button>
             </div>
           </form>
         </section>
+      </div>
+        </div>
       </div>
     </div>
   )
