@@ -12,7 +12,10 @@ const UINT_RANGE = 4_294_967_296
 const INITIAL_PRICE = 100
 const MIN_PRICE = 1
 const MAX_PRICE = 10_000_000
-const HISTORY_LIMIT = 120
+const HISTORY_LIMIT = 240
+const MARKET_STEP_SECONDS = 0.5
+const BROWNIAN_SCALE = 0.055
+const JUMP_PROBABILITY = 0.06
 const EPSILON = Number.EPSILON * 8
 
 
@@ -31,18 +34,14 @@ function boundedPrice(price: number): number {
   if (!Number.isFinite(price)) return INITIAL_PRICE
   return Math.min(MAX_PRICE, Math.max(MIN_PRICE, price))
 }
-
-function validMarket(market: MarketState): boolean {
-  return Number.isFinite(market.usd) && market.usd >= 0 &&
-    Number.isFinite(market.btc) && market.btc >= 0 &&
-    Number.isFinite(market.price) && market.price >= MIN_PRICE && market.price <= MAX_PRICE &&
-    Number.isFinite(market.rng)
+function elapsedHalfSteps(elapsed: number): number {
+  return Math.floor(Math.max(0, elapsed) / MARKET_STEP_SECONDS + Number.EPSILON * 8)
 }
 
 export function createMarket(seed: number, elapsed: number): MarketState {
   const [rng] = nextRandom(seedState(seed))
   const price = boundedPrice(INITIAL_PRICE)
-  const at = Number.isFinite(elapsed) ? Math.max(0, Math.floor(elapsed)) : 0
+  const at = Number.isFinite(elapsed) ? elapsedHalfSteps(elapsed) * MARKET_STEP_SECONDS : 0
   return {
     usd: 0,
     btc: 0,
@@ -56,31 +55,41 @@ export function advanceMarket(market: MarketState, elapsed: number): MarketState
   if (!validMarket(market) || !Number.isFinite(elapsed) || !Array.isArray(market.history)) return market
   const previous = market.history.at(-1)
   if (previous === undefined || !Number.isFinite(previous.elapsed) || !Number.isFinite(previous.price)) return market
-  const at = Math.max(0, Math.floor(elapsed))
-  if (at <= previous.elapsed) return market
+
+  const targetStep = elapsedHalfSteps(elapsed)
+  const previousStep = elapsedHalfSteps(previous.elapsed)
+  if (targetStep <= previousStep) return market
 
   let rng = market.rng >>> 0
-  let eventRoll: number
-  ;[rng, eventRoll] = nextRandom(rng)
-  let noiseA: number
-  ;[rng, noiseA] = nextRandom(rng)
-  let noiseB: number
-  ;[rng, noiseB] = nextRandom(rng)
+  let price = previous.price
+  const history = market.history.slice()
+  for (let step = previousStep + 1; step <= targetStep; step += 1) {
+    let eventRoll: number
+    ;[rng, eventRoll] = nextRandom(rng)
+    let noiseA: number
+    ;[rng, noiseA] = nextRandom(rng)
+    let noiseB: number
+    ;[rng, noiseB] = nextRandom(rng)
 
-  const elapsedGap = Math.max(1, at - previous.elapsed)
-  const timeScale = Math.min(3, Math.sqrt(elapsedGap))
-  const brownian = ((noiseA - 0.5) + (noiseB - 0.5)) * 0.035 * timeScale
-  const move = eventRoll < 0.045
-    ? (noiseA < 0.5 ? -1 : 1) * (0.12 + noiseB * 0.24) * timeScale
-    : brownian
-  const price = boundedPrice(previous.price * (1 + Math.max(-0.8, Math.min(0.8, move))))
-  const point = { elapsed: at, price }
-  const history = market.history.length >= HISTORY_LIMIT
-    ? [...market.history.slice(-(HISTORY_LIMIT - 1)), point]
-    : [...market.history, point]
+    const brownian = ((noiseA - 0.5) + (noiseB - 0.5)) * BROWNIAN_SCALE
+    const move = eventRoll < JUMP_PROBABILITY
+      ? (noiseA < 0.5 ? -1 : 1) * (0.14 + noiseB * 0.28)
+      : brownian
+    price = boundedPrice(price * (1 + Math.max(-0.8, Math.min(0.8, move))))
+    history.push({ elapsed: step * MARKET_STEP_SECONDS, price })
+  }
+  if (history.length > HISTORY_LIMIT) history.splice(0, history.length - HISTORY_LIMIT)
 
   return { ...market, price, history, rng }
 }
+
+function validMarket(market: MarketState): boolean {
+  return Number.isFinite(market.usd) && market.usd >= 0 &&
+    Number.isFinite(market.btc) && market.btc >= 0 &&
+    Number.isFinite(market.price) && market.price >= MIN_PRICE && market.price <= MAX_PRICE &&
+    Number.isFinite(market.rng)
+}
+
 
 export function executableBtcQuantity(market: MarketState, side: 'buy' | 'sell', amount: number): number | null {
   if (!validMarket(market) || !Number.isFinite(amount) || amount <= 0 || (side !== 'buy' && side !== 'sell')) return null
