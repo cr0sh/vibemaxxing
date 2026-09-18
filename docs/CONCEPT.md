@@ -19,8 +19,9 @@ The flow of the game is:
   - You are an L3 intern engineer.
   - You now have two windows. Messenger(slack-like purple theme) and Terminal
   - Your boss gives you tasks (shown like an attachment in the messenger UI).
-    This is given right after you are hired, and every 2 minutes. You can
-    drag-and-drop this attachment onto terminal.
+    The first arrives immediately; the opening interval is 30 seconds, easing
+    toward a 9-second minimum (15 seconds per job after the second-career unlock).
+    Active backlog extends those intervals. Drag attachments onto Terminal.
     Task catalogs contain 16 standard assignments and 8 architecture assignments.
     Each kind uses its own seeded shuffle bag shared across employers: exhaust
     the catalog before reshuffling, without an immediate repeat at the boundary.
@@ -39,6 +40,8 @@ The flow of the game is:
     "artifact" as the box like the attachment in the messenger UI, which can
     also be drag-and-dropped back to the messenger. It concludes the task. - The boss will be angry when you fail to deliver the artifact in the deadline
     that the boss specified. You'll lose.
+    Basic tasks take 9–18 seconds of active work, excluding approval pauses.
+    Other models and Fast mode retain their relative speed advantages.
   - Each employed job pays you \$5 every second.
 - The terminal can be "upgraded" with several features. Features are purchased
   by drag-and-dropping the item icon from the shop UI to the terminal.
@@ -49,24 +52,28 @@ The flow of the game is:
   refill price, or one nominal pack when inventory is full.
   Newly discovered products notify the Shop dock icon; balance fluctuations
   and already-discovered upgrades do not. Viewing Shop acknowledges its updates.
+  Newly discovered entries get a golden border/glow for five real seconds or
+  until that product is purchased, whichever comes first. Timers are independent
+  and continue while Shop is hidden; reduced motion keeps a static gold border.
   - Split window(\$200, $400, $1000): The window can be split at max 4. Agents
     can run simultaneously.
   - Yolo mode($420): By default, the terminal asks for command approval(yes/no) for
-    confirmation, randomly every 1–2 seconds of active work, including the opening. This lifts the restriction.
+    confirmation, randomly every 3–6 seconds of active work, including the opening. This lifts the restriction.
     Applies to window-wise. The terminal window border shines with rainbow color
-    animation.
+    animation. Idle panes display “YOLO!”.
   - Multi-window($1000): One more window. The split window upgrade costs double
     here, \$400/\$800/\$2000 each.
 - The boss has an internal "expectation" value governing assignment cadence and
   deadlines. It rises with projected gross earnings, using the same \$5/s base
   wage as actual pay plus expected task rewards. Opening grace and minimum
   execution budgets are retained.
-- After solving first five tasks, the boss will enable "incentivized mode" and
-  tell the player with the message. Then each tasks will have the dollar based reward (with cash bag emoji). The reward depreciates by 10% per 10 seconds, until it reaches the 5% of its initial value. The deadline system still counts.
-- Each solved tasks spend tokens worth `10000 * difficulty`. Tokens start at 10M and are capped at 10M
-  in inventory, and refilled to 10M every 100 seconds. The refill timer should be
-  shown in Terminal. Additional tokens are purchased in Shop: 100K tokens for
-  \$10.
+- After solving the first two tasks, the boss enables "incentivized mode".
+  Rewards depreciate by 10% per 30 seconds after assignment, down to 5% of their
+  initial value. Deadlines continue to apply.
+- Each attempt spends `100000 * difficulty` tokens before model/Fast multipliers.
+  Tokens start at 10M, remain capped at 10M, and refill every 420 seconds.
+  The longer refill window preserves token scarcity with fewer assignments.
+  Terminal shows the refill countdown. Shop sells 100K tokens for \$100.
 
 - As your boss raises expectation, tokens are getting more scarce. For the first
   time the tokens inventory goes under 20%, the \#watercooler channel shows a
@@ -80,7 +87,7 @@ The flow of the game is:
   time it's clicked there is a 1% chance of full reset. When reset is happened,
   Tiro should post another update into the timeline.
 
-- You'll get eventually promoted (around after solving 50 quests) to L4.
+- After completing 17 tasks, the player is promoted to L4.
   Congrats from the boss. Then, the "systems architecture" tasks
   occasionally(35% prob)
   comes in. With the current agent model, it is 50% chance to solve, so when
@@ -93,7 +100,9 @@ The flow of the game is:
   speed -40%, but 100% chance to solve the sys-architectural
   tasks(intelligence=2).
 
-- After solving more sys-architectural tasks, the odds of getting the complex tasks goes high, eventually to 80%. Then, the user would have the pain waiting. So Tiro announces the "fast mode", which can be toggled at the shop, consumes 2x tokens and +100% speed.
+- Each completed architecture task adds 12.5 percentage points to its appearance
+  chance, up to 80%. After two architecture deliveries, Fast mode unlocks:
+  2× speed for 2× tokens, selectable in Shop.
 
 - (Til the above the targeted playtime is 5 mins )
 
@@ -170,9 +179,15 @@ The flow of the game is:
 - Monopoly starts 60 seconds after the frontier model unlock. Spark Ultra is
   announced 60 seconds later; orders open after another 10 seconds. Its price
   remains $100,000, with the same 15–60 second delivery rule as Spark.
-- L5 task rewards use a 600× multiplier instead of 200×. L4 remains at 100×;
-  early-career rewards and existing purchase prices are unchanged.
-  Base wages alone fund the first $200 split in 40 seconds of employment.
+- Execution, deadline budgets, and assignment cadence are about 3× longer.
+  Task-count gates are correspondingly reduced: incentives 2; L4 17; Fast mode
+  2 architecture tasks; Market 18 total plus 3 architecture tasks; second job
+  33 combined tasks; L5 27 per job after the second-career unlock; frontier
+  97 combined tasks with a second job. Checkpoints remain earned, not timer-gated.
+- Rewards per difficulty are 15 instead of 5, compensating for fewer deliveries.
+  L4/L5 multipliers remain 100×/600×. Boss income projection per real second,
+  model/token multipliers, purchase prices, and \$5/s wages are unchanged.
+  Base wages alone fund the first \$200 split in 40 seconds.
 - The $4.242M victory threshold includes cash, trading USD, and BTC at its current
   market price, without double-counting transfers. Both endings freeze gameplay.
 - Shorts shuffles four remotely hosted GIPHY MP4 meme loops, recycles five cards

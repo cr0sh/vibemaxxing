@@ -291,7 +291,7 @@ const APPROVAL_DELAY_MAX_SECONDS = 6
 const DELIVERY_ASSIGNMENT_ACCELERATION_SECONDS = 15
 const REWARD_DECAY_INTERVAL_SECONDS = 30
 // Slower task issuance needs a proportionally longer refill window to preserve scarcity.
-export const TOKEN_REFILL_INTERVAL_SECONDS = 360
+export const TOKEN_REFILL_INTERVAL_SECONDS = 420
 const INACTIVITY_MAX_DECAY = 16
 const ENERGY_DECAY_EPSILON = 1e-9
 
@@ -993,6 +993,7 @@ export function gameNetWorth(state: Pick<GameState, 'money' | 'market'>): number
     ? market.btc * market.price
     : 0
   const tradingUsd = market !== null && Number.isFinite(market.usd) ? market.usd : 0
+  const cash = Number.isFinite(state.money) ? state.money : 0
   return cash + tradingUsd + markedBtc
 }
 
