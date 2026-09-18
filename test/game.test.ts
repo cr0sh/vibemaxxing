@@ -20,7 +20,7 @@ import {
   type GameState,
   type WorkTask,
   upgradePrice,
-}
+} from '../src/game'
 function hire(seed = 12345): GameState {
   const started = gameReducer(initialGame, { type: 'start', seed })
   const offered = gameReducer(started, { type: 'submit', roll: 0, companyIndex: 0 })
@@ -797,7 +797,7 @@ describe('developer previews', () => {
     expect(tiro.energy).toBe(100)
     expect(tiro.tokens).toBe(MAX_TOKENS)
     expect(tiro.money).toBe(1_000)
-    expect(tiro.failure).toBeNull()
+    expect(tiro.tasks.every((task) => task.assignedAt === 0 && task.deadlineAt > 0)).toBe(true)
     expect(tiro.watercoolerUnlocked).toBe(true)
     expect(tiro.watercoolerRead).toBe(true)
     expect(tiro.completedTasks).toBe(0)
