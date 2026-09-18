@@ -19,6 +19,9 @@ export type TaskStatus = 'assigned' | 'working' | 'approval' | 'blocked' | 'arti
 export type TerminalId = 'terminal' | 'terminal-2' | 'spark' | 'spark-ultra'
 export type TerminalUpgrade = 'split' | 'yolo' | 'terminal'
 
+export type ShopItemId = 'split' | 'yolo' | 'terminal' | 'tokens' | 'fast-mode' | 'spark' | 'spark-ultra' | 'advanced-model' | 'mercury'
+export const SHOP_ITEM_IDS: readonly ShopItemId[] = ['split', 'yolo', 'terminal', 'tokens', 'fast-mode', 'spark', 'spark-ultra', 'advanced-model', 'mercury']
+
 export const TOKEN_PACK_COUNTS = [1, 5, 10, 100] as const
 export type TokenPackCount = (typeof TOKEN_PACK_COUNTS)[number]
 
@@ -136,6 +139,7 @@ export type GameState = {
   energy: number
   tokens: number
   money: number
+  shopDiscoveries: ShopItemId[]
   elapsed: number
   tickRemainder: number
   tasks: WorkTask[]
@@ -828,6 +832,7 @@ function createHiredState(state: GameState): GameState {
     ...state,
     stage: 'hired',
     energy: MAX_ENERGY,
+    shopDiscoveries: [],
     tickRemainder: 0,
     tasks: [],
     taskQueue: [],
@@ -928,7 +933,7 @@ function maybeUnlockProgression(state: GameState): GameState {
     }
     current = appendSocialPost(current, { id: 'frontier-model-unlocked', type: 'frontier-model', elapsed: current.elapsed, likes: 0 })
   }
-  return appendFeatureAnnouncements(current)
+  return discoverShopProducts(appendFeatureAnnouncements(current))
 }
 
 function lose(state: GameState, failure: string, reason: 'deadline' | 'energy', jobId: JobId = 'primary'): GameState {
@@ -940,7 +945,7 @@ function lose(state: GameState, failure: string, reason: 'deadline' | 'energy', 
 
 export const initialGame: GameState = {
   stage: 'ready', tiroAvatar: TIRO_AVATARS[0]!, submissions: 0, company: null, lastResult: null, energy: MAX_ENERGY,
-  tokens: MAX_TOKENS, money: 0, elapsed: 0, tickRemainder: 0, tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }],
+  tokens: MAX_TOKENS, money: 0, shopDiscoveries: [], elapsed: 0, tickRemainder: 0, tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }],
   completedTasks: 0, level: 3, completedArchitectureTasks: 0, reasoningUnlocked: false, fastModeUnlocked: false,
   watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
   socialPosts: [], nextTaskId: 1, nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
@@ -1015,7 +1020,7 @@ function updateSparkDelivery(state: GameState): GameState {
     }
     next = appendSocialPost(next, { id: 'spark-ultra-delivered', type: 'spark-ultra-delivered', elapsed: next.elapsed, likes: 0 })
   }
-  return next
+  return discoverShopProducts(next)
 }
 
 function taskSlotFree(state: GameState, terminalId: TerminalId, slot: number, ignoreTaskId?: number): boolean {
@@ -1157,7 +1162,7 @@ function completeDelivery(state: GameState, task: WorkTask, forwardingCost: numb
       fastModeUnlocked: delivered.fastModeUnlocked || nextArchitecture >= 5,
     }
   }
-  return maybeUnlockProgression(delivered)
+  return discoverShopProducts(maybeUnlockProgression(delivered))
 }
 function terminalWorkload(state: GameState, terminalId: TerminalId): number {
   return state.tasks.reduce((total, task) => total + Number(
@@ -1318,6 +1323,7 @@ function tickHired(state: GameState, seconds: number): GameState {
         expectation: bossExpectationAt(current.elapsed),
       }
       if (current.secondJob !== null) current = withJob(current, 'secondary', (job) => ({ ...job, expectation: bossExpectationAt(current.elapsed) }))
+      current = discoverShopProducts(current)
       current = autoBuyTokens(current)
       current = updateSparkDelivery(current)
       const overdue = current.tasks.find((task) => current.elapsed >= task.deadlineAt)
@@ -1368,6 +1374,82 @@ export function upgradePrice(state: GameState, upgrade: TerminalUpgrade, termina
   const basePrice = SPLIT_PRICES[terminal.slots - 1]
   return basePrice === undefined ? null : terminalId === 'terminal-2' ? basePrice * SECONDARY_PRICE_MULTIPLIER : basePrice
 }
+function affordableUpgrade(state: GameState, upgrade: Exclude<TerminalUpgrade, 'terminal'>): boolean {
+  if (state.stage !== 'hired' || !Number.isFinite(state.money)) return false
+  return state.terminals.some((terminal) => {
+    if (upgrade === 'split' && !cloudTerminalId(terminal.id)) return false
+    const price = upgradePrice(state, upgrade, terminal.id)
+    return price !== null && Number.isFinite(price) && state.money >= price
+  })
+}
+
+function affordableTokens(state: GameState): boolean {
+  if (state.stage !== 'hired' || !Number.isFinite(state.money)) return false
+  const amount = tokenPurchaseAmount(state.tokens, 1) || TOKEN_PURCHASE_AMOUNT
+  if (!Number.isFinite(amount) || amount <= 0) return false
+  const cost = tokenPurchaseCost(amount, state)
+  return Number.isFinite(cost) && cost > 0 && state.money >= cost
+}
+
+function shopItemEligible(state: GameState, item: ShopItemId): boolean {
+  const affordableMoney = (price: number): boolean => state.stage === 'hired' && Number.isFinite(state.money) && state.money >= price
+  switch (item) {
+    case 'split':
+      return state.terminals.some((terminal) => cloudTerminalId(terminal.id) && terminal.slots > 1) ||
+        affordableUpgrade(state, 'split')
+    case 'yolo':
+      return state.terminals.some((terminal) => terminal.yolo) || affordableUpgrade(state, 'yolo')
+    case 'terminal': {
+      const price = upgradePrice(state, 'terminal', 'terminal')
+      return getTerminal(state, 'terminal-2') !== undefined || (price !== null && affordableMoney(price))
+    }
+    case 'tokens':
+      return affordableTokens(state)
+    case 'fast-mode':
+      return state.stage === 'hired' && state.fastModeUnlocked
+    case 'spark':
+      return state.sparkPurchasedAt !== null || getTerminal(state, 'spark') !== undefined || (
+        state.stage === 'hired' &&
+        state.market !== null &&
+        state.sparkAnnouncedAt !== null &&
+        state.sparkPurchasedAt === null &&
+        state.elapsed >= state.sparkAnnouncedAt + 10 &&
+        affordableMoney(SPARK_PRICE)
+      )
+    case 'spark-ultra':
+      return state.sparkUltraPurchasedAt !== null || getTerminal(state, 'spark-ultra') !== undefined || (
+        state.stage === 'hired' &&
+        state.market !== null &&
+        state.sparkUltraAnnouncedAt !== null &&
+        state.sparkUltraPurchasedAt === null &&
+        state.elapsed >= state.sparkUltraAnnouncedAt + 10 &&
+        affordableMoney(SPARK_ULTRA_PRICE)
+      )
+    case 'advanced-model':
+      return state.advancedModelUnlocked || (
+        state.stage === 'hired' &&
+        state.advancedModelAnnouncedAt !== null &&
+        affordableMoney(ADVANCED_MODEL_PRICE)
+      )
+    case 'mercury':
+      return state.mercuryOwned || (
+        state.stage === 'hired' &&
+        state.advancedModelUnlocked &&
+        affordableMoney(MERCURY_PRICE)
+      )
+  }
+}
+
+function discoverShopProducts(state: GameState): GameState {
+  let discoveries = state.shopDiscoveries
+  for (const item of SHOP_ITEM_IDS) {
+    if (discoveries.includes(item) || !shopItemEligible(state, item)) continue
+    if (discoveries === state.shopDiscoveries) discoveries = [...discoveries]
+    discoveries.push(item)
+  }
+  return discoveries === state.shopDiscoveries ? state : { ...state, shopDiscoveries: discoveries }
+}
+
 
 function resetEmploymentPreview(state: GameState, stage: 'applying' | 'offer'): GameState {
   return {
@@ -1377,6 +1459,7 @@ function resetEmploymentPreview(state: GameState, stage: 'applying' | 'offer'): 
     tickRemainder: 0,
     tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }], completedTasks: 0, level: 3, completedArchitectureTasks: 0,
     reasoningUnlocked: false, fastModeUnlocked: false, watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
+    shopDiscoveries: [],
     socialPosts: [], nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
     secondJob: null, secondJobUnlocked: false, secondJobApplications: 0, secondJobOffer: null, advancedModelAnnouncedAt: null,
     advancedModelUnlocked: false, frontierModelUnlocked: false, frontierUnlockedAt: null, monopolyAnnouncedAt: null,
@@ -1399,7 +1482,7 @@ function previewHired(state: GameState): GameState {
   })
 }
 
-export function gameReducer(state: GameState, action: GameAction): GameState {
+function reduceGame(state: GameState, action: GameAction): GameState {
   if ((state.stage === 'lost' || state.stage === 'won') && action.type !== 'reset' && action.type !== 'dev-jump') return state
   switch (action.type) {
     case 'start':
@@ -1778,4 +1861,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     default:
       return state
   }
+}
+
+export function gameReducer(state: GameState, action: GameAction): GameState {
+  const discovered = discoverShopProducts(state)
+  const next = reduceGame(discovered, action)
+  return next === discovered ? state : discoverShopProducts(next)
 }

@@ -59,6 +59,9 @@
 
 .shop-upgrade-product[draggable='true'] {
   cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .shop-upgrade-product[draggable='true']:active {

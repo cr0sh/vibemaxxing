@@ -177,8 +177,8 @@ type DropErrorState = {
   clearError: () => void
 }
 
-function useDropError(): DropErrorState {
-  const [error, setError] = useState<string | null>(null)
+function useDropError(taskId?: number): DropErrorState {
+  const [error, setError] = useState<{ reason: string; taskId?: number } | null>(null)
   const timeoutRef = useRef<number | undefined>(undefined)
   const clearError = useCallback(() => {
     clearTimeout(timeoutRef.current)
@@ -187,16 +187,16 @@ function useDropError(): DropErrorState {
   }, [])
   const showError = useCallback((reason: string) => {
     clearTimeout(timeoutRef.current)
-    setError(reason)
+    setError({ reason, taskId })
     timeoutRef.current = window.setTimeout(() => {
       timeoutRef.current = undefined
       setError(null)
     }, 4000)
-  }, [])
+  }, [taskId])
   useEffect(() => () => {
     clearTimeout(timeoutRef.current)
   }, [])
-  return { error, showError, clearError }
+  return { error: error?.taskId === taskId ? error?.reason ?? null : null, showError, clearError }
 }
 function nativeDragSource(event: DragEvent<HTMLElement>): DragDropSource | null {
   const types = event.dataTransfer.types
@@ -268,6 +268,14 @@ function terminalDropReason(
   targetTask?: WorkTask,
   targetHasIdleSlot = true,
 ): string | null {
+  if (source.kind === 'upgrade') {
+    if (source.id !== 'split' && source.id !== 'yolo' && source.id !== 'terminal') return null
+    if (state.stage !== 'hired') return 'This run has ended; upgrades can no longer be installed.'
+    const target = source.id === 'terminal' ? 'terminal' : terminalId
+    const price = upgradePrice(state, source.id, target)
+    if (price === null) return 'This upgrade is already installed or unavailable here.'
+    return state.money < price ? 'Not enough money to install this upgrade here.' : null
+  }
   return source.kind === 'task'
     ? taskForwardingReason(state, source, terminalId, fastMode, targetTask, targetHasIdleSlot)
     : artifactForwardingReason(state, source)
@@ -920,12 +928,15 @@ type TerminalLaneProps = {
   task: WorkTask | undefined
   yolo: boolean
   fastMode: boolean
+  windowError: string | null
+  clearWindowError: () => void
 }
 
-function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode }: TerminalLaneProps) {
+function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode, windowError, clearWindowError }: TerminalLaneProps) {
   const laneRef = useRef<HTMLElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
-  const { error, showError, clearError } = useDropError()
+  const { error, showError, clearError } = useDropError(task?.id)
+  const visibleError = error ?? windowError
   const taskDropVisible = state.stage === 'hired' && !task && isSourceActive('task')
 
   useDragDropTarget(laneRef, {
@@ -941,6 +952,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
       if (terminalDropReason(state, source, terminalId, fastMode, task) === null && Number.isInteger(id) && !task && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null) {
         dispatch({ type: 'start-task', id, terminalId, slot })
         clearError()
+        clearWindowError()
       }
     },
     onHover: () => focusDropWindow(laneRef.current),
@@ -949,15 +961,19 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
     const source = nativeDragSource(event)
     if (!source) return
     if (source.kind === 'upgrade') {
-      if (state.stage !== 'hired') return
       const upgrade = source.id
       if (upgrade !== 'split' && upgrade !== 'yolo' && upgrade !== 'terminal') return
       const terminalTarget = upgrade === 'terminal' ? 'terminal' : terminalId
-      if (upgradePrice(state, upgrade, terminalTarget) === null) return
       event.preventDefault()
       event.stopPropagation()
+      const reason = terminalDropReason(state, source, terminalId, fastMode, task)
+      if (reason !== null) {
+        showError(reason)
+        return
+      }
       dispatch({ type: 'buy-upgrade', upgrade, terminalId: terminalTarget, source: 'drag' })
       clearError()
+      clearWindowError()
       return
     }
     const reason = terminalDropReason(state, source, terminalId, fastMode, task)
@@ -974,6 +990,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
       dispatch({ type: 'start-task', id, terminalId, slot })
       clear()
       clearError()
+      clearWindowError()
     }
   }
 
@@ -989,19 +1006,8 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
       className={`employment-terminal-lane ${taskDropVisible ? 'employment-drop-active' : ''} ${task?.status === 'failed' ? 'employment-lane-failed' : ''}`}
       aria-label={`Terminal agent pane ${slot + 1}`}
       onDragOver={(event) => {
-        const source = nativeDragSource(event)
-        if (!source) return
-        if (source.kind === 'upgrade') {
-          const upgrade = source.id
-          const terminalTarget = upgrade === 'terminal' ? 'terminal' : terminalId
-          if (state.stage === 'hired' && (upgrade === 'split' || upgrade === 'yolo' || upgrade === 'terminal') && upgradePrice(state, upgrade, terminalTarget) !== null) {
-            event.preventDefault()
-            event.stopPropagation()
-            event.dataTransfer.dropEffect = 'move'
-          }
-          return
-        }
-        const reason = terminalDropReason(state, source, terminalId, fastMode, task)
+        // Native dragover hides payload values; validate the item on drop.
+        if (!nativeDragSource(event)) return
         event.preventDefault()
         event.stopPropagation()
         event.dataTransfer.dropEffect = 'move'
@@ -1060,8 +1066,8 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
           )}
         </div>
       )}
-      {error !== null && (
-        <p className="employment-drop-error" role="status" aria-live="polite">{error}</p>
+      {visibleError !== null && (
+        <p className="employment-drop-error" role="status" aria-live="polite">{visibleError}</p>
       )}
     </section>
   )
@@ -1088,10 +1094,9 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
     priority: 1,
     accepts: (source) => {
       if (source.kind === 'task') return terminalDropReason(state, source, terminalId, fastMode, undefined, idleSlot !== null) === null
-      return state.stage === 'hired' &&
-        source.kind === 'upgrade' &&
+      return source.kind === 'upgrade' &&
         (source.id === 'split' || source.id === 'yolo' || source.id === 'terminal') &&
-        upgradePrice(state, source.id, source.id === 'terminal' ? 'terminal' : terminalId) !== null
+        terminalDropReason(state, source, terminalId, fastMode) === null
     },
     rejectionReason: (source) => terminalDropReason(state, source, terminalId, fastMode, undefined, idleSlot !== null),
     onReject: showError,
@@ -1120,13 +1125,16 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
     const source = nativeDragSource(event)
     if (!source) return
     if (source.kind === 'upgrade') {
-      if (state.stage !== 'hired') return
       const upgrade = source.id
       if (upgrade !== 'split' && upgrade !== 'yolo' && upgrade !== 'terminal') return
       const terminalTarget = upgrade === 'terminal' ? 'terminal' : terminalId
-      if (upgradePrice(state, upgrade, terminalTarget) === null) return
       event.preventDefault()
       event.stopPropagation()
+      const reason = terminalDropReason(state, source, terminalId, fastMode)
+      if (reason !== null) {
+        showError(reason)
+        return
+      }
       dispatch({ type: 'buy-upgrade', upgrade, terminalId: terminalTarget, source: 'drag' })
       clearError()
       return
@@ -1149,22 +1157,10 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
   }
 
   const handleTerminalDragOver = (event: DragEvent<HTMLDivElement>) => {
-    const source = nativeDragSource(event)
-    if (!source) return
-    if (source.kind === 'upgrade') {
-      const upgrade = source.id
-      const target = upgrade === 'terminal' ? 'terminal' : terminalId
-      if (state.stage === 'hired' && (upgrade === 'split' || upgrade === 'yolo' || upgrade === 'terminal') && upgradePrice(state, upgrade, target) !== null) {
-        event.preventDefault()
-        event.stopPropagation()
-        event.dataTransfer.dropEffect = 'move'
-      }
-      return
-    }
-    const reason = terminalDropReason(state, source, terminalId, fastMode, undefined, idleSlot !== null)
+    if (!nativeDragSource(event)) return
     event.preventDefault()
     event.stopPropagation()
-    event.dataTransfer.dropEffect = reason === null ? 'move' : 'none'
+    event.dataTransfer.dropEffect = 'move'
   }
 
   const terminalLabel = isLocal ? terminalId === 'spark-ultra' ? 'Mapple Spark Ultra' : 'Mapple Spark' : terminalId === 'terminal-2' ? 'Terminal 2' : 'Terminal'
@@ -1204,6 +1200,8 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
             task={state.tasks.find((candidate) => candidate.terminalId === terminalId && candidate.slot === slot)}
             yolo={yolo}
             fastMode={fastMode}
+            windowError={error}
+            clearWindowError={clearError}
           />
         ))}
         <p className="terminal-prompt terminal-cursor">~ <span className="cursor-block" aria-hidden="true" /></p>
@@ -1215,9 +1213,6 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
             {isLocal ? `${AGENT_MODELS[model].label} model` : state.tokens >= MAX_TOKENS ? 'Balance full' : `Refill in ${formatSeconds(refillIn)}`}
           </span>
         </div>
-        {error !== null && (
-          <p className="employment-drop-error" role="status" aria-live="polite">{error}</p>
-        )}
       </div>
       <DragDropHint visible={taskDropVisible || upgradeDropVisible}>
         {taskDropVisible ? 'Drop task here' : 'Drop upgrade here'}

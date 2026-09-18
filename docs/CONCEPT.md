@@ -28,6 +28,10 @@ The flow of the game is:
     Forwarded messenger tasks are dimmed and explicitly labeled.
     A top-of-general reminder locates pending starts, retries, and artifact
     deliveries; reading or scrolling does not resolve it.
+    Rejected drops show a red helper at the bottom of the targeted terminal pane
+    for four seconds. An occupied pane never redirects the task into an idle
+    sibling; undelivered artifacts, pending approvals, and insufficient tokens
+    explain why forwarding is unavailable.
   - The terminal is running a coding agent. It should resemble like Claude Code.
     When idle, attachments can be drag-and-dropped onto it and it'll be
     "working". The UI should show something like _thinking..._ or something
@@ -38,6 +42,13 @@ The flow of the game is:
   - Each employed job pays you \$5 every second.
 - The terminal can be "upgraded" with several features. Features are purchased
   by drag-and-dropping the item icon from the shop UI to the terminal.
+  Mouse, touch, and stylus drops install the upgrade on the target terminal.
+  Shop products appear the first time their prerequisites and purchase price
+  are met, then remain visible after spending. Discovery is per product, not
+  per split tier or target terminal. Token packs use the smallest positive
+  refill price, or one nominal pack when inventory is full.
+  Newly discovered products notify the Shop dock icon; balance fluctuations
+  and already-discovered upgrades do not. Viewing Shop acknowledges its updates.
   - Split window(\$200, $400, $1000): The window can be split at max 4. Agents
     can run simultaneously.
   - Yolo mode($420): By default, the terminal asks for command approval(yes/no) for
