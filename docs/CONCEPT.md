@@ -184,6 +184,10 @@ The flow of the game is:
   background updates and newly available unopened apps can still attract attention.
 - Messenger and timeline updates use distinct original synthesized notification
   chimes, not copied phone recordings. Both respect the existing sound mute.
-- SNS Like activation emits a short heart-and-sparkle burst without changing
-  giveaway odds. Repeated likes restart bounded feedback; reduced motion uses
-  a stationary fade. The watercooler social action uses high-contrast text.
+- The New game button wiggles continuously while hovered and stops on pointer
+  leave; reduced-motion preferences disable the loop.
+- SNS Like feedback follows the actual giveaway result without changing odds:
+  misses shake the button sideways; successful token resets emit a short
+  heart-and-sparkle burst. Repeated likes restart bounded feedback without
+  moving keyboard focus. Reduced motion skips shaking and keeps the stationary
+  success fade. The watercooler social action uses high-contrast text.
