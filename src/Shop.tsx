@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Dispatch } from 'react'
 import {
   ADVANCED_MODEL_PRICE,
+  AGENT_MODELS,
   MAX_TOKENS,
   MERCURY_PRICE,
   SPARK_PRICE,
@@ -133,7 +134,7 @@ function SparkProduct({ state, dispatch }: ShopProps) {
     detail = `Shop opens in ${durationLabel((availableAt ?? state.elapsed) - state.elapsed)} · ${moneyLabel(SPARK_PRICE)}.`
     buttonLabel = `Opens ${durationLabel((availableAt ?? state.elapsed) - state.elapsed)}`
   } else if (delivered) {
-    detail = 'Delivered · 2 fixed Reason panes · no cloud task tokens.'
+    detail = `Delivered · 2 fixed ${AGENT_MODELS.reasoning.label} panes · no cloud task tokens.`
     buttonLabel = 'Owned'
   } else if (purchased) {
     const deliveryAt = state.sparkDeliveryAt
@@ -142,9 +143,9 @@ function SparkProduct({ state, dispatch }: ShopProps) {
       : `Paid ${moneyLabel(SPARK_PRICE)} · delivery in ${durationLabel(deliveryAt - state.elapsed)}.`
     buttonLabel = deliveryAt === null ? 'Delivering' : `ETA ${durationLabel(deliveryAt - state.elapsed)}`
   } else if (state.stage !== 'hired') {
-    detail = `${moneyLabel(SPARK_PRICE)} · 2 Reason panes · no cloud task tokens.`
+    detail = `${moneyLabel(SPARK_PRICE)} · 2 ${AGENT_MODELS.reasoning.label} panes · no cloud task tokens.`
   } else {
-    detail = `${moneyLabel(SPARK_PRICE)} · 2 Reason panes · no cloud task tokens.`
+    detail = `${moneyLabel(SPARK_PRICE)} · 2 ${AGENT_MODELS.reasoning.label} panes · no cloud task tokens.`
     buttonLabel = state.money >= SPARK_PRICE ? `Buy · ${moneyLabel(SPARK_PRICE)}` : `Need ${moneyLabel(SPARK_PRICE)}`
   }
 
@@ -171,10 +172,10 @@ function AdvancedModelProduct({ state, dispatch }: ShopProps) {
     if (canBuy) dispatch({ type: 'buy-model', model: 'advanced' })
   }
 
-  let detail = `${moneyLabel(ADVANCED_MODEL_PRICE)} · handles harder tasks at Reason speed.`
+  let detail = `${moneyLabel(ADVANCED_MODEL_PRICE)} · handles harder tasks at ${AGENT_MODELS.reasoning.label} speed.`
   let buttonLabel = 'Unavailable'
   if (state.advancedModelUnlocked) {
-    detail = 'Handles harder tasks at Reason speed.'
+    detail = `Handles harder tasks at ${AGENT_MODELS.reasoning.label} speed.`
     buttonLabel = 'Owned'
   } else if (state.stage === 'hired' && state.advancedModelAnnouncedAt !== null) {
     buttonLabel = state.money >= ADVANCED_MODEL_PRICE
@@ -216,8 +217,8 @@ function MercuryProduct({ state, dispatch }: ShopProps) {
         <p>Your most intelligent AI agent.</p>
         <p>
           {state.mercuryOwned
-            ? 'Owned · 300K tokens per automatic handoff, both directions. Mercury does not approve or retry tasks.'
-            : `${moneyLabel(MERCURY_PRICE)} · automatic handoffs cost 300K tokens each way.`}
+            ? 'Owned · 300K per handoff. Auto-retry after 10s; approvals stay manual.'
+            : `${moneyLabel(MERCURY_PRICE)} · 300K each way, including a reserved return fee.`}
         </p>
       </div>
       {state.mercuryOwned ? (

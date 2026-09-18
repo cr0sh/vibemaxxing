@@ -30,7 +30,7 @@ export const AGENT_MODELS: Record<AgentModelId, {
   tokenMultiplier: number
 }> = {
   basic: { label: 'Basic', intelligence: 1, speed: 1, tokenMultiplier: 1 },
-  reasoning: { label: 'Tiro Reason', intelligence: 2, speed: 0.6, tokenMultiplier: 1 },
+  reasoning: { label: 'ConvexLM Reasoning', intelligence: 2, speed: 0.6, tokenMultiplier: 1 },
   advanced: { label: 'ConvexLM Pro', intelligence: 3, speed: 0.6, tokenMultiplier: 1 },
   frontier: { label: 'Tiro Max', intelligence: 4, speed: 0.6, tokenMultiplier: 2 },
 }
@@ -78,6 +78,8 @@ export type WorkTask = TaskDescriptor & {
    * is still in flight (including a completed artifact waiting to be returned).
    */
   mercuryAuto?: boolean
+  /** Elapsed time at which the latest attempt failed, waiting for a retry. */
+  failedAt: number | null
   attempt: number
   status: TaskStatus
   progress: number
@@ -86,12 +88,12 @@ export type WorkTask = TaskDescriptor & {
   slot: number | null
   approvalPrompt: string | null
 }
-
 export type EmploymentTaskSnapshot = Pick<WorkTask,
   | 'id' | 'jobId' | 'title' | 'description' | 'difficulty' | 'artifactName' | 'kind' | 'complexity'
   | 'deadlineAt' | 'startedAt' | 'assignedAt' | 'baseReward' | 'model' | 'fastMode' | 'local'
-  | 'attempt' | 'status' | 'progress'
+  | 'attempt' | 'status' | 'progress' | 'failedAt'
 >
+
 
 type JobMessage = { jobId: JobId }
 export type EmploymentMessage =
@@ -113,6 +115,7 @@ export type SocialPost = {
 
 export type GameState = {
   stage: Stage
+  tiroAvatar: string
   submissions: number
   company: string | null
   lastResult: 'rejected' | null
@@ -131,7 +134,6 @@ export type GameState = {
   watercoolerUnlocked: boolean
   watercoolerRead: boolean
   socialInstalledAt: number | null
-  resetClaimed: boolean
   socialPosts: SocialPost[]
   nextTaskId: number
   nextTaskAt: number
@@ -170,10 +172,10 @@ export type GameAction =
   | { type: 'buy-upgrade'; upgrade: TerminalUpgrade; terminalId: TerminalId }
   | { type: 'read-watercooler' }
   | { type: 'install-social' }
-  | { type: 'claim-token-reset' }
   | { type: 'like-reset' }
   | { type: 'set-fast-mode'; terminalId: TerminalId; enabled: boolean }
   | { type: 'retry-task'; id: number }
+  | { type: 'retry-all' }
   | { type: 'buy-spark' }
   | { type: 'buy-model'; model: 'advanced' }
   | { type: 'set-terminal-model'; terminalId: TerminalId; model: AgentModelId }
@@ -200,6 +202,10 @@ export const TOKEN_PURCHASE_COST = 100
 const TASK_REWARD_PER_DIFFICULTY = 5
 // A shorter cycle preserves the 50-delivery promotion while bringing the first loop near five minutes.
 const BASELINE_TASK_CYCLE_SECONDS = 6
+const OPENING_GRACE_SECONDS = 180
+const OPENING_ASSIGNMENT_BONUS_SECONDS = 4
+const OPENING_APPROVAL_BONUS_SECONDS = 4
+const OPENING_DEADLINE_BONUS = 0.5
 const INITIAL_WAGE_ONLY_SECONDS = 90
 const AVERAGE_TASK_DIFFICULTY = 9
 const BOSS_BUDGET_ANCHOR = 620
@@ -217,6 +223,7 @@ const ADDITIONAL_TERMINAL_PRICE = 1_000
 const WATERCOOLER_THRESHOLD = MAX_TOKENS * 0.2
 const SOCIAL_LOTTERY_DELAY = 5
 const TIRO_PREVIEW_TOKENS = 1_900_000
+export const MERCURY_RETRY_DELAY = 10
 export const SPARK_PRICE = 15_000
 export const ADVANCED_MODEL_PRICE = 5_000
 export const MERCURY_PRICE = 8_000
@@ -288,6 +295,12 @@ const APPROVAL_PROMPTS: readonly string[] = [
 function normalizeSeed(seed: number): number {
   return Number.isFinite(seed) ? Math.trunc(seed) >>> 0 : 1
 }
+const TIRO_AVATARS: readonly string[] = ['🧑🏻‍💻', '👩🏼‍💻', '👨🏽‍💻', '🧑🏾‍💻', '👩🏿‍💻', '👨🏻‍💻']
+function avatarForSeed(seed: number): string {
+  const normalized = normalizeSeed(seed)
+  const mixed = Math.imul(normalized ^ (normalized >>> 16), 0x45d9f3b) >>> 0
+  return TIRO_AVATARS[mixed % TIRO_AVATARS.length] ?? TIRO_AVATARS[0]!
+}
 function nextRandom(rng: number): readonly [number, number] {
   let value = (normalizeSeed(rng) + 0x6d2b79f5) >>> 0
   value = Math.imul(value ^ (value >>> 15), value | 1)
@@ -299,13 +312,18 @@ function drawInteger(rng: number, minimum: number, maximum: number): readonly [n
   const [next, unit] = nextRandom(rng)
   return [next, minimum + Math.floor(unit * (maximum - minimum + 1))]
 }
-function drawApprovalCheckpoint(rng: number): readonly [number, number, string] {
-  const [delayRng, approvalDelay] = drawInteger(rng, 1, 5)
-  const [nextRng, promptIndex] = drawInteger(delayRng, 0, APPROVAL_PROMPTS.length - 1)
-  return [nextRng, approvalDelay, APPROVAL_PROMPTS[promptIndex] ?? APPROVAL_PROMPTS[0] ?? '']
-}
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value))
+}
+function openingGraceAt(elapsed: number): number {
+  const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
+  return 1 - clamp(safeElapsed / OPENING_GRACE_SECONDS, 0, 1)
+}
+function drawApprovalCheckpoint(rng: number, elapsed = 0): readonly [number, number, string] {
+  const [delayRng, normalDelay] = drawInteger(rng, 2, 6)
+  const approvalDelay = normalDelay + Math.round(OPENING_APPROVAL_BONUS_SECONDS * openingGraceAt(elapsed))
+  const [nextRng, promptIndex] = drawInteger(delayRng, 0, APPROVAL_PROMPTS.length - 1)
+  return [nextRng, approvalDelay, APPROVAL_PROMPTS[promptIndex] ?? APPROVAL_PROMPTS[0] ?? '']
 }
 function projectedGrossAt(elapsed: number): number {
   const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
@@ -315,16 +333,20 @@ function projectedGrossAt(elapsed: number): number {
 }
 function bossExpectationAt(elapsed: number): number {
   const ratio = projectedGrossAt(elapsed) / BOSS_BUDGET_ANCHOR
-  return clamp(0.2 + 0.8 * ratio / (1 + ratio), MIN_EXPECTATION, MAX_EXPECTATION)
+  const target = 0.2 + 0.8 * ratio / (1 + ratio)
+  return clamp(target * (1 - 0.35 * openingGraceAt(elapsed)), MIN_EXPECTATION, MAX_EXPECTATION)
 }
-function assignmentIntervalAt(elapsed: number, expanded = false): number {
+function assignmentIntervalAt(elapsed: number, expanded = false, activeTasks = 0): number {
   const ratio = projectedGrossAt(elapsed) / BOSS_BUDGET_ANCHOR
-  return Math.max(expanded ? 5 : MIN_ASSIGNMENT_INTERVAL, Math.ceil(BASELINE_TASK_CYCLE_SECONDS / (1 + ratio)))
+  const target = Math.max(expanded ? 5 : MIN_ASSIGNMENT_INTERVAL, Math.ceil(BASELINE_TASK_CYCLE_SECONDS / (1 + ratio)))
+  const overload = Math.max(0, activeTasks - (expanded ? 2 : 1)) * 2
+  return Math.max(expanded ? 5 : MIN_ASSIGNMENT_INTERVAL, Math.ceil(target + OPENING_ASSIGNMENT_BONUS_SECONDS * openingGraceAt(elapsed) + overload))
 }
 function deadlineFor(difficulty: number, expectation: number, elapsed: number, complexity: number): number {
   const safeExpectation = Math.max(MIN_EXPECTATION, Number.isFinite(expectation) ? expectation : 0.2)
   const executionBudget = difficulty / AGENT_MODELS.reasoning.speed * Math.max(2, complexity) + 8
-  return elapsed + Math.max((1.5 * difficulty) / safeExpectation, executionBudget)
+  const graceMultiplier = 1 + OPENING_DEADLINE_BONUS * openingGraceAt(elapsed)
+  return elapsed + Math.max((1.5 * difficulty) / safeExpectation, executionBudget) * graceMultiplier
 }
 function roundedProgress(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000
@@ -446,6 +468,7 @@ function snapshotTask(task: WorkTask): EmploymentTaskSnapshot {
     attempt: task.attempt,
     status: task.status,
     progress: task.progress,
+    failedAt: task.failedAt,
   }
 }
 
@@ -546,8 +569,7 @@ export function canFundTaskAttempt(
   } else if (state.reasoningUnlocked) {
     model = 'reasoning'
   }
-  const assignedReservations = assignedTaskReservations(state, task)
-  const otherReservations = assignedReservations + mercuryReturnReservations(state.tasks, state.mercuryEnabled !== false)
+  const otherReservations = assignedTaskReservations(state, task) + mercuryReturnReservations(state.tasks, state.mercuryEnabled !== false)
   const cost = taskTokenCost(task, fastMode, model, local)
   return Number.isFinite(cost) && cost >= 0 && Number.isFinite(otherReservations) &&
     Number.isFinite(state.tokens) && state.tokens >= 0 && (local || state.tokens >= cost + otherReservations)
@@ -564,6 +586,19 @@ export function canFundMercuryAttempt(state: GameState, task: WorkTask, terminal
   const reserved = mercuryReturnReservations(state.tasks)
   const assigned = assignedTaskReservations(state, task)
   const required = MERCURY_FORWARD_COST + attemptCost + MERCURY_FORWARD_COST + reserved + assigned
+  return Number.isFinite(attemptCost) && attemptCost >= 0 && Number.isFinite(required) &&
+    Number.isFinite(state.tokens) && state.tokens >= required
+}
+export function canFundMercuryRetry(state: GameState, task: WorkTask): boolean {
+  if (!state.mercuryOwned || !state.mercuryEnabled || task.status !== 'failed' || task.failedAt === null || task.terminalId === null || task.slot === null) return false
+  const terminal = getTerminal(state, task.terminalId)
+  if (terminal === undefined || task.slot < 0 || task.slot >= terminal.slots || !taskSlotFree(state, task.terminalId, task.slot, task.id)) return false
+  const local = task.terminalId === 'spark'
+  const fastMode = local ? false : terminal.fastMode === true
+  const model = local ? 'reasoning' : terminalModel(state, task.terminalId)
+  const attemptCost = taskTokenCost(task, fastMode, model, local)
+  const required = attemptCost + MERCURY_FORWARD_COST +
+    mercuryReturnReservations(state.tasks) + assignedTaskReservations(state, task)
   return Number.isFinite(attemptCost) && attemptCost >= 0 && Number.isFinite(required) &&
     Number.isFinite(state.tokens) && state.tokens >= required
 }
@@ -596,6 +631,7 @@ function issueAvailableAssignments(state: GameState): GameState {
     model: null,
     fastMode: false,
     local: false,
+    failedAt: null,
     attempt: 0,
     status: 'assigned',
     progress: 0,
@@ -608,7 +644,14 @@ function issueAvailableAssignments(state: GameState): GameState {
     ...current,
     tasks: [...current.tasks, task],
     taskQueue: current.taskQueue.filter((_, index) => index !== dueIndex),
-  }, descriptor.jobId, (jobState) => ({ ...jobState, nextTaskAt: current.elapsed + assignmentIntervalAt(current.elapsed, current.secondJobUnlocked) }))
+  }, descriptor.jobId, (jobState) => ({
+    ...jobState,
+    nextTaskAt: current.elapsed + assignmentIntervalAt(
+      current.elapsed,
+      current.secondJobUnlocked,
+      current.tasks.filter((candidate) => candidate.jobId === descriptor.jobId && candidate.status !== 'artifact').length + 1,
+    ),
+  }))
   return appendMessage(next, {
     id: `assignment-${task.id}`,
     type: 'assignment',
@@ -627,7 +670,6 @@ function createHiredState(state: GameState): GameState {
     tasks: [],
     taskQueue: [],
     terminals: [{ ...PRIMARY_TERMINAL }],
-    completedTasks: 0,
     level: 3,
     completedArchitectureTasks: 0,
     reasoningUnlocked: false,
@@ -635,7 +677,6 @@ function createHiredState(state: GameState): GameState {
     watercoolerUnlocked: false,
     watercoolerRead: false,
     socialInstalledAt: null,
-    resetClaimed: false,
     socialPosts: [],
     nextTaskId: 1,
     nextTaskAt: 0,
@@ -703,12 +744,11 @@ function lose(state: GameState, failure: string, jobId: JobId = 'primary'): Game
   const lost = { ...state, stage: 'lost' as const, failure }
   return appendMessage(lost, { id: 'firing', type: 'firing', jobId, elapsed: state.elapsed, failure })
 }
-
 export const initialGame: GameState = {
-  stage: 'ready', submissions: 0, company: null, lastResult: null, energy: MAX_ENERGY,
+  stage: 'ready', tiroAvatar: TIRO_AVATARS[0]!, submissions: 0, company: null, lastResult: null, energy: MAX_ENERGY,
   tokens: MAX_TOKENS, money: 0, elapsed: 0, tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }],
   completedTasks: 0, level: 3, completedArchitectureTasks: 0, reasoningUnlocked: false, fastModeUnlocked: false,
-  watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null, resetClaimed: false,
+  watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
   socialPosts: [], nextTaskId: 1, nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
   expectation: 0.2, rng: 1, secondJob: null, secondJobUnlocked: false, secondJobApplications: 0,
   secondJobOffer: null, advancedModelAnnouncedAt: null, advancedModelUnlocked: false, frontierModelUnlocked: false,
@@ -734,9 +774,9 @@ function advanceTask(task: WorkTask, elapsed: number, terminals: readonly Termin
   if (progress >= task.difficulty - 0.000001) {
     const completed = { ...task, progress: task.difficulty, nextApprovalAt: 0, approvalPrompt: null }
     const successChance = taskSuccessChance(task, model)
-    if (successChance === 1) return [{ ...completed, status: 'artifact' }, rng]
+    if (successChance === 1) return [{ ...completed, status: 'artifact', failedAt: null }, rng]
     const [nextRng, successRoll] = nextRandom(rng)
-    return [{ ...completed, status: successRoll < successChance ? 'artifact' : 'failed' }, nextRng]
+    return [{ ...completed, status: successRoll < successChance ? 'artifact' : 'failed', failedAt: successRoll < successChance ? null : elapsed }, nextRng]
   }
   const yolo = task.terminalId !== null && terminals.some((terminal) => terminal.id === task.terminalId && terminal.yolo)
   if (yolo) return [{ ...task, progress, nextApprovalAt: 0 }, rng]
@@ -776,7 +816,7 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
   let nextApprovalAt = 0
   let nextApprovalPrompt: string | null = null
   if (!terminal.yolo) {
-    const drawn = drawApprovalCheckpoint(state.rng)
+    const drawn = drawApprovalCheckpoint(state.rng, state.elapsed)
     nextRng = drawn[0]
     nextApprovalAt = state.elapsed + drawn[1]
     nextApprovalPrompt = drawn[2]
@@ -795,6 +835,7 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
       fastMode,
       local,
       mercuryAuto: automatic,
+      failedAt: null,
       attempt: candidate.attempt + 1,
       status: 'working',
       progress: candidate.status === 'failed' ? 0 : candidate.progress,
@@ -864,6 +905,15 @@ function processMercury(state: GameState): GameState {
     if (delivered === current) continue
     if (artifact.mercuryAuto) reserved -= MERCURY_FORWARD_COST
     current = delivered
+  }
+  const retries = current.tasks
+    .filter((task) => task.status === 'failed' && task.failedAt !== null && current.elapsed >= task.failedAt + MERCURY_RETRY_DELAY)
+    .sort((a, b) => a.deadlineAt - b.deadlineAt || a.id - b.id)
+  for (const task of retries) {
+    if (task.terminalId === null || task.slot === null || !canFundMercuryRetry(current, task)) continue
+    const taskIndex = current.tasks.findIndex((candidate) => candidate.id === task.id)
+    const started = startTaskAttempt(current, taskIndex, task.terminalId, task.slot, true)
+    if (started !== current) return started
   }
   const candidates = current.tasks
     .filter((task) => task.status === 'assigned')
@@ -947,7 +997,7 @@ function resetEmploymentPreview(state: GameState, stage: 'applying' | 'offer'): 
     company: stage === 'offer' ? (state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null) : null,
     tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }], completedTasks: 0, level: 3, completedArchitectureTasks: 0,
     reasoningUnlocked: false, fastModeUnlocked: false, watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
-    resetClaimed: false, socialPosts: [], nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
+    socialPosts: [], nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
     secondJob: null, secondJobUnlocked: false, secondJobApplications: 0, secondJobOffer: null, advancedModelAnnouncedAt: null,
     advancedModelUnlocked: false, frontierModelUnlocked: false, sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null,
     mercuryOwned: false, mercuryEnabled: false, market: null,
@@ -956,13 +1006,22 @@ function resetEmploymentPreview(state: GameState, stage: 'applying' | 'offer'): 
 
 function previewHired(state: GameState): GameState {
   const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null
-  return createHiredState({ ...initialGame, company, elapsed: 0, rng: normalizeSeed(state.rng), money: 30_000 })
+  return createHiredState({
+    ...initialGame,
+    tiroAvatar: state.tiroAvatar,
+    company,
+    elapsed: 0,
+    rng: normalizeSeed(state.rng),
+    money: 30_000,
+  })
 }
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'start':
-      return state.stage === 'ready' ? { ...initialGame, stage: 'applying', rng: normalizeSeed(action.seed) } : state
+      return state.stage === 'ready'
+        ? { ...initialGame, stage: 'applying', tiroAvatar: avatarForSeed(action.seed), rng: normalizeSeed(action.seed) }
+        : state
     case 'submit': {
       if (state.stage !== 'applying' || state.energy < 3) return state
       const company = Number.isInteger(action.companyIndex) && action.companyIndex >= 0 && action.companyIndex < companies.length ? companies[action.companyIndex] ?? null : null
@@ -979,7 +1038,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'dev-jump': {
       if (action.stage === 'ready') return initialGame
       if (action.stage === 'tiro') {
-        const base = createHiredState({ ...initialGame, company: state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null, tokens: TIRO_PREVIEW_TOKENS, money: 1_000, rng: normalizeSeed(state.rng) })
+        const base = createHiredState({
+          ...initialGame,
+          tiroAvatar: state.tiroAvatar,
+          company: state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null,
+          tokens: TIRO_PREVIEW_TOKENS,
+          money: 1_000,
+          rng: normalizeSeed(state.rng),
+        })
         const tiro = { ...base, terminals: [{ ...base.terminals[0]!, slots: 2, yolo: true }] }
         return gameReducer({ ...tiro, watercoolerUnlocked: true, watercoolerRead: true }, { type: 'install-social' })
       }
@@ -1103,7 +1169,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (task.terminalId !== null && state.terminals.some((terminal) => terminal.id === task.terminalId && terminal.yolo)) {
         return { ...state, tasks: state.tasks.map((candidate, index) => index === taskIndex ? { ...candidate, status: 'working', nextApprovalAt: 0, approvalPrompt: null } : candidate) }
       }
-      const [nextRng, approvalDelay, approvalPrompt] = drawApprovalCheckpoint(state.rng)
+      const [nextRng, approvalDelay, approvalPrompt] = drawApprovalCheckpoint(state.rng, state.elapsed)
       return {
         ...state,
         tasks: state.tasks.map((candidate, index) => index === taskIndex
@@ -1126,13 +1192,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
     case 'read-watercooler':
       return state.stage === 'hired' && state.watercoolerUnlocked && !state.watercoolerRead ? { ...state, watercoolerRead: true } : state
-    case 'install-social':
+    case 'install-social': {
       if (state.stage !== 'hired' || !state.watercoolerUnlocked || state.socialInstalledAt !== null) return state
-      return appendFeatureAnnouncements(appendSocialPost({ ...state, socialInstalledAt: state.elapsed }, { id: 'campaign', type: 'campaign', elapsed: state.elapsed, likes: 0 }))
-    case 'claim-token-reset': {
-      if (state.stage !== 'hired' || state.socialInstalledAt === null || state.resetClaimed) return state
+      const installed = { ...state, socialInstalledAt: state.elapsed, tokens: MAX_TOKENS }
       const resetCount = state.socialPosts.reduce((count, post) => count + Number(post.type === 'reset'), 1)
-      return appendSocialPost({ ...state, tokens: MAX_TOKENS, resetClaimed: true }, { id: `reset-${resetCount}`, type: 'reset', elapsed: state.elapsed, likes: 0 })
+      const campaign = appendSocialPost(installed, { id: 'campaign', type: 'campaign', elapsed: state.elapsed, likes: 0 })
+      return appendFeatureAnnouncements(appendSocialPost(campaign, { id: `reset-${resetCount}`, type: 'reset', elapsed: state.elapsed, likes: 0 }))
     }
     case 'like-reset': {
       if (state.stage !== 'hired' || !state.socialPosts.some((post) => post.type === 'lottery')) return state
@@ -1157,6 +1222,23 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const terminal = getTerminal(state, task.terminalId)
       if (terminal === undefined || task.slot < 0 || task.slot >= terminal.slots || !taskSlotFree(state, task.terminalId, task.slot, task.id)) return state
       return startTaskAttempt(state, taskIndex, task.terminalId, task.slot)
+    }
+    case 'retry-all': {
+      if (state.stage !== 'hired') return state
+      let current = state
+      const failed = state.tasks
+        .filter((task) => task.status === 'failed')
+        .sort((a, b) => a.deadlineAt - b.deadlineAt || a.id - b.id)
+      for (const task of failed) {
+        const taskIndex = current.tasks.findIndex((candidate) => candidate.id === task.id)
+        const currentTask = taskIndex >= 0 ? current.tasks[taskIndex] : undefined
+        if (currentTask === undefined || currentTask.status !== 'failed' || currentTask.terminalId === null || currentTask.slot === null) continue
+        const terminal = getTerminal(current, currentTask.terminalId)
+        if (terminal === undefined || currentTask.slot < 0 || currentTask.slot >= terminal.slots || !taskSlotFree(current, currentTask.terminalId, currentTask.slot, currentTask.id)) continue
+        const started = startTaskAttempt(current, taskIndex, currentTask.terminalId, currentTask.slot)
+        if (started !== current) current = started
+      }
+      return current
     }
     case 'buy-upgrade': {
       const price = upgradePrice(state, action.upgrade, action.terminalId)
