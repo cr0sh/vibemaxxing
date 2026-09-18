@@ -431,6 +431,15 @@
   background: rgba(50, 31, 83, 0.4);
 }
 
+.employment-terminal-lanes:is(.panes-3, .panes-4) .employment-terminal-action-block {
+  margin-top: 0.65rem;
+}
+
+.employment-terminal-lanes:is(.panes-3, .panes-4) :is(.employment-approval-block, .employment-failed-block) {
+  gap: 0.35rem;
+  padding: 0.55rem;
+}
+
 .employment-terminal-action-block:has(> .employment-artifact-attachment) {
   padding: 0;
   border: 0;
@@ -935,8 +944,7 @@
 }
 
 .employment-delivery-meta,
-.employment-failed-summary,
-.employment-attempt-meta {
+.employment-failed-summary {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem 0.7rem;

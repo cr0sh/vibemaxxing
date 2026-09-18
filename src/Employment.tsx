@@ -783,11 +783,6 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
             <span>deadline {taskDeadline(task, state.elapsed)}</span>
             <span>{task.local ? 'Spark local' : taskModelLabel(task)}</span>
           </div>
-          {task.status !== 'failed' && task.baseReward > 0 && (
-            <div className="employment-attempt-meta">
-              <span><span aria-hidden="true">💰</span> {formatMoney(taskReward(task, state.elapsed))} now</span>
-            </div>
-          )}
 
           {task.status === 'approval' && !yolo && (
             <div className="employment-terminal-action-block employment-approval-block">
@@ -807,16 +802,16 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
 
           {task.status === 'failed' && (
             <div className="employment-terminal-action-block employment-failed-block">
-              <p className="terminal-muted">No artifact was produced. Retry charges the shown cost again and keeps this deadline.</p>
+              <p className="terminal-muted">This attempt failed. Retry keeps the deadline.</p>
               <button className="employment-terminal-button employment-retry-button" type="button" onClick={() => dispatch({ type: 'retry-task', id: task.id })} disabled={state.stage !== 'hired' || !canFundTaskAttempt(state, task, fastMode, terminalId)}>
-                Retry this attempt · {compactTokens.format(retryCost)} tokens
+                Retry · {compactTokens.format(retryCost)} tokens
               </button>
             </div>
           )}
 
           {task.status === 'artifact' && (
             <div className="employment-terminal-action-block">
-              <ArtifactAttachment state={state} task={task} elapsed={state.elapsed} disabled={state.stage !== 'hired'} />
+              <ArtifactAttachment state={state} task={task} elapsed={state.elapsed} disabled={state.stage !== 'hired'} compact />
             </div>
           )}
         </div>
