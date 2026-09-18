@@ -66,9 +66,15 @@
   overscroll-behavior-y: contain;
   scroll-behavior: smooth;
   scroll-snap-type: y mandatory;
-  scrollbar-color: rgba(188, 168, 255, 0.7) transparent;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   touch-action: pan-y;
+}
+
+.shorts-feed::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .shorts-feed:focus-visible {
