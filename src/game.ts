@@ -853,18 +853,17 @@ function completeDelivery(state: GameState, task: WorkTask, forwardingCost: numb
 function processMercury(state: GameState): GameState {
   if (!state.mercuryOwned || !state.mercuryEnabled) return state
   let current = state
-  while (true) {
-    const artifacts = current.tasks
-      .filter((task) => task.status === 'artifact')
-      .sort((a, b) => a.deadlineAt - b.deadlineAt || a.id - b.id)
-    const artifact = artifacts.find((task) => {
-      const reserved = mercuryReturnReservations(current.tasks)
-      const available = current.tokens - reserved
-      const ownReservation = task.mercuryAuto === true
-      return current.tokens >= MERCURY_FORWARD_COST && (ownReservation || available >= MERCURY_FORWARD_COST)
-    })
-    if (artifact === undefined) break
-    current = completeDelivery(current, artifact, MERCURY_FORWARD_COST)
+  const artifacts = current.tasks
+    .filter((task) => task.status === 'artifact')
+    .sort((a, b) => a.deadlineAt - b.deadlineAt || a.id - b.id)
+  let reserved = mercuryReturnReservations(current.tasks)
+  for (const artifact of artifacts) {
+    if (current.tokens < MERCURY_FORWARD_COST) break
+    if (!artifact.mercuryAuto && current.tokens - reserved < MERCURY_FORWARD_COST) continue
+    const delivered = completeDelivery(current, artifact, MERCURY_FORWARD_COST)
+    if (delivered === current) continue
+    if (artifact.mercuryAuto) reserved -= MERCURY_FORWARD_COST
+    current = delivered
   }
   const candidates = current.tasks
     .filter((task) => task.status === 'assigned')
@@ -993,7 +992,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           ...preview,
           tasks: [],
           taskQueue: [],
-          completedTasks: 55,
+          messages: preview.messages.filter((message) => message.type === 'welcome'),
+          nextTaskId: 1,
+          nextTaskAt: 0,
+          completedTasks: 60,
           completedArchitectureTasks: 8,
           level: 4,
           reasoningUnlocked: true,
@@ -1006,18 +1008,19 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             { id: 'terminal-2', slots: 4, yolo: true, fastMode: true, model: 'reasoning' },
           ],
         }
+        preview = gameReducer({ ...preview, watercoolerUnlocked: true, watercoolerRead: true }, { type: 'install-social' })
         preview = appendSocialPost(appendSocialPost(preview, { id: 'market-unlocked', type: 'market', elapsed: 0, likes: 0 }), { id: 'spark-announced', type: 'spark', elapsed: 0, likes: 0 })
         if (action.stage === 'market') return issueAvailableAssignments(preview)
         preview = {
           ...preview,
           elapsed: 30,
-          sparkPurchasedAt: 0,
-          sparkDeliveryAt: 0,
+          sparkPurchasedAt: 10,
+          sparkDeliveryAt: 25,
           terminals: [...preview.terminals, { id: 'spark', slots: 2, yolo: true, fastMode: false, model: 'reasoning' }],
           advancedModelAnnouncedAt: 30,
         }
         preview = appendSocialPost(appendSocialPost(preview, { id: 'spark-delivered', type: 'spark-delivered', elapsed: 30, likes: 0 }), { id: 'advanced-model-announced', type: 'advanced-model', elapsed: 30, likes: 0 })
-        if (action.stage === 'spark') return preview
+        if (action.stage === 'spark') return issueAvailableAssignments(preview)
         preview = {
           ...preview,
           advancedModelUnlocked: true,
@@ -1026,7 +1029,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           terminals: preview.terminals.map((terminal) => terminal.id === 'spark' ? terminal : { ...terminal, model: 'advanced' }),
           money: 30_000,
         }
-        if (action.stage === 'mercury') return preview
+        preview = appendSocialPost(preview, { id: 'mercury-owned', type: 'mercury', elapsed: preview.elapsed, likes: 0 })
+        if (action.stage === 'mercury') return issueAvailableAssignments(preview)
         const secondary: EmploymentJob = {
           company: companies[1] ?? 'Ship It Labs',
           level: 3,

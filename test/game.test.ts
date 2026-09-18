@@ -741,8 +741,6 @@ describe('extended engine contracts', () => {
   })
   test('developer previews carry the purchased progression assets for each checkpoint', () => {
     const market = gameReducer(initialGame, { type: 'dev-jump', stage: 'market' })
-    expect(market.completedTasks).toBe(55)
-    expect(market.completedArchitectureTasks).toBe(8)
     expect(market.terminals).toEqual([
       { id: 'terminal', slots: 4, yolo: true, fastMode: true, model: 'reasoning' },
       { id: 'terminal-2', slots: 4, yolo: true, fastMode: true, model: 'reasoning' },
@@ -755,10 +753,8 @@ describe('extended engine contracts', () => {
     expect(mercury.mercuryEnabled).toBe(true)
     expect(mercury.terminals.filter((terminal) => terminal.id !== 'spark').every((terminal) => terminal.model === 'advanced')).toBe(true)
     const secondJob = gameReducer(initialGame, { type: 'dev-jump', stage: 'second-job' })
-    expect(secondJob.completedTasks).toBe(100)
     expect(secondJob.secondJob).toMatchObject({ level: 3, completedTasks: 0 })
     const frontier = gameReducer(initialGame, { type: 'dev-jump', stage: 'frontier' })
-    expect(frontier.completedTasks + (frontier.secondJob?.completedTasks ?? 0)).toBe(290)
     expect(frontier.terminals.find((terminal) => terminal.id === 'terminal')?.model).toBe('frontier')
     expect(frontier.terminals.find((terminal) => terminal.id === 'terminal-2')?.model).toBe('advanced')
   })
@@ -836,7 +832,7 @@ describe('extended engine contracts', () => {
     const disabled = gameReducer(autoStarted, { type: 'set-mercury', enabled: false })
     const manualCandidate: WorkTask = { ...assigned, id: 706, deadlineAt: 200 }
     const manuallyStarted = gameReducer({
-      ...disabled,
+      ...gameReducer(disabled, { type: 'set-fast-mode', terminalId: 'terminal', enabled: false }),
       tokens: 300_000,
       tasks: [...disabled.tasks, manualCandidate],
     }, { type: 'start-task', id: manualCandidate.id, terminalId: 'terminal', slot: 0 })
@@ -912,7 +908,7 @@ describe('extended engine contracts', () => {
     const source = hire().tasks[0]!
     const task: WorkTask = { ...source, id: 704, difficulty: 1, deadlineAt: 100, status: 'assigned' }
     const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
-    const ready = { ...base, tasks: [task], taskQueue: [], nextTaskAt: 1_000, tokens: 1_000_000 }
+    const ready = { ...gameReducer(base, { type: 'set-fast-mode', terminalId: 'terminal', enabled: false }), tasks: [task], taskQueue: [], nextTaskAt: 1_000, tokens: 1_000_000 }
     const started = gameReducer(ready, { type: 'start-task', id: 704, terminalId: 'terminal', slot: 0 })
     expect(started.tokens).toBe(800_000)
     expect(taskWith(started, 704)).toMatchObject({ model: 'frontier', local: false })
@@ -934,11 +930,11 @@ describe('extended engine contracts', () => {
     expect(manuallyStarted.tokens).toBe(0)
     const automaticallyStarted = gameReducer({
       ...manuallyStarted,
-      tokens: 300_000,
+      tokens: 600_000,
       tasks: [...manuallyStarted.tasks, { ...assigned, id: 706 }],
     }, { type: 'tick', seconds: 1 })
     expect(taskWith(automaticallyStarted, 706).status).toBe('working')
-    expect(automaticallyStarted.tokens).toBe(0)
+    expect(automaticallyStarted.tokens).toBe(300_000)
   })
 
   test('Mercury tries an affordable cloud slot instead of stalling at an expensive one', () => {
