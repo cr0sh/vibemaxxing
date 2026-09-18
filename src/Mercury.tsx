@@ -235,7 +235,7 @@ function WaitingReason({ state, queuedTasks, pausedTasks, artifacts, reservedRet
   const unreservedTokens = Math.max(0, state.tokens - reservedReturnTokens)
   let reason: string | null = null
   if (state.stage !== 'hired') {
-    reason = 'Run ended. Automatic handoffs are stopped.'
+    reason = 'You’ve been fired. Automatic handoffs have stopped.'
   } else if (!state.mercuryEnabled) {
     reason = 'Automatic handoffs are off. Manual handoffs remain free.'
   } else if (state.tokens < reservedReturnTokens) {

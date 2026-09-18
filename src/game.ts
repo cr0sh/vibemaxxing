@@ -1199,7 +1199,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       }
       const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? 'your company'
       const failure = `The developer preview did not clear ${company}'s hiring bar.`
-      return lose({ ...state, stage: 'lost', company, failure }, 'primary')
+      return lose({ ...state, company }, failure)
     }
     case 'tick':
       return tickHired(state, action.seconds)

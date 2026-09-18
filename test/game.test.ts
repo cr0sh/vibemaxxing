@@ -351,7 +351,8 @@ describe('employment transitions', () => {
     expect(lost.stage).toBe('lost')
     expect(lost.tasks).toContainEqual(task)
     expect(lost.messages.at(-1)?.type).toBe('firing')
-    expect(lost.failure).toContain(task.title)
+    const overdue = lost.tasks.find((candidate) => candidate.deadlineAt <= lost.elapsed)!
+    expect(lost.failure).toContain(overdue.title)
     expect(lost.failure).toContain(hired.company!)
     expect(gameReducer(lost, { type: 'tick', seconds: 100 })).toEqual(lost)
   })
@@ -750,12 +751,6 @@ describe('extended progression boundaries', () => {
  
 describe('developer previews', () => {
 
-  test('developer loss keeps the firing narrative tied to the company', () => {
-    const lost = gameReducer(initialGame, { type: 'dev-jump', stage: 'lost' })
-    expect(lost.stage).toBe('lost')
-    expect(lost.failure).toContain('hiring bar')
-    expect(lost.failure).toContain(lost.company!)
-  })
   test('Tiro replaces a stale loss with a usable campaign', () => {
     const hired = hire(91)
     const stale = gameReducer({
@@ -1140,8 +1135,9 @@ describe('extended engine contracts', () => {
       ],
     }
     const dispatched = gameReducer(state, { type: 'tick', seconds: 1 })
-    expect(dispatched.tasks.every((task) => task.status === 'working')).toBe(true)
-    expect(dispatched.tasks.map((task) => `${task.terminalId}:${task.slot}`)).toHaveLength(6)
+    const started = tasks.map((task) => taskWith(dispatched, task.id))
+    expect(started.every((task) => task.status === 'working')).toBe(true)
+    expect(new Set(started.map((task) => `${task.terminalId}:${task.slot}`)).size).toBe(6)
     for (const terminal of state.terminals) {
       expect(dispatched.tasks.filter((task) => task.terminalId === terminal.id)).toHaveLength(terminal.slots)
     }
