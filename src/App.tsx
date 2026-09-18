@@ -740,15 +740,16 @@ function Desktop({
               const isOpen = id === 'defeat'
                 ? state.stage === 'lost' && !defeatDismissed
                 : windows[id] || (id === 'messenger' && defeatAutoFront)
+              const isFrontmost = isOpen && isWindowActive(id)
               const dockAcknowledged = acknowledgedDockWindows.has(id) || (state.stage === 'lost' && id === 'defeat')
               return (
                 <button
-                  className={`dock-item dock-item-${id} ${isWindowActive(id) ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''} ${!dockAcknowledged ? 'dock-item-attention' : ''}`}
+                  className={`dock-item dock-item-${id} ${isFrontmost ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''} ${!dockAcknowledged ? 'dock-item-attention' : ''}`}
                   type="button"
                   key={id}
-                  onClick={() => openWindow(id)}
-                  aria-label={`${isOpen ? 'Focus' : 'Open'} ${item.label} window`}
-                  aria-pressed={isWindowActive(id) && isOpen}
+                  onClick={() => isFrontmost ? minimizeWindow(id) : openWindow(id)}
+                  aria-label={`${isFrontmost ? 'Minimize' : isOpen ? 'Focus' : 'Open'} ${item.label} window`}
+                  aria-pressed={isFrontmost}
                 >
                   <span className="dock-icon" aria-hidden="true">{item.icon}</span>
                   <span className="dock-label">{item.label}</span>
