@@ -36,6 +36,12 @@ function taskWith(state: GameState, id: number): WorkTask {
   }
   return task
 }
+function nextQueuedAssignment(state: GameState): readonly [GameState, WorkTask] {
+  const next = gameReducer({ ...state, tasks: [], nextTaskAt: 0 }, { type: 'tick', seconds: 1 })
+  const task = next.tasks[0]
+  if (task === undefined) throw new Error('Expected a queued assignment')
+  return [next, task]
+}
 
 function hireForApproval(): GameState {
   const state = hire()
@@ -526,6 +532,58 @@ describe('hidden boss assignment inventory', () => {
       ...state.tasks.map((task) => task.id),
       ...state.taskQueue.map((task) => task.id),
     ]).size).toBe(3)
+  })
+  test('standard assignments use every catalog entry once before refilling', () => {
+    const collect = (seed: number) => {
+      let state = hire(seed)
+      const titles: string[] = []
+      const seen = new Set<number>()
+      const appendNewDescriptors = () => {
+        for (const task of [...state.tasks, ...state.taskQueue]) {
+          if (seen.has(task.id)) continue
+          seen.add(task.id)
+          titles.push(task.title)
+        }
+      }
+      appendNewDescriptors()
+      while (titles.length < 17) {
+        const [next] = nextQueuedAssignment(state)
+        state = next
+        appendNewDescriptors()
+      }
+      expect(new Set(titles.slice(0, 16)).size).toBe(16)
+      expect(titles[16]).not.toBe(titles[15])
+      return titles
+    }
+
+    const first = collect(17)
+    const replay = collect(17)
+    expect(replay).toEqual(first)
+  })
+
+  test('architecture assignments have their own shared shuffle bag', () => {
+    let state: GameState = {
+      ...hire(17),
+      level: 4,
+      completedArchitectureTasks: 100,
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: 0,
+    }
+    const architectureTitles: string[] = []
+    const seen = new Set<number>()
+    for (let draw = 0; draw < 80 && architectureTitles.length < 9; draw += 1) {
+      const [next] = nextQueuedAssignment(state)
+      state = next
+      for (const task of [...state.tasks, ...state.taskQueue]) {
+        if (seen.has(task.id)) continue
+        seen.add(task.id)
+        if (task.kind === 'architecture') architectureTitles.push(task.title)
+      }
+    }
+    expect(architectureTitles).toHaveLength(9)
+    expect(new Set(architectureTitles.slice(0, 8)).size).toBe(8)
+    expect(architectureTitles[8]).not.toBe(architectureTitles[7])
   })
   test('opening grace eases assignment and deadline before normal pacing', () => {
     const hired = hire()
