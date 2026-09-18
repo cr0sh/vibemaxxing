@@ -2,6 +2,10 @@ import { describe, expect, test } from 'bun:test'
 import { createMarket, tradeMarket, transferMarket } from '../src/trading'
 
 describe('trading balances', () => {
+  test('Bitcoin opens at exactly one hundred dollars', () => {
+    expect(createMarket(17, 0).price).toBe(100)
+  })
+
   test('a fractional BTC round trip returns all cash without fees or rounding dust', () => {
     const deposited = transferMarket(createMarket(17, 0), 1_000, 'deposit', 250)
     const bought = tradeMarket(deposited.market, 'buy', 0.125)
