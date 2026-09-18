@@ -67,15 +67,6 @@ describe('shop product discovery', () => {
     expect(purchased.shopDiscoveries).toContain('split')
   })
 
-  test('token discovery uses a nominal pack at full inventory and prorates remaining capacity', () => {
-    const unfunded = gameReducer({ ...hire(), money: 0 }, { type: 'set-token-packs', packs: 1 })
-    expect(unfunded.shopDiscoveries).not.toContain('tokens')
-    const full = gameReducer({ ...hire(), money: 100 }, { type: 'set-token-packs', packs: 1 })
-    expect(full.shopDiscoveries).toContain('tokens')
-
-    const partial = gameReducer({ ...hire(), money: 0.01, tokens: MAX_TOKENS - 1 }, { type: 'set-token-packs', packs: 1 })
-    expect(partial.shopDiscoveries).toContain('tokens')
-  })
 
   test('gated products stay hidden until their existing prerequisites and sale windows open', () => {
     const hired = hire()
@@ -103,10 +94,10 @@ describe('shop product discovery', () => {
     expect(sparkOnSale.shopDiscoveries).toContain('spark')
   })
 
-  test('captures transient affordability before automatic token spending in a batched tick', () => {
+  test('captures transient split affordability before automatic token spending in a batched tick', () => {
     const state = {
       ...hire(),
-      money: 99,
+      money: 199,
       tokens: 0,
       tokenPacks: 1 as const,
       tokenAutoBuy: true,
@@ -114,10 +105,10 @@ describe('shop product discovery', () => {
       taskQueue: [],
       nextTaskAt: Number.MAX_SAFE_INTEGER,
     }
-    const ticked = gameReducer(state, { type: 'tick', seconds: 2 })
-    expect(ticked.money).toBe(9)
+    const ticked = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(ticked.money).toBe(104)
     expect(ticked.tokens).toBe(100_000)
-    expect(ticked.shopDiscoveries).toContain('tokens')
+    expect(ticked.shopDiscoveries).toContain('split')
   })
 
   test('reset clears discoveries and dev previews include owned products', () => {

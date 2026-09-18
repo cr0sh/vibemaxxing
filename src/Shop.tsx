@@ -27,6 +27,9 @@ type ShopProps = {
   state: GameState
   dispatch: Dispatch<GameAction>
 }
+type ShopContentProps = ShopProps & {
+  active: boolean
+}
 type ShopHighlightProps = {
   highlighted: boolean
 }
@@ -48,8 +51,6 @@ const purchaseChanged = (previous: GameState, current: GameState, item: ShopItem
     case 'terminal':
       return !previous.terminals.some((terminal) => terminal.id === 'terminal-2') &&
         current.terminals.some((terminal) => terminal.id === 'terminal-2')
-    case 'tokens':
-      return current.tokens > previous.tokens && current.money < previous.money
     case 'fast-mode':
       return current.terminals.some((terminal) => {
         const prior = previous.terminals.find((candidate) => candidate.id === terminal.id)
@@ -69,59 +70,81 @@ const purchaseChanged = (previous: GameState, current: GameState, item: ShopItem
 const productClassName = (className: string, highlighted: boolean): string =>
   highlighted ? `${className} shop-product-newly-discovered` : className
 
-function useShopHighlights(state: GameState): ReadonlySet<ShopItemId> {
+function useShopHighlights(state: GameState, active: boolean): ReadonlySet<ShopItemId> {
   const [highlighted, setHighlighted] = useState<ReadonlySet<ShopItemId>>(() => new Set())
   const highlightedRef = useRef<ReadonlySet<ShopItemId>>(new Set())
   const knownDiscoveries = useRef<Set<ShopItemId>>(new Set(state.shopDiscoveries))
+  const pendingDiscoveries = useRef<Set<ShopItemId>>(new Set())
+  const startedTimers = useRef<Set<ShopItemId>>(new Set())
   const previousState = useRef<GameState | null>(null)
   const timers = useRef(new Map<ShopItemId, number>())
 
   useEffect(() => {
     const prior = previousState.current
+    const currentDiscoveries = new Set(state.shopDiscoveries)
+    const removed = [...knownDiscoveries.current].filter((id) => !currentDiscoveries.has(id))
     const newlyDiscovered = state.shopDiscoveries.filter((id) => !knownDiscoveries.current.has(id))
+    for (const id of removed) knownDiscoveries.current.delete(id)
     for (const id of state.shopDiscoveries) knownDiscoveries.current.add(id)
 
-    const toHighlight = newlyDiscovered.filter((id) => prior === null || !purchaseChanged(prior, state, id))
+    const candidateIds = new Set<ShopItemId>([
+      ...state.shopDiscoveries,
+      ...pendingDiscoveries.current,
+      ...highlightedRef.current,
+    ])
     const purchased = prior === null
       ? []
-      : state.shopDiscoveries.filter((id) => highlightedRef.current.has(id) && purchaseChanged(prior, state, id))
+      : [...candidateIds].filter((id) => purchaseChanged(prior, state, id))
+    const cancelled = new Set<ShopItemId>([...removed, ...purchased])
+    for (const id of cancelled) {
+      pendingDiscoveries.current.delete(id)
+      startedTimers.current.delete(id)
+      const timer = timers.current.get(id)
+      if (timer !== undefined) {
+        window.clearTimeout(timer)
+        timers.current.delete(id)
+      }
+    }
+    for (const id of newlyDiscovered) {
+      if (!purchased.includes(id)) pendingDiscoveries.current.add(id)
+    }
 
-    if (toHighlight.length > 0 || purchased.length > 0) {
+    const startedNow: ShopItemId[] = []
+    if (active) {
+      for (const id of pendingDiscoveries.current) {
+        if (startedTimers.current.has(id)) continue
+        startedTimers.current.add(id)
+        const timer = window.setTimeout(() => {
+          timers.current.delete(id)
+          pendingDiscoveries.current.delete(id)
+          setHighlighted((current) => {
+            if (!current.has(id)) return current
+            const next = new Set(current)
+            next.delete(id)
+            highlightedRef.current = next
+            return next
+          })
+        }, SHOP_HIGHLIGHT_DURATION_MS)
+        timers.current.set(id, timer)
+        startedNow.push(id)
+      }
+    }
+
+    if (cancelled.size > 0 || startedNow.length > 0) {
       setHighlighted((current) => {
         const next = new Set(current)
-        for (const id of purchased) next.delete(id)
-        for (const id of toHighlight) next.add(id)
+        for (const id of cancelled) next.delete(id)
+        for (const id of startedNow) next.add(id)
         highlightedRef.current = next
         return next
       })
     }
 
-    for (const id of purchased) {
-      const timer = timers.current.get(id)
-      clearTimeout(timer)
-      timers.current.delete(id)
-    }
-    for (const id of toHighlight) {
-      const existingTimer = timers.current.get(id)
-      clearTimeout(existingTimer)
-      const timer = window.setTimeout(() => {
-        timers.current.delete(id)
-        setHighlighted((current) => {
-          if (!current.has(id)) return current
-          const next = new Set(current)
-          next.delete(id)
-          highlightedRef.current = next
-          return next
-        })
-      }, SHOP_HIGHLIGHT_DURATION_MS)
-      timers.current.set(id, timer)
-    }
-
     previousState.current = state
-  }, [state])
+  }, [active, state])
 
   useEffect(() => () => {
-    for (const timer of timers.current.values()) clearTimeout(timer)
+    for (const timer of timers.current.values()) window.clearTimeout(timer)
   }, [])
 
   return highlighted
@@ -389,11 +412,10 @@ function MercuryProduct({ state, dispatch, highlighted }: ShopProps & ShopHighli
 }
 
 
-export function ShopContent({ state, dispatch }: ShopProps) {
+export function ShopContent({ state, dispatch, active }: ShopContentProps) {
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
-  const highlighted = useShopHighlights(state)
+  const highlighted = useShopHighlights(state, active)
   const hasDiscovery = (id: ShopItemId): boolean => state.shopDiscoveries.includes(id)
-  const hasVisibleProduct = state.shopDiscoveries.length > 0
 
   const selectedTargetTerminal = state.terminals.some((terminal) => terminal.id === targetTerminal)
     ? targetTerminal
@@ -446,11 +468,6 @@ export function ShopContent({ state, dispatch }: ShopProps) {
 
 
       <div className="shop-products">
-        {!hasVisibleProduct && (
-          <p className="shop-empty-guidance">
-            Keep working and earning—new products appear here when they become available.
-          </p>
-        )}
         {upgradeProducts.filter((product) => hasDiscovery(product.upgrade)).map((product) => (
           <UpgradeProductCard
             key={product.upgrade}
@@ -488,55 +505,53 @@ export function ShopContent({ state, dispatch }: ShopProps) {
         {hasDiscovery('spark-ultra') && <SparkUltraProduct state={state} dispatch={dispatch} highlighted={highlighted.has('spark-ultra')} />}
         {hasDiscovery('advanced-model') && <AdvancedModelProduct state={state} dispatch={dispatch} highlighted={highlighted.has('advanced-model')} />}
         {hasDiscovery('mercury') && <MercuryProduct state={state} dispatch={dispatch} highlighted={highlighted.has('mercury')} />}
-        {hasDiscovery('tokens') && (
-          <article
-            className={productClassName(`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`, highlighted.has('tokens'))}
-            aria-label="Token refill"
-          >
-            <span className="shop-product-icon" aria-hidden="true">◇</span>
-            <div className="shop-product-copy">
-              <h3>Token refill</h3>
-              <div className="shop-token-options">
-                <label className="shop-pack-size">
-                  Pack size
-                  <select
-                    value={state.tokenPacks}
-                    disabled={state.stage !== 'hired'}
-                    onChange={(event) => dispatch({ type: 'set-token-packs', packs: Number(event.currentTarget.value) as TokenPackCount })}
-                  >
-                    {TOKEN_PACK_COUNTS.map((packs) => {
-                      const amount = tokenPurchaseAmount(state.tokens, packs)
-                      const cost = tokenPurchaseCost(amount, state)
-                      const quantity = amount >= MAX_TOKENS - state.tokens ? 'Fill balance · 10M max' : `${amount.toLocaleString()} tokens`
-                      return <option key={packs} value={packs}>{quantity} · {moneyLabel(cost)}</option>
-                    })}
-                  </select>
-                </label>
-                <label className="shop-fast-mode-toggle shop-auto-buy-toggle">
-                  <span className="shop-auto-buy-name">Auto-buy</span>
-                  <span className="shop-fast-mode-toggle-label">{state.tokenAutoBuy ? 'On' : 'Off'}</span>
-                  <input
-                    type="checkbox"
-                    checked={state.tokenAutoBuy}
-                    disabled={state.stage !== 'hired'}
-                    onChange={(event) => dispatch({ type: 'set-token-auto-buy', enabled: event.currentTarget.checked })}
-                    aria-label="Automatically buy tokens when balance is low"
-                  />
-                  <span className="shop-toggle-track" aria-hidden="true"><span /></span>
-                </label>
-              </div>
-              <p>{refillAmount > 0 ? `${refillAmount.toLocaleString()} tokens received · partial packs prorated` : 'Inventory is at the 10M token limit.'}</p>
-              {monopolyActive && (
-                <p className="shop-token-rate">
-                  Monopoly rate {tokenMultiplier.toFixed(2)}× · +10% every 5s · next increase in {secondsToNextTokenIncrease}s.
-                </p>
-              )}
+        <article
+          className={`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`}
+          aria-label="Token refill"
+        >
+          <span className="shop-product-icon" aria-hidden="true">◇</span>
+          <div className="shop-product-copy">
+            <h3>Token refill</h3>
+            <div className="shop-token-options">
+              <label className="shop-pack-size">
+                Pack size
+                <select
+                  value={state.tokenPacks}
+                  disabled={state.stage !== 'hired'}
+                  onChange={(event) => dispatch({ type: 'set-token-packs', packs: Number(event.currentTarget.value) as TokenPackCount })}
+                >
+                  {TOKEN_PACK_COUNTS.map((packs) => {
+                    const amount = tokenPurchaseAmount(state.tokens, packs)
+                    const cost = tokenPurchaseCost(amount, state)
+                    const quantity = amount >= MAX_TOKENS - state.tokens ? 'Fill balance · 10M max' : `${amount.toLocaleString()} tokens`
+                    return <option key={packs} value={packs}>{quantity} · {moneyLabel(cost)}</option>
+                  })}
+                </select>
+              </label>
+              <label className="shop-fast-mode-toggle shop-auto-buy-toggle">
+                <span className="shop-auto-buy-name">Auto-buy</span>
+                <span className="shop-fast-mode-toggle-label">{state.tokenAutoBuy ? 'On' : 'Off'}</span>
+                <input
+                  type="checkbox"
+                  checked={state.tokenAutoBuy}
+                  disabled={state.stage !== 'hired'}
+                  onChange={(event) => dispatch({ type: 'set-token-auto-buy', enabled: event.currentTarget.checked })}
+                  aria-label="Automatically buy tokens when balance is low"
+                />
+                <span className="shop-toggle-track" aria-hidden="true"><span /></span>
+              </label>
             </div>
-            <button className="shop-buy-button" type="button" onClick={buyTokens} disabled={!canBuyTokens}>
-              {state.stage !== 'hired' ? 'Unavailable' : state.tokens >= MAX_TOKENS ? 'Balance full' : canBuyTokens ? refillPrice : `Need ${refillPrice}`}
-            </button>
-          </article>
-        )}
+            <p>{refillAmount > 0 ? `${refillAmount.toLocaleString()} tokens received · partial packs prorated` : 'Inventory is at the 10M token limit.'}</p>
+            {monopolyActive && (
+              <p className="shop-token-rate">
+                Monopoly rate {tokenMultiplier.toFixed(2)}× · +10% every 5s · next increase in {secondsToNextTokenIncrease}s.
+              </p>
+            )}
+          </div>
+          <button className="shop-buy-button" type="button" onClick={buyTokens} disabled={!canBuyTokens}>
+            {state.stage !== 'hired' ? 'Unavailable' : state.tokens >= MAX_TOKENS ? 'Balance full' : canBuyTokens ? refillPrice : `Need ${refillPrice}`}
+          </button>
+        </article>
       </div>
     </div>
   )

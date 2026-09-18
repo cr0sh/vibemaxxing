@@ -19,8 +19,8 @@ export type TaskStatus = 'assigned' | 'working' | 'approval' | 'blocked' | 'arti
 export type TerminalId = 'terminal' | 'terminal-2' | 'spark' | 'spark-ultra'
 export type TerminalUpgrade = 'split' | 'yolo' | 'terminal'
 
-export type ShopItemId = 'split' | 'yolo' | 'terminal' | 'tokens' | 'fast-mode' | 'spark' | 'spark-ultra' | 'advanced-model' | 'mercury'
-export const SHOP_ITEM_IDS: readonly ShopItemId[] = ['split', 'yolo', 'terminal', 'tokens', 'fast-mode', 'spark', 'spark-ultra', 'advanced-model', 'mercury']
+export type ShopItemId = 'split' | 'yolo' | 'terminal' | 'fast-mode' | 'spark' | 'spark-ultra' | 'advanced-model' | 'mercury'
+export const SHOP_ITEM_IDS: readonly ShopItemId[] = ['split', 'yolo', 'terminal', 'fast-mode', 'spark', 'spark-ultra', 'advanced-model', 'mercury']
 
 export const TOKEN_PACK_COUNTS = [1, 5, 10, 100] as const
 export type TokenPackCount = (typeof TOKEN_PACK_COUNTS)[number]
@@ -1400,13 +1400,6 @@ function affordableUpgrade(state: GameState, upgrade: Exclude<TerminalUpgrade, '
   })
 }
 
-function affordableTokens(state: GameState): boolean {
-  if (state.stage !== 'hired' || !Number.isFinite(state.money)) return false
-  const amount = tokenPurchaseAmount(state.tokens, 1) || TOKEN_PURCHASE_AMOUNT
-  if (!Number.isFinite(amount) || amount <= 0) return false
-  const cost = tokenPurchaseCost(amount, state)
-  return Number.isFinite(cost) && cost > 0 && state.money >= cost
-}
 
 function shopItemEligible(state: GameState, item: ShopItemId): boolean {
   const affordableMoney = (price: number): boolean => state.stage === 'hired' && Number.isFinite(state.money) && state.money >= price
@@ -1420,8 +1413,6 @@ function shopItemEligible(state: GameState, item: ShopItemId): boolean {
       const price = upgradePrice(state, 'terminal', 'terminal')
       return getTerminal(state, 'terminal-2') !== undefined || (price !== null && affordableMoney(price))
     }
-    case 'tokens':
-      return affordableTokens(state)
     case 'fast-mode':
       return state.stage === 'hired' && state.fastModeUnlocked
     case 'spark':
