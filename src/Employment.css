@@ -55,6 +55,79 @@
   font-size: 0.72rem;
   text-align: right;
 }
+
+.employment-pending-reminder {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.5rem 0.75rem 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgba(255, 218, 126, 0.72);
+  border-radius: 0.55rem;
+  background: linear-gradient(135deg, rgba(100, 70, 31, 0.96), rgba(67, 49, 33, 0.96));
+  color: #fff8df;
+  box-shadow: 0 0.24rem 0.8rem rgba(19, 10, 35, 0.24);
+}
+
+.employment-pending-reminder-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.16rem;
+  line-height: 1.25;
+}
+
+.employment-pending-reminder-copy strong,
+.employment-pending-reminder-copy span {
+  overflow-wrap: anywhere;
+}
+
+.employment-pending-reminder-copy strong {
+  color: #fff3bc;
+  font-size: 0.75rem;
+}
+
+.employment-pending-reminder-copy span {
+  color: #f7e7bd;
+  font-size: 0.69rem;
+}
+
+.employment-pending-reminder-button {
+  flex: 0 0 auto;
+  min-height: 2rem;
+  padding: 0.35rem 0.58rem;
+  border: 1px solid rgba(255, 233, 163, 0.84);
+  border-radius: 0.4rem;
+  background: rgba(255, 221, 120, 0.18);
+  color: #fff8d9;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.69rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.employment-pending-reminder-button:hover,
+.employment-pending-reminder-button:focus-visible {
+  border-color: #fff8cf;
+  background: rgba(255, 221, 120, 0.34);
+  color: #ffffff;
+}
+
+.employment-pending-reminder-button:focus-visible {
+  outline: 2px solid #fff8cf;
+  outline-offset: 2px;
+}
+
+.employment-pending-target {
+  position: relative;
+  z-index: 1;
+  scroll-margin: 1rem;
+  outline: 3px solid #ffe18a !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 0.3rem rgba(255, 225, 138, 0.25), 0 0 1.25rem rgba(255, 201, 92, 0.5) !important;
+}
 .employment-messenger .messenger-team {
   font-size: min(calc(1rem * 1.15), calc(1rem + 2pt));
 }
@@ -195,12 +268,18 @@
   grid-template-columns: auto minmax(0, 1fr);
 }
 
+.employment-task-attachment,
+.employment-task-attachment *,
+.employment-artifact-attachment,
+.employment-artifact-attachment * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .employment-task-attachment[draggable='true'],
 .employment-artifact-attachment[draggable='true'] {
   cursor: grab;
   touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 .employment-task-attachment[draggable='true']:active,
@@ -287,6 +366,21 @@
 .employment-artifact-attachment {
   border-color: rgba(109, 220, 160, 0.48);
   background: linear-gradient(145deg, rgba(30, 90, 70, 0.62), rgba(27, 46, 56, 0.76));
+}
+.employment-forwarded-attachment {
+  border-color: rgba(174, 161, 197, 0.34);
+  background: linear-gradient(145deg, rgba(61, 51, 79, 0.78), rgba(37, 32, 50, 0.82));
+  box-shadow: 0 0.45rem 1rem rgba(16, 7, 32, 0.14);
+}
+
+.employment-forwarded-attachment .employment-attachment-meta {
+  color: #c9bdd8;
+}
+
+.employment-forwarded-cue {
+  color: #b7d8ca;
+  font-size: 0.68rem;
+  font-weight: 700;
 }
 
 .employment-compact-attachment {
@@ -871,24 +965,33 @@
   min-height: 2.35rem;
   margin-top: 0.35rem;
   padding: 0.52rem 0.76rem;
-  border: 1px solid rgba(143, 232, 198, 0.52);
+  border: 1px solid #14563f;
   border-radius: 0.5rem;
-  background: rgba(35, 123, 96, 0.48);
-  color: #e8fff4;
+  background: #176b50;
+  color: #f4fff9;
   cursor: pointer;
   font-size: 0.75rem;
   font-weight: 750;
+  box-shadow: 0 0 0 1px rgba(39, 109, 87, 0.34);
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, opacity 160ms ease;
 }
 
-.employment-social-open-button:hover,
-.employment-social-open-button:focus-visible {
-  border-color: rgba(174, 255, 216, 0.9);
-  background: rgba(38, 145, 111, 0.7);
+.employment-social-open-button:not(:disabled):hover,
+.employment-social-open-button:not(:disabled):focus-visible {
+  border-color: #103f30;
+  background: #12533e;
+  box-shadow: 0 0 0 2px rgba(174, 255, 216, 0.22);
+  transform: translateY(-1px);
 }
 
 .employment-social-open-button:disabled {
+  border-color: rgba(145, 169, 160, 0.34);
+  background: rgba(69, 82, 78, 0.48);
+  color: #aebbb5;
   cursor: not-allowed;
-  opacity: 0.48;
+  opacity: 0.58;
+  box-shadow: none;
+  transform: none;
 }
 
 .employment-attachment-title-row,
@@ -1093,6 +1196,16 @@
 
   .employment-messenger .chat-header .employment-chat-state {
     align-self: center;
+  }
+  .employment-pending-reminder {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin: 0.45rem 0.5rem 0;
+  }
+
+  .employment-pending-reminder-button {
+    width: 100%;
   }
 }
 

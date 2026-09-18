@@ -1,4 +1,5 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Dispatch } from 'react'
 import {
   ADVANCED_MODEL_PRICE,
@@ -13,6 +14,36 @@ import {
 import { UnreadIndicator } from './UnreadIndicator'
 import { useUnreadMessages } from './useUnreadMessages'
 import './Social.css'
+
+const SOCIAL_HEART_BURST_DURATION = 860
+const SOCIAL_HEART_BURST_REDUCED_DURATION = 520
+
+type SocialHeartBurstState = {
+  id: number
+  left: number
+  top: number
+  reducedMotion: boolean
+}
+
+function SocialHeartBurst({ burst }: { burst: SocialHeartBurstState }) {
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
+    <span
+      className={`social-heart-burst${burst.reducedMotion ? ' is-reduced' : ''}`}
+      style={{ left: burst.left, top: burst.top }}
+      aria-hidden="true"
+    >
+      <span className="social-heart-burst-heart">♥</span>
+      <span className="social-heart-burst-sparkle social-heart-burst-sparkle-one">✦</span>
+      <span className="social-heart-burst-sparkle social-heart-burst-sparkle-two">✦</span>
+      <span className="social-heart-burst-sparkle social-heart-burst-sparkle-three">✧</span>
+      <span className="social-heart-burst-sparkle social-heart-burst-sparkle-four">♥</span>
+      <span className="social-heart-burst-sparkle social-heart-burst-sparkle-five">♥</span>
+    </span>,
+    document.body,
+  )
+}
 
 type SocialProps = {
   state: GameState
@@ -75,6 +106,36 @@ function PostBody({
   activeLotteryId: string | null
 }) {
   const isReadOnly = state.stage !== 'hired'
+  const likeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const burstSequence = useRef(0)
+  const [likeBurst, setLikeBurst] = useState<SocialHeartBurstState | null>(null)
+
+  useEffect(() => {
+    if (likeBurst === null) return
+
+    const clearBurst = window.setTimeout(() => {
+      setLikeBurst((current) => current?.id === likeBurst.id ? null : current)
+    }, likeBurst.reducedMotion ? SOCIAL_HEART_BURST_REDUCED_DURATION : SOCIAL_HEART_BURST_DURATION)
+
+    return () => window.clearTimeout(clearBurst)
+  }, [likeBurst])
+
+  const handleLike = () => {
+    if (isReadOnly) return
+
+    const buttonRect = likeButtonRef.current?.getBoundingClientRect()
+    if (buttonRect) {
+      const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+      setLikeBurst({
+        id: ++burstSequence.current,
+        left: buttonRect.left + buttonRect.width / 2,
+        top: buttonRect.top + buttonRect.height / 2,
+        reducedMotion: prefersReducedMotion,
+      })
+    }
+
+    dispatch({ type: 'like-reset', postId: post.id })
+  }
   if (post.type === 'campaign') {
     return (
       <p className="social-post-copy">
@@ -93,10 +154,11 @@ function PostBody({
           <>
             <div className="social-lottery-actions">
               <button
+                ref={likeButtonRef}
                 className="social-heart-button"
                 type="button"
                 disabled={isReadOnly}
-                onClick={() => dispatch({ type: 'like-reset', postId: post.id })}
+                onClick={handleLike}
                 aria-label={`Like Tiro’s post. ${post.likes.toLocaleString()} ${post.likes === 1 ? 'like' : 'likes'} so far.`}
               >
                 <span aria-hidden="true">♥</span>
@@ -109,6 +171,7 @@ function PostBody({
         ) : (
           <p className="social-action-note">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'} · This giveaway has ended.</p>
         )}
+        {likeBurst && <SocialHeartBurst key={likeBurst.id} burst={likeBurst} />}
       </>
     )
   }

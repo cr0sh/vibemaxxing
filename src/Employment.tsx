@@ -86,6 +86,68 @@ const taskStatusLabel = (task: WorkTask): string => {
       return 'Attempt failed'
   }
 }
+const isForwardedTask = (task: Pick<WorkTask, 'status' | 'terminalId'>): boolean => (
+  task.terminalId !== null && task.status !== 'assigned'
+)
+
+const isPendingActionTask = (task: WorkTask): boolean => (
+  task.status === 'assigned' || task.status === 'artifact' || task.status === 'failed'
+)
+
+const pendingActionDescription = (task: WorkTask): string => {
+  if (task.status === 'assigned') return `Start “${task.title}”`
+  if (task.status === 'artifact') return `Deliver “${task.artifactName}”`
+  return `Retry “${task.title}”`
+}
+
+type PendingActionItem = {
+  task: WorkTask
+  messageId: string | null
+}
+
+function pendingActionMessageId(messages: readonly EmploymentMessage[], task: WorkTask): string | null {
+  const message = task.status === 'failed'
+    ? messages.find((candidate) => (
+      candidate.type === 'attempt-failed' &&
+      candidate.task.id === task.id &&
+      candidate.task.attempt === task.attempt
+    ))
+    : messages.find((candidate) => (
+      candidate.type === 'assignment' && candidate.task.id === task.id
+    ))
+  return message?.id ?? messages.find((candidate) => (
+    candidate.type === 'assignment' && candidate.task.id === task.id
+  ))?.id ?? null
+}
+
+const scrollBehavior = (): ScrollBehavior => (
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 'auto'
+    : 'smooth'
+)
+
+const taskMessageId = (message: EmploymentMessage): string | undefined => (
+  message.type === 'assignment' || message.type === 'attempt-failed' || message.type === 'delivery'
+    ? String(message.task.id)
+    : undefined
+)
+
+const pendingTargetClass = (highlightedTaskId: number | null, message: EmploymentMessage): string => (
+  highlightedTaskId !== null && taskMessageId(message) === String(highlightedTaskId)
+    ? ' employment-pending-target'
+    : ''
+)
+
+const messageWrapperProps = (message: EmploymentMessage): {
+  'data-employment-message-id': string
+  'data-employment-task-id'?: string
+} => {
+  const taskId = taskMessageId(message)
+  return {
+    'data-employment-message-id': message.id,
+    ...(taskId === undefined ? {} : { 'data-employment-task-id': taskId }),
+  }
+}
 
 const taskProgressLabel = (task: WorkTask): string => {
   if (task.status === 'assigned') return 'Not started'
@@ -139,6 +201,7 @@ function TaskAttachment({
   archived?: boolean
 }) {
   const isAssigned = task.status === 'assigned' && task.terminalId === null && task.slot === null
+  const forwarded = !archived && isForwardedTask(task)
   const canStart = state.stage === 'hired' && !archived && isAssigned && state.terminals.some((terminal) => (
     canFundTaskAttempt(state, task, terminal.fastMode, terminal.id)
   ))
@@ -147,7 +210,7 @@ function TaskAttachment({
   const reward = taskReward(task, rewardAt)
   return (
     <div
-      className={`employment-attachment employment-task-attachment employment-task-${task.status} ${task.kind === 'architecture' ? 'employment-architecture-attachment' : ''} ${archived ? 'employment-archived-attachment' : ''}`}
+      className={`employment-attachment employment-task-attachment employment-task-${task.status} ${task.kind === 'architecture' ? 'employment-architecture-attachment' : ''} ${archived ? 'employment-archived-attachment' : ''} ${forwarded ? 'employment-forwarded-attachment' : ''}`}
       draggable={canStart}
       tabIndex={canStart ? 0 : undefined}
       onFocus={dragSource.onFocus}
@@ -208,6 +271,7 @@ function TaskAttachment({
           <span>{archived ? 'Delivered' : taskStatusLabel(task)}</span>
           <span>{archived ? 'Complete' : taskProgressLabel(task)}</span>
           {!archived && <span>{taskDeadline(task, elapsed)}</span>}
+          {forwarded && <span className="employment-forwarded-cue">Forwarded to terminal</span>}
         </div>
       </div>
     </div>
@@ -239,6 +303,7 @@ function ArtifactAttachment({
   disabled = false,
   archived = false,
   compact = false,
+  messenger = false,
 }: {
   state: GameState
   task: WorkTask
@@ -246,11 +311,13 @@ function ArtifactAttachment({
   disabled?: boolean
   archived?: boolean
   compact?: boolean
+  messenger?: boolean
 }) {
+  const forwarded = messenger && !archived && isForwardedTask(task)
   const dragSource = useDragDropSource({ kind: 'artifact', id: String(task.id) }, !disabled)
   return (
     <div
-      className={`employment-attachment employment-artifact-attachment ${task.kind === 'architecture' ? 'employment-architecture-attachment' : ''} ${archived ? 'employment-archived-attachment' : ''} ${compact ? 'employment-compact-attachment' : ''}`}
+      className={`employment-attachment employment-artifact-attachment ${task.kind === 'architecture' ? 'employment-architecture-attachment' : ''} ${archived ? 'employment-archived-attachment' : ''} ${forwarded ? 'employment-forwarded-attachment' : ''} ${compact ? 'employment-compact-attachment' : ''}`}
       draggable={!disabled}
       tabIndex={!disabled ? 0 : undefined}
       onFocus={dragSource.onFocus}
@@ -279,6 +346,7 @@ function ArtifactAttachment({
       <div className="employment-attachment-copy">
         <strong>{task.artifactName}</strong>
         <span className="employment-employer-line">{employerName(state, task.jobId)}{task.local ? ' · Local terminal' : ''}</span>
+        {forwarded && <span className="employment-forwarded-cue">Forwarded to terminal</span>}
         {!compact && (
           <>
             <span>{archived ? 'Delivered artifact' : 'Ready for delivery'}</span>
@@ -356,8 +424,11 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
   const [reactionBurst, setReactionBurst] = useState(0)
   const [channel, setChannel] = useState<Channel>('general')
   const [selectedJobId, setActiveJobId] = useState<JobId>('primary')
+  const [pendingActionIndex, setPendingActionIndex] = useState(0)
+  const [highlightedTaskId, setHighlightedTaskId] = useState<number | null>(null)
   const activeJobId = selectedJobId === 'secondary' && state.secondJob === null ? 'primary' : selectedJobId
   const reactionTimer = useRef<number | null>(null)
+  const highlightTimer = useRef<number | null>(null)
   const firingRef = useRef<HTMLDivElement>(null)
   const chatPaneRef = useRef<HTMLDivElement>(null)
   const messengerRef = useRef<HTMLDivElement>(null)
@@ -368,6 +439,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
   }))
   useEffect(() => () => {
     if (reactionTimer.current !== null) window.clearTimeout(reactionTimer.current)
+    if (highlightTimer.current !== null) window.clearTimeout(highlightTimer.current)
   }, [])
   useEffect(() => {
     if (state.stage === 'lost') firingRef.current?.scrollIntoView({ block: 'nearest' })
@@ -383,25 +455,37 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
 
   const activeJob = activeJobId === 'secondary' ? state.secondJob : state
   const visibleMessages = state.messages.filter((message) => message.jobId === activeJobId)
+  const pendingActionItems: PendingActionItem[] = state.stage !== 'hired'
+    ? []
+    : state.tasks
+      .filter((task) => task.jobId === activeJobId && isPendingActionTask(task))
+      .map((task) => ({ task, messageId: pendingActionMessageId(visibleMessages, task) }))
   const unseenMessageCount = state.messages.reduce((count, message) => (
     message.jobId === activeJobId && !seenMessageIdsByJob[activeJobId].has(message.id) ? count + 1 : count
   ), 0)
-  const pendingTaskCount = state.tasks.reduce((count, task) => (
-    task.jobId === activeJobId && (task.status === 'assigned' || task.status === 'artifact' || task.status === 'failed') ? count + 1 : count
-  ), 0)
+  const pendingTaskCount = pendingActionItems.length
   const activeEmployerCue = unseenMessageCount + pendingTaskCount
   const otherEmployerId: JobId = activeJobId === 'primary' ? 'secondary' : 'primary'
+  const otherEmployerPendingCount = state.stage !== 'hired' || (state.secondJob === null && otherEmployerId === 'secondary')
+    ? 0
+    : state.tasks.reduce((count, task) => (
+      task.jobId === otherEmployerId && isPendingActionTask(task) ? count + 1 : count
+    ), 0)
   const otherEmployerCue = state.secondJob === null && otherEmployerId === 'secondary'
     ? 0
     : state.messages.reduce((count, message) => (
       message.jobId === otherEmployerId && !seenMessageIdsByJob[otherEmployerId].has(message.id) ? count + 1 : count
-    ), 0) + state.tasks.reduce((count, task) => (
-      task.jobId === otherEmployerId && (task.status === 'assigned' || task.status === 'artifact' || task.status === 'failed') ? count + 1 : count
-    ), 0)
+    ), 0) + otherEmployerPendingCount
   const messageIds = visibleMessages.map((message) => message.id)
   const { unreadCount, scrollToLatest } = useUnreadMessages(messageIds, chatPaneRef, channel === 'general')
   const watercoolerUnread = state.watercoolerUnlocked && !state.watercoolerRead
   const artifactDropVisible = state.stage === 'hired' && isSourceActive('artifact')
+
+  const currentPendingIndex = Math.min(pendingActionIndex, Math.max(0, pendingActionItems.length - 1))
+  const currentPendingAction = pendingActionItems[currentPendingIndex]
+  const activeHighlightedTaskId = pendingActionItems.some(({ task }) => task.id === highlightedTaskId)
+    ? highlightedTaskId
+    : null
 
   useDragDropTarget(messengerRef, {
     id: 'messenger-artifact',
@@ -433,6 +517,27 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
       dispatch({ type: 'read-watercooler' })
     }
   }
+  const locatePendingAction = () => {
+    const item = currentPendingAction
+    if (item === undefined) return
+    const nextIndex = pendingActionItems.length > 1
+      ? (currentPendingIndex + 1) % pendingActionItems.length
+      : 0
+    setPendingActionIndex(nextIndex)
+    setChannel('general')
+    setHighlightedTaskId(item.task.id)
+    if (highlightTimer.current !== null) window.clearTimeout(highlightTimer.current)
+
+    const messageTarget = item.messageId === null
+      ? null
+      : chatPaneRef.current?.querySelector<HTMLElement>(`[data-employment-message-id="${CSS.escape(item.messageId)}"]`)
+    const target = messageTarget ?? chatPaneRef.current?.querySelector<HTMLElement>(`[data-employment-task-id="${item.task.id}"]`)
+    if (target) {
+      target.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
+      highlightTimer.current = window.setTimeout(() => setHighlightedTaskId(null), 2200)
+    }
+  }
+
 
   const handleOpenSocial = () => {
     if (state.stage !== 'hired' || !state.watercoolerUnlocked) return
@@ -456,10 +561,11 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
   const renderGeneralMessage = (message: EmploymentMessage) => {
     const owner = employerName(state, message.jobId)
     const boss = employerBoss(message.jobId)
+    const targetClass = pendingTargetClass(activeHighlightedTaskId, message)
     if (message.type === 'welcome') {
       const welcomed = activeJob?.welcomeReacted ?? false
       return (
-        <div key={message.id}>
+        <div {...messageWrapperProps(message)} key={message.id}>
           <div className="welcome-banner employment-message-entry">
             <span aria-hidden="true">🎉</span> Welcome to {owner}
           </div>
@@ -485,9 +591,9 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
     }
 
     if (message.type === 'assignment') {
-      const currentTask = taskForMessage(state, message.artifact ?? message.task)
+      const currentTask = taskForMessage(state, message.task)
       return (
-        <div className="message-row employment-message-entry" key={message.id}>
+        <div {...messageWrapperProps(message)} className={`message-row employment-message-entry${targetClass}`} key={message.id}>
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
           <div className="message-body">
             <div className="message-meta"><strong>{boss}</strong><span>{owner} · assignment</span></div>
@@ -501,6 +607,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
                 disabled={currentTask.archived || state.stage !== 'hired'}
                 archived={currentTask.archived}
                 compact
+                messenger
               />
             )}
           </div>
@@ -510,7 +617,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
 
     if (message.type === 'delivery') {
       return (
-        <div className="message-row employment-message-entry employment-delivery-entry" key={message.id}>
+        <div {...messageWrapperProps(message)} className={`message-row employment-message-entry employment-delivery-entry${targetClass}`} key={message.id}>
           <div className="avatar self-avatar" aria-hidden="true">Y</div>
           <div className="message-body">
             <div className="message-meta"><strong>You</strong><span>{owner} · delivered</span></div>
@@ -531,7 +638,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
 
     if (message.type === 'incentives') {
       return (
-        <div className="message-row employment-message-entry employment-milestone-entry employment-incentives-entry" key={message.id}>
+        <div {...messageWrapperProps(message)} className={`message-row employment-message-entry employment-milestone-entry employment-incentives-entry${targetClass}`} key={message.id}>
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
           <div className="message-body">
             <div className="message-meta"><strong>{boss}</strong><span>{owner} · incentives · {formatSeconds(message.elapsed)}</span></div>
@@ -543,7 +650,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
 
     if (message.type === 'promotion') {
       return (
-        <div className="message-row employment-message-entry employment-milestone-entry employment-promotion-entry" key={message.id}>
+        <div {...messageWrapperProps(message)} className={`message-row employment-message-entry employment-milestone-entry employment-promotion-entry${targetClass}`} key={message.id}>
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
           <div className="message-body">
             <div className="message-meta"><strong>{boss}</strong><span>{owner} · promotion · {formatSeconds(message.elapsed)}</span></div>
@@ -564,7 +671,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
       const currentFailure = !currentTask.archived && currentTask.task.status === 'failed' && currentTask.task.attempt === message.task.attempt
       const canRetry = state.stage === 'hired' && currentFailure && retryTerminal !== undefined && canFundTaskAttempt(state, currentTask.task, retryFastMode, retryTerminalId)
       return (
-        <div className="message-row employment-message-entry employment-attempt-failed-entry" key={message.id}>
+        <div {...messageWrapperProps(message)} className={`message-row employment-message-entry employment-attempt-failed-entry${targetClass}`} key={message.id}>
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
           <div className="message-body">
             <div className="message-meta"><strong>agent-shell</strong><span>{owner} · attempt failed · {formatSeconds(message.elapsed)}</span></div>
@@ -592,7 +699,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
     }
 
     return (
-      <div ref={firingRef} className="message-row employment-message-entry employment-firing-entry" key={message.id}>
+      <div {...messageWrapperProps(message)} ref={firingRef} className={`message-row employment-message-entry employment-firing-entry${targetClass}`} key={message.id}>
         <div className="avatar boss-avatar" aria-hidden="true">B</div>
         <div className="message-body">
           <div className="message-meta"><strong>{boss}</strong><span>{owner} · now</span></div>
@@ -670,6 +777,22 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
             <ChannelButton channel="watercooler" active={channel === 'watercooler'} unread={watercoolerUnread} onSelect={() => selectChannel('watercooler')} />
           </nav>
         </div>
+        {channel === 'general' && currentPendingAction !== undefined && (
+          <div className="employment-pending-reminder" role="status">
+            <span className="employment-pending-reminder-copy">
+              <strong>{pendingTaskCount} pending {pendingTaskCount === 1 ? 'action' : 'actions'}</strong>
+              <span>{pendingActionDescription(currentPendingAction.task)}</span>
+            </span>
+            <button
+              className="employment-pending-reminder-button"
+              type="button"
+              onClick={locatePendingAction}
+              aria-label={`Locate pending work: ${pendingActionDescription(currentPendingAction.task)}. ${pendingTaskCount} pending ${pendingTaskCount === 1 ? 'action' : 'actions'}.`}
+            >
+              Locate {pendingActionItems.length > 1 ? `${pendingActionIndex + 1} of ${pendingActionItems.length}` : 'task'}
+            </button>
+          </div>
+        )}
         <div ref={chatPaneRef} className="chat-scroll-region employment-general-pane" hidden={channel !== 'general'}>
           <div className="chat-messages">
             {visibleMessages.map(renderGeneralMessage)}

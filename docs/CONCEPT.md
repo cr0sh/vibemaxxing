@@ -21,6 +21,13 @@ The flow of the game is:
   - Your boss gives you tasks (shown like an attachment in the messenger UI).
     This is given right after you are hired, and every 2 minutes. You can
     drag-and-drop this attachment onto terminal.
+    Task catalogs contain 16 standard assignments and 8 architecture assignments.
+    Each kind uses its own seeded shuffle bag shared across employers: exhaust
+    the catalog before reshuffling, without an immediate repeat at the boundary.
+    Task and artifact cards never select text, including non-draggable history.
+    Forwarded messenger tasks are dimmed and explicitly labeled.
+    A top-of-general reminder locates pending starts, retries, and artifact
+    deliveries; reading or scrolling does not resolve it.
   - The terminal is running a coding agent. It should resemble like Claude Code.
     When idle, attachments can be drag-and-dropped onto it and it'll be
     "working". The UI should show something like _thinking..._ or something
@@ -154,11 +161,7 @@ The flow of the game is:
   remains $100,000, with the same 15–60 second delivery rule as Spark.
 - L5 task rewards use a 600× multiplier instead of 200×. L4 remains at 100×;
   early-career rewards and existing purchase prices are unchanged.
-  Two-minute reducer smoke runs (seeds 12345, 42, and 2026, at most two actions
-  per second) bought the first split at 40 seconds, down from 88–93 seconds.
-  After buying the split, they bought YOLO at 94–96 seconds. They encountered
-  24–31 approval prompts before YOLO and none afterward, versus 1–2 prompts
-  in the previous two-minute opening. All three remained employed.
+  Base wages alone fund the first $200 split in 40 seconds of employment.
 - The $4.242M victory threshold includes cash, trading USD, and BTC at its current
   market price, without double-counting transfers. Both endings freeze gameplay.
 - Shorts shuffles four remotely hosted GIPHY MP4 meme loops, recycles five cards
@@ -170,3 +173,6 @@ The flow of the game is:
   background updates and newly available unopened apps can still attract attention.
 - Messenger and timeline updates use distinct original synthesized notification
   chimes, not copied phone recordings. Both respect the existing sound mute.
+- SNS Like activation emits a short heart-and-sparkle burst without changing
+  giveaway odds. Repeated likes restart bounded feedback; reduced motion uses
+  a stationary fade. The watercooler social action uses high-contrast text.
