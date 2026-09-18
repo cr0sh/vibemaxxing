@@ -31,7 +31,7 @@ export const AGENT_MODELS: Record<AgentModelId, {
 }> = {
   basic: { label: 'Basic', intelligence: 1, speed: 1, tokenMultiplier: 1 },
   reasoning: { label: 'Tiro Reason', intelligence: 2, speed: 0.6, tokenMultiplier: 1 },
-  advanced: { label: 'Tiro Pro', intelligence: 3, speed: 0.6, tokenMultiplier: 1 },
+  advanced: { label: 'ConvexLM Pro', intelligence: 3, speed: 0.6, tokenMultiplier: 1 },
   frontier: { label: 'Tiro Max', intelligence: 4, speed: 0.6, tokenMultiplier: 2 },
 }
 
@@ -73,6 +73,11 @@ export type WorkTask = TaskDescriptor & {
   model: AgentModelId | null
   fastMode: boolean
   local: boolean
+  /**
+   * Mercury keeps this task's return fee reserved while its automatic attempt
+   * is still in flight (including a completed artifact waiting to be returned).
+   */
+  mercuryAuto?: boolean
   attempt: number
   status: TaskStatus
   progress: number
@@ -215,7 +220,7 @@ const TIRO_PREVIEW_TOKENS = 1_900_000
 export const SPARK_PRICE = 15_000
 export const ADVANCED_MODEL_PRICE = 5_000
 export const MERCURY_PRICE = 8_000
-const MERCURY_FORWARD_COST = 300_000
+export const MERCURY_FORWARD_COST = 300_000
 const MARKET_TASK_GATE = 55
 const MARKET_ARCHITECTURE_GATE = 8
 const SECOND_JOB_TASK_GATE = 100
@@ -464,6 +469,14 @@ function updateAssignmentArtifact(state: GameState, task: WorkTask): GameState {
 }
 
 const PRIMARY_TERMINAL: TerminalState = { id: 'terminal', slots: 1, yolo: false, fastMode: false, model: 'basic' }
+export function mercuryReturnReservations(tasks: readonly WorkTask[], enabled = true): number {
+  if (!enabled) return 0
+  return tasks.reduce((total, task) => total + (
+    task.mercuryAuto === true && task.status !== 'assigned' && task.status !== 'failed'
+      ? MERCURY_FORWARD_COST
+      : 0
+  ), 0)
+}
 function reservedAssignmentTokens(tasks: readonly WorkTask[], localAvailable = false): number {
   if (localAvailable) return 0
   return tasks.reduce((total, task) => total + (task.status === 'assigned' ? taskTokenCost(task, false, 'basic', false) : 0), 0)
@@ -502,8 +515,20 @@ export function terminalModel(state: GameState, terminalId: TerminalId): AgentMo
   }
 }
 
+function assignedTaskReservations(
+  state: Pick<GameState, 'tasks'> & Partial<Pick<GameState, 'terminals'>>,
+  task: WorkTask,
+): number {
+  if (state.terminals?.some((terminal) => terminal.id === 'spark')) return 0
+  return state.tasks.reduce((total, candidate) => total + (
+    candidate.id !== task.id && candidate.status === 'assigned'
+      ? taskTokenCost(candidate, false, 'basic', candidate.local)
+      : 0
+  ), 0)
+}
+
 export function canFundTaskAttempt(
-  state: Pick<GameState, 'tasks' | 'tokens'> & Partial<Pick<GameState, 'terminals' | 'reasoningUnlocked' | 'advancedModelUnlocked' | 'frontierModelUnlocked'>>,
+  state: Pick<GameState, 'tasks' | 'tokens'> & Partial<Pick<GameState, 'terminals' | 'reasoningUnlocked' | 'advancedModelUnlocked' | 'frontierModelUnlocked' | 'mercuryEnabled'>>,
   task: WorkTask,
   fastMode: boolean,
   terminalId?: TerminalId,
@@ -521,15 +546,26 @@ export function canFundTaskAttempt(
   } else if (state.reasoningUnlocked) {
     model = 'reasoning'
   }
-  const otherReservations = state.terminals?.some((terminal) => terminal.id === 'spark') ? 0 : state.tasks.reduce(
-    (total, candidate) => total + (candidate.id !== task.id && candidate.status === 'assigned'
-      ? taskTokenCost(candidate, false, 'basic', candidate.local)
-      : 0),
-    0,
-  )
+  const assignedReservations = assignedTaskReservations(state, task)
+  const otherReservations = assignedReservations + mercuryReturnReservations(state.tasks, state.mercuryEnabled !== false)
   const cost = taskTokenCost(task, fastMode, model, local)
   return Number.isFinite(cost) && cost >= 0 && Number.isFinite(otherReservations) &&
     Number.isFinite(state.tokens) && state.tokens >= 0 && (local || state.tokens >= cost + otherReservations)
+}
+
+export function canFundMercuryAttempt(state: GameState, task: WorkTask, terminalId: TerminalId): boolean {
+  if (!state.mercuryOwned || !state.mercuryEnabled || task.status !== 'assigned') return false
+  const terminal = getTerminal(state, terminalId)
+  if (terminal === undefined) return false
+  const local = terminalId === 'spark'
+  const fastMode = local ? false : terminal.fastMode === true
+  const model = local ? 'reasoning' : terminalModel(state, terminalId)
+  const attemptCost = taskTokenCost(task, fastMode, model, local)
+  const reserved = mercuryReturnReservations(state.tasks)
+  const assigned = assignedTaskReservations(state, task)
+  const required = MERCURY_FORWARD_COST + attemptCost + MERCURY_FORWARD_COST + reserved + assigned
+  return Number.isFinite(attemptCost) && attemptCost >= 0 && Number.isFinite(required) &&
+    Number.isFinite(state.tokens) && state.tokens >= required
 }
 
 function issueAvailableAssignments(state: GameState): GameState {
@@ -727,7 +763,7 @@ function firstFreeSlot(state: GameState, terminal: TerminalState): number | null
   return null
 }
 
-function startTaskAttempt(state: GameState, taskIndex: number, terminalId: TerminalId, slot: number): GameState {
+function startTaskAttempt(state: GameState, taskIndex: number, terminalId: TerminalId, slot: number, automatic = false): GameState {
   const terminal = getTerminal(state, terminalId)
   const task = state.tasks[taskIndex]
   if (terminal === undefined || task === undefined) return state
@@ -758,6 +794,7 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
       model,
       fastMode,
       local,
+      mercuryAuto: automatic,
       attempt: candidate.attempt + 1,
       status: 'working',
       progress: candidate.status === 'failed' ? 0 : candidate.progress,
@@ -813,25 +850,37 @@ function completeDelivery(state: GameState, task: WorkTask, forwardingCost: numb
   }
   return maybeUnlockProgression(delivered)
 }
-
 function processMercury(state: GameState): GameState {
   if (!state.mercuryOwned || !state.mercuryEnabled) return state
   let current = state
-  const artifact = current.tasks.filter((task) => task.status === 'artifact').sort((a, b) => a.deadlineAt - b.deadlineAt)[0]
-  if (artifact !== undefined && current.tokens >= MERCURY_FORWARD_COST) current = completeDelivery(current, artifact, MERCURY_FORWARD_COST)
-  if (current.tokens < MERCURY_FORWARD_COST) return current
-  const candidates = current.tasks.filter((task) => task.status === 'assigned').sort((a, b) => a.deadlineAt - b.deadlineAt)
+  while (true) {
+    const artifacts = current.tasks
+      .filter((task) => task.status === 'artifact')
+      .sort((a, b) => a.deadlineAt - b.deadlineAt || a.id - b.id)
+    const artifact = artifacts.find((task) => {
+      const reserved = mercuryReturnReservations(current.tasks)
+      const available = current.tokens - reserved
+      const ownReservation = task.mercuryAuto === true
+      return current.tokens >= MERCURY_FORWARD_COST && (ownReservation || available >= MERCURY_FORWARD_COST)
+    })
+    if (artifact === undefined) break
+    current = completeDelivery(current, artifact, MERCURY_FORWARD_COST)
+  }
+  const candidates = current.tasks
+    .filter((task) => task.status === 'assigned')
+    .sort((a, b) => a.deadlineAt - b.deadlineAt || a.id - b.id)
   for (const task of candidates) {
     const taskIndex = current.tasks.findIndex((candidate) => candidate.id === task.id)
     const terminals = [...current.terminals].sort((a, b) => (
       taskSuccessChance(task, terminalModel(current, b.id)) - taskSuccessChance(task, terminalModel(current, a.id)) ||
       a.id.localeCompare(b.id)
     ))
-    const funded = { ...current, tokens: current.tokens - MERCURY_FORWARD_COST }
     for (const terminal of terminals) {
       const slot = firstFreeSlot(current, terminal)
       if (slot === null) continue
-      const started = startTaskAttempt(funded, taskIndex, terminal.id, slot)
+      if (!canFundMercuryAttempt(current, task, terminal.id)) continue
+      const funded = { ...current, tokens: current.tokens - MERCURY_FORWARD_COST }
+      const started = startTaskAttempt(funded, taskIndex, terminal.id, slot, true)
       if (started !== funded) return started
     }
   }
@@ -932,27 +981,96 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (action.stage === 'ready') return initialGame
       if (action.stage === 'tiro') {
         const base = createHiredState({ ...initialGame, company: state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null, tokens: TIRO_PREVIEW_TOKENS, money: 1_000, rng: normalizeSeed(state.rng) })
-        return gameReducer({ ...base, watercoolerUnlocked: true, watercoolerRead: true }, { type: 'install-social' })
+        const tiro = { ...base, terminals: [{ ...base.terminals[0]!, slots: 2, yolo: true }] }
+        return gameReducer({ ...tiro, watercoolerUnlocked: true, watercoolerRead: true }, { type: 'install-social' })
       }
       if (action.stage === 'applying') return resetEmploymentPreview(state, 'applying')
       if (action.stage === 'offer') return resetEmploymentPreview(state, 'offer')
       if (action.stage === 'hired') return createHiredState({ ...state, company: state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null })
       if (action.stage === 'market' || action.stage === 'spark' || action.stage === 'mercury' || action.stage === 'second-job' || action.stage === 'frontier') {
         let preview = previewHired(state)
-        preview = { ...preview, tasks: [], taskQueue: [], completedTasks: 8, completedArchitectureTasks: 5, level: 4, reasoningUnlocked: true, fastModeUnlocked: true, market: createMarket(preview.rng, preview.elapsed), sparkAnnouncedAt: 0, money: 30_000 }
+        preview = {
+          ...preview,
+          tasks: [],
+          taskQueue: [],
+          completedTasks: 55,
+          completedArchitectureTasks: 8,
+          level: 4,
+          reasoningUnlocked: true,
+          fastModeUnlocked: true,
+          market: createMarket(preview.rng, preview.elapsed),
+          sparkAnnouncedAt: 0,
+          money: 30_000,
+          terminals: [
+            { id: 'terminal', slots: 4, yolo: true, fastMode: true, model: 'reasoning' },
+            { id: 'terminal-2', slots: 4, yolo: true, fastMode: true, model: 'reasoning' },
+          ],
+        }
         preview = appendSocialPost(appendSocialPost(preview, { id: 'market-unlocked', type: 'market', elapsed: 0, likes: 0 }), { id: 'spark-announced', type: 'spark', elapsed: 0, likes: 0 })
         if (action.stage === 'market') return issueAvailableAssignments(preview)
-        preview = { ...preview, elapsed: 30, sparkPurchasedAt: 0, sparkDeliveryAt: 0, terminals: [...preview.terminals, { id: 'spark', slots: 2, yolo: false, fastMode: false, model: 'reasoning' }], advancedModelAnnouncedAt: 30 }
+        preview = {
+          ...preview,
+          elapsed: 30,
+          sparkPurchasedAt: 0,
+          sparkDeliveryAt: 0,
+          terminals: [...preview.terminals, { id: 'spark', slots: 2, yolo: true, fastMode: false, model: 'reasoning' }],
+          advancedModelAnnouncedAt: 30,
+        }
         preview = appendSocialPost(appendSocialPost(preview, { id: 'spark-delivered', type: 'spark-delivered', elapsed: 30, likes: 0 }), { id: 'advanced-model-announced', type: 'advanced-model', elapsed: 30, likes: 0 })
         if (action.stage === 'spark') return preview
-        preview = { ...preview, advancedModelUnlocked: true, mercuryOwned: action.stage !== 'mercury' ? false : true, mercuryEnabled: action.stage !== 'mercury' ? false : true, secondJobUnlocked: true, money: 30_000 }
-        if (action.stage === 'mercury') return appendSocialPost(preview, { id: 'second-job-unlocked', type: 'second-job', elapsed: 30, likes: 0 })
-        const secondary: EmploymentJob = { company: companies[1] ?? 'Ship It Labs', level: 3, completedTasks: 0, completedArchitectureTasks: 0, nextTaskAt: 30, expectation: bossExpectationAt(30), welcomeReacted: false, startedAt: 30 }
-        preview = { ...preview, secondJob: secondary, secondJobUnlocked: true, secondJobOffer: null, taskQueue: [], tasks: [], nextTaskId: 1 }
+        preview = {
+          ...preview,
+          advancedModelUnlocked: true,
+          mercuryOwned: true,
+          mercuryEnabled: true,
+          terminals: preview.terminals.map((terminal) => terminal.id === 'spark' ? terminal : { ...terminal, model: 'advanced' }),
+          money: 30_000,
+        }
+        if (action.stage === 'mercury') return preview
+        const secondary: EmploymentJob = {
+          company: companies[1] ?? 'Ship It Labs',
+          level: 3,
+          completedTasks: 0,
+          completedArchitectureTasks: 0,
+          nextTaskAt: 30,
+          expectation: bossExpectationAt(30),
+          welcomeReacted: false,
+          startedAt: 30,
+        }
+        preview = {
+          ...preview,
+          completedTasks: 100,
+          level: 4,
+          secondJob: secondary,
+          secondJobUnlocked: true,
+          secondJobOffer: null,
+          taskQueue: [],
+          tasks: [],
+          nextTaskId: 1,
+          nextTaskAt: 30,
+        }
+        preview = appendSocialPost(preview, { id: 'second-job-unlocked', type: 'second-job', elapsed: 30, likes: 0 })
         preview = appendMessage(preview, { id: 'welcome-secondary', type: 'welcome', jobId: 'secondary', elapsed: 30 })
         if (action.stage === 'second-job') return issueAvailableAssignments(preview)
-        preview = { ...preview, frontierModelUnlocked: true, completedTasks: 50, level: 4, terminals: preview.terminals.map((terminal) => terminal.id === 'terminal' ? { ...terminal, model: 'frontier' } : terminal) }
-        return appendSocialPost(preview, { id: 'frontier-model-unlocked', type: 'frontier-model', elapsed: 30, likes: 0 })
+        preview = {
+          ...preview,
+          completedTasks: 200,
+          level: 5,
+          tasks: [],
+          taskQueue: [],
+          nextTaskId: 1,
+          nextTaskAt: 30,
+          completedArchitectureTasks: 18,
+          secondJob: {
+            ...secondary,
+            level: 5,
+            completedTasks: 90,
+            completedArchitectureTasks: 10,
+          },
+          frontierModelUnlocked: true,
+          terminals: preview.terminals.map((terminal) => terminal.id === 'terminal' ? { ...terminal, model: 'frontier' } : terminal),
+        }
+        return appendSocialPost(issueAvailableAssignments(preview), { id: 'frontier-model-unlocked', type: 'frontier-model', elapsed: 30, likes: 0 })
       }
       const failure = 'The run ended in the developer preview.'
       return lose({ ...state, stage: 'lost', company: state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null, failure }, 'primary')
