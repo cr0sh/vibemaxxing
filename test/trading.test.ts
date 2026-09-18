@@ -1,9 +1,40 @@
 import { describe, expect, test } from 'bun:test'
-import { createMarket, tradeMarket, transferMarket } from '../src/trading'
+import { createMarket, advanceMarket, tradeMarket, transferMarket } from '../src/trading'
 
 describe('trading balances', () => {
   test('Bitcoin opens at exactly one hundred dollars', () => {
     expect(createMarket(17, 0).price).toBe(100)
+  })
+
+  test('moves on each half-second and catches up one step at a time', () => {
+    const start = createMarket(17, 0)
+    const half = advanceMarket(start, 0.5)
+    const one = advanceMarket(half, 1)
+
+    expect(half.history).toHaveLength(2)
+    expect(half.history.at(-1)).toEqual({ elapsed: 0.5, price: half.price })
+    expect(one.history).toHaveLength(3)
+    expect(one.history.at(-1)).toEqual({ elapsed: 1, price: one.price })
+  })
+
+  test('batched catch-up matches sequential half-second updates', () => {
+    const start = createMarket(23, 0)
+    const sequential = advanceMarket(advanceMarket(advanceMarket(start, 0.5), 1), 1.5)
+    const batched = advanceMarket(start, 1.5)
+
+    expect(batched).toEqual(sequential)
+  })
+
+  test('keeps a 120-second chart window with finite bounded prices', () => {
+    const advanced = advanceMarket(createMarket(17, 0), 120)
+    const last = advanced.history.at(-1)
+
+    expect(advanced.history).toHaveLength(240)
+    expect(advanced.history[0]?.elapsed).toBe(0.5)
+    expect(last?.elapsed).toBe(120)
+    expect(Number.isFinite(advanced.price)).toBe(true)
+    expect(advanced.price).toBeGreaterThanOrEqual(1)
+    expect(advanced.price).toBeLessThanOrEqual(10_000_000)
   })
 
   test('a fractional BTC round trip returns all cash without fees or rounding dust', () => {

@@ -91,12 +91,14 @@ function App() {
     const timer = window.setInterval(() => {
       const currentTime = Date.now()
       setNow(new Date(currentTime))
-      const elapsedSeconds = Math.floor((currentTime - lastTickAt) / 1000)
-      if (elapsedSeconds > 0) {
-        lastTickAt += elapsedSeconds * 1000
-        if (state.stage === 'hired' && !isDevPaused) dispatch({ type: 'tick', seconds: elapsedSeconds })
+      const elapsedHalfSeconds = Math.floor((currentTime - lastTickAt) / 500)
+      if (elapsedHalfSeconds > 0) {
+        lastTickAt += elapsedHalfSeconds * 500
+        if (state.stage === 'hired' && !isDevPaused) {
+          dispatch({ type: 'tick', seconds: elapsedHalfSeconds * 0.5 })
+        }
       }
-    }, 1000)
+    }, 500)
 
     return () => window.clearInterval(timer)
   }, [state.stage, isDevPaused])
@@ -670,7 +672,7 @@ function Desktop({
                 <WindowFrame
                   id="defeat"
                   icon="⚠️"
-                  title="Run ended"
+                  title="You are fired"
                   active={isWindowActive('defeat')}
                   className="loss-window"
                   hidden={state.stage !== 'lost' || defeatDismissed}
@@ -679,9 +681,9 @@ function Desktop({
                 >
                   <div className="loss-card">
                     <span className="loss-icon" aria-hidden="true">⌁</span>
-                    <h2>Run ended</h2>
-                    <p>{state.failure ?? 'The deadline passed before the artifact arrived.'}</p>
-                    <button className="primary-button" type="button" onClick={retryGame}>Retry</button>
+                    <h2>You are fired</h2>
+                    <p>{state.failure ?? 'The work ended before the artifact arrived. You can try again.'}</p>
+                    <button className="primary-button" type="button" onClick={retryGame}>Try again</button>
                   </div>
                 </WindowFrame>
               )}
@@ -730,7 +732,7 @@ function Desktop({
                         : id === 'social'
                           ? { icon: 'Z', label: 'ZZZ' }
                           : id === 'defeat'
-                            ? { icon: '⚠️', label: 'Run ended' }
+                            ? { icon: '⚠️', label: 'You are fired' }
                             : id === 'spark'
                               ? { icon: '🖥️', label: 'Mapple Spark' }
                               : { icon: '🖥️', label: id === 'terminal' ? 'Terminal' : 'Terminal 2' }
