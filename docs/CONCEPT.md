@@ -140,3 +140,23 @@ The flow of the game is:
 
 - When the user reaches \$4.242M, the user wins the game. End message like: "You are
   now a multimillionare. No need to work"
+
+## Implementation and balance notes
+
+- The inactivity clock starts on accepting the first job, not during initial
+  applications, where none of the qualifying recovery interactions are available.
+  Application submission costs remain unchanged.
+- Monopoly starts 60 seconds after the frontier model unlock. Spark Ultra is
+  announced 60 seconds later; orders open after another 10 seconds. Its price
+  remains $100,000, with the same 15–60 second delivery rule as Spark.
+- L5 task rewards use a 600× multiplier instead of 200×. L4 remains at 100×;
+  early-career rewards and existing purchase prices are unchanged.
+  Optimized reducer simulations with seeds 12345, 42, and 2026 reached victory in
+  25.6–27.9 minutes, after Ultra delivery, without injected cash or trading gains.
+  These runs allowed at most two actions per second; they are pacing checks,
+  not measured human playtimes.
+- The $4.242M victory threshold includes cash, trading USD, and BTC at its current
+  market price, without double-counting transfers. Both endings freeze gameplay.
+- Shorts shuffles four remotely hosted GIPHY MP4 meme loops and loads only the
+  foreground clip. Each clip links to its source; playback depends on the remote
+  host. Playback, focus changes, and layout changes do not restore energy.

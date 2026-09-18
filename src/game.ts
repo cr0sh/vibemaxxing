@@ -12,11 +12,11 @@ export type Application = {
   pitch: string
 }
 
-export type Stage = 'ready' | 'applying' | 'offer' | 'hired' | 'lost'
-export type DevJumpTarget = Stage | 'tiro' | 'market' | 'spark' | 'mercury' | 'second-job' | 'frontier'
+export type Stage = 'ready' | 'applying' | 'offer' | 'hired' | 'lost' | 'won'
+export type DevJumpTarget = Stage | 'tiro' | 'market' | 'spark' | 'mercury' | 'second-job' | 'frontier' | 'monopoly' | 'spark-ultra' | 'shorts' | 'energy-loss'
 export type JobId = 'primary' | 'secondary'
 export type TaskStatus = 'assigned' | 'working' | 'approval' | 'blocked' | 'artifact' | 'failed'
-export type TerminalId = 'terminal' | 'terminal-2' | 'spark'
+export type TerminalId = 'terminal' | 'terminal-2' | 'spark' | 'spark-ultra'
 export type TerminalUpgrade = 'split' | 'yolo' | 'terminal'
 
 export const TOKEN_PACK_COUNTS = [1, 5, 10, 100] as const
@@ -106,7 +106,7 @@ export type EmploymentMessage =
   | ({ id: string; type: 'firing'; elapsed: number; failure: string } & JobMessage)
 
 type SocialPostType = 'campaign' | 'lottery' | 'reset' | 'model' | 'fast-mode' | 'market' | 'spark' | 'spark-delivered' |
-  'advanced-model' | 'mercury' | 'second-job' | 'frontier-model'
+  'advanced-model' | 'mercury' | 'second-job' | 'frontier-model' | 'monopoly' | 'spark-ultra' | 'spark-ultra-delivered' | 'shorts'
 type SocialPostBase = {
   id: string
   elapsed: number
@@ -165,14 +165,23 @@ export type GameState = {
   advancedModelAnnouncedAt: number | null
   advancedModelUnlocked: boolean
   frontierModelUnlocked: boolean
+  frontierUnlockedAt: number | null
+  monopolyAnnouncedAt: number | null
   sparkAnnouncedAt: number | null
   sparkPurchasedAt: number | null
   sparkDeliveryAt: number | null
+  sparkUltraAnnouncedAt: number | null
+  sparkUltraPurchasedAt: number | null
+  sparkUltraDeliveryAt: number | null
+  shortsUnlocked: boolean
+  inactivityElapsed: number
+  inactivityDecay: number
   mercuryOwned: boolean
   mercuryEnabled: boolean
   tokenAutoBuy: boolean
   tokenPacks: TokenPackCount
   market: MarketState | null
+  lossReason: 'deadline' | 'energy' | null
 }
 
 export type GameAction =
@@ -189,7 +198,7 @@ export type GameAction =
   | { type: 'buy-tokens'; packs: TokenPackCount }
   | { type: 'set-token-auto-buy'; enabled: boolean }
   | { type: 'set-token-packs'; packs: TokenPackCount }
-  | { type: 'buy-upgrade'; upgrade: TerminalUpgrade; terminalId: TerminalId }
+  | { type: 'buy-upgrade'; upgrade: TerminalUpgrade; terminalId: TerminalId; source: 'click' | 'drag' }
   | { type: 'read-watercooler' }
   | { type: 'install-social' }
   | { type: 'like-reset'; postId: string }
@@ -197,12 +206,14 @@ export type GameAction =
   | { type: 'retry-task'; id: number }
   | { type: 'retry-all' }
   | { type: 'buy-spark' }
+  | { type: 'buy-spark-ultra' }
   | { type: 'buy-model'; model: 'advanced' }
   | { type: 'set-terminal-model'; terminalId: TerminalId; model: AgentModelId }
   | { type: 'buy-mercury' }
   | { type: 'set-mercury'; enabled: boolean }
   | { type: 'submit-second-job'; roll: number; companyIndex: number }
   | { type: 'accept-second-job' }
+  | { type: 'scroll-short' }
   | { type: 'market-transfer'; direction: 'deposit' | 'withdraw'; amount: number | 'max' }
   | { type: 'market-trade'; side: 'buy' | 'sell'; amount: number }
 
@@ -217,6 +228,8 @@ export const companies: readonly string[] = [
 
 const MAX_ENERGY = 100
 export const MAX_TOKENS = 10_000_000
+export const SPARK_ULTRA_PRICE = 100_000
+export const WIN_NET_WORTH = 4_242_000
 const TOKEN_TASK_COST = 100_000
 export const TOKEN_PURCHASE_AMOUNT = 100_000
 export const TOKEN_PURCHASE_COST = 100
@@ -254,6 +267,8 @@ const MARKET_TASK_GATE = 55
 const MARKET_ARCHITECTURE_GATE = 8
 const SECOND_JOB_TASK_GATE = 100
 const FRONTIER_TASK_GATE = 290
+const INACTIVITY_INTERVAL = 3
+const INACTIVITY_MAX_DECAY = 16
 
 export function taskTokenCost(
   task: Pick<WorkTask, 'difficulty'>,
@@ -285,14 +300,22 @@ export function taskReward(task: Pick<WorkTask, 'baseReward' | 'assignedAt'>, el
 export function tokenPurchaseAmount(tokens: number, packs: TokenPackCount): number {
   return Math.max(0, Math.min(TOKEN_PURCHASE_AMOUNT * packs, MAX_TOKENS - tokens))
 }
+export function tokenPriceMultiplier(state: Pick<GameState, 'elapsed' | 'monopolyAnnouncedAt'>): number {
+  if (state.monopolyAnnouncedAt === null || !Number.isFinite(state.monopolyAnnouncedAt)) return 1
+  const elapsed = Number.isFinite(state.elapsed) ? state.elapsed : state.monopolyAnnouncedAt
+  const steps = Math.floor(Math.max(0, elapsed - state.monopolyAnnouncedAt) / 5 + Number.EPSILON * 8)
+  return 1.1 ** steps
+}
 
-export function tokenPurchaseCost(amount: number): number {
-  return Math.ceil(amount * TOKEN_PURCHASE_COST * 100 / TOKEN_PURCHASE_AMOUNT) / 100
+export function tokenPurchaseCost(amount: number, state: Pick<GameState, 'elapsed' | 'monopolyAnnouncedAt'>): number {
+  const multiplier = tokenPriceMultiplier(state)
+  const cents = amount * TOKEN_PURCHASE_COST * 100 * multiplier / TOKEN_PURCHASE_AMOUNT
+  return Math.ceil(cents - Math.abs(cents) * Number.EPSILON * 2) / 100
 }
 function purchaseTokens(state: GameState, packs: TokenPackCount): GameState {
   if (!TOKEN_PACK_COUNTS.includes(packs) || state.stage !== 'hired') return state
   const amount = tokenPurchaseAmount(state.tokens, packs)
-  const cost = tokenPurchaseCost(amount)
+  const cost = tokenPurchaseCost(amount, state)
   if (!Number.isFinite(state.money) || !Number.isFinite(state.tokens) || !Number.isFinite(amount) || !Number.isFinite(cost) ||
     state.money < cost || amount <= 0) return state
   return issueAvailableAssignments({
@@ -569,11 +592,12 @@ function availableCloudModels(state: GameState): AgentModelId[] {
 }
 export function availableModels(state: GameState, terminalId: TerminalId): AgentModelId[] {
   if (!isTerminalId(terminalId) || getTerminal(state, terminalId) === undefined) return []
-  if (terminalId === 'spark') return ['reasoning']
+  if (isLocalTerminal(terminalId)) return [terminalId === 'spark-ultra' ? 'advanced' : 'reasoning']
   return availableCloudModels(state)
 }
 export function terminalModel(state: GameState, terminalId: TerminalId): AgentModelId {
   if (terminalId === 'spark') return 'reasoning'
+  if (terminalId === 'spark-ultra') return 'advanced'
   const terminal = getTerminal(state, terminalId)
   if (terminal === undefined) return 'basic'
   const best: AgentModelId = state.advancedModelUnlocked ? 'advanced' : state.reasoningUnlocked ? 'reasoning' : 'basic'
@@ -593,7 +617,7 @@ function assignedTaskReservations(
   state: Pick<GameState, 'tasks'> & Partial<Pick<GameState, 'terminals'>>,
   task: WorkTask,
 ): number {
-  if (state.terminals?.some((terminal) => terminal.id === 'spark')) return 0
+  if (state.terminals?.some((terminal) => isLocalTerminal(terminal.id))) return 0
   return state.tasks.reduce((total, candidate) => total + (
     candidate.id !== task.id && candidate.status === 'assigned'
       ? taskTokenCost(candidate, false, 'basic', candidate.local)
@@ -609,10 +633,10 @@ export function canFundTaskAttempt(
   preserveAssignedReservations = true,
 ): boolean {
   if (terminalId !== undefined && state.terminals !== undefined && state.terminals.every((terminal) => terminal.id !== terminalId)) return false
-  const local = terminalId === 'spark'
+  const local = terminalId !== undefined && isLocalTerminal(terminalId)
   let model: AgentModelId = 'basic'
   if (local) {
-    model = 'reasoning'
+    model = terminalId === 'spark-ultra' ? 'advanced' : 'reasoning'
   } else if (state.frontierModelUnlocked && terminalId !== undefined) {
     const selected = state.terminals?.find((terminal) => terminal.id === terminalId)?.model
     if (selected !== undefined) model = selected
@@ -623,7 +647,7 @@ export function canFundTaskAttempt(
   }
   const assigned = preserveAssignedReservations ? assignedTaskReservations(state, task) : 0
   const otherReservations = assigned + mercuryReturnReservations(state.tasks, state.mercuryEnabled !== false)
-  const cost = taskTokenCost(task, fastMode, model, local)
+  const cost = taskTokenCost(task, local ? false : fastMode, model, local)
   return Number.isFinite(cost) && cost >= 0 && Number.isFinite(otherReservations) &&
     Number.isFinite(state.tokens) && state.tokens >= 0 && (local || state.tokens >= cost + otherReservations)
 }
@@ -632,9 +656,9 @@ export function canFundMercuryAttempt(state: GameState, task: WorkTask, terminal
   if (!state.mercuryOwned || !state.mercuryEnabled || task.status !== 'assigned') return false
   const terminal = getTerminal(state, terminalId)
   if (terminal === undefined) return false
-  const local = terminalId === 'spark'
+  const local = isLocalTerminal(terminalId)
   const fastMode = local ? false : terminal.fastMode === true
-  const model = local ? 'reasoning' : terminalModel(state, terminalId)
+  const model = terminalModel(state, terminalId)
   const attemptCost = taskTokenCost(task, fastMode, model, local)
   const reserved = mercuryReturnReservations(state.tasks)
   const required = MERCURY_FORWARD_COST + attemptCost + MERCURY_FORWARD_COST + reserved
@@ -645,15 +669,16 @@ export function canFundMercuryRetry(state: GameState, task: WorkTask): boolean {
   if (!state.mercuryOwned || !state.mercuryEnabled || task.status !== 'failed' || task.failedAt === null || task.terminalId === null || task.slot === null) return false
   const terminal = getTerminal(state, task.terminalId)
   if (terminal === undefined || task.slot < 0 || task.slot >= terminal.slots || !taskSlotFree(state, task.terminalId, task.slot, task.id)) return false
-  const local = task.terminalId === 'spark'
+  const local = isLocalTerminal(task.terminalId)
   const fastMode = local ? false : terminal.fastMode === true
-  const model = local ? 'reasoning' : terminalModel(state, task.terminalId)
+  const model = terminalModel(state, task.terminalId)
   const attemptCost = taskTokenCost(task, fastMode, model, local)
   const required = attemptCost + MERCURY_FORWARD_COST +
     mercuryReturnReservations(state.tasks)
   return Number.isFinite(attemptCost) && attemptCost >= 0 && Number.isFinite(required) &&
     Number.isFinite(state.tokens) && state.tokens >= required
 }
+
 
 
 function issueAvailableAssignments(state: GameState): GameState {
@@ -666,9 +691,9 @@ function issueAvailableAssignments(state: GameState): GameState {
   if (dueIndex < 0) return current
   const descriptor = current.taskQueue[dueIndex]
   if (descriptor === undefined) return current
-  const reserved = reservedAssignmentTokens(current.tasks, getTerminal(current, 'spark') !== undefined)
+  const reserved = reservedAssignmentTokens(current.tasks, current.terminals.some((terminal) => isLocalTerminal(terminal.id)))
   const cost = taskTokenCost(descriptor)
-  const hasLocalTerminal = getTerminal(current, 'spark') !== undefined
+  const hasLocalTerminal = current.terminals.some((terminal) => isLocalTerminal(terminal.id))
   if (!Number.isFinite(cost) || (!hasLocalTerminal && current.tokens < reserved + cost) || (hasLocalTerminal && current.tokens < reserved && reserved > 0)) return current
   const job = jobFromState(current, descriptor.jobId)
   if (job === null) return current
@@ -679,7 +704,7 @@ function issueAvailableAssignments(state: GameState): GameState {
     startedAt: null,
     assignedAt: current.elapsed,
     baseReward: job.completedTasks >= 5
-      ? TASK_REWARD_PER_DIFFICULTY * descriptor.difficulty * (job.level === 5 ? 200 : job.level === 4 ? 100 : 1)
+      ? TASK_REWARD_PER_DIFFICULTY * descriptor.difficulty * (job.level === 5 ? 600 : job.level === 4 ? 100 : 1)
       : 0,
     model: null,
     fastMode: false,
@@ -745,14 +770,23 @@ function createHiredState(state: GameState): GameState {
     advancedModelAnnouncedAt: null,
     advancedModelUnlocked: false,
     frontierModelUnlocked: false,
+    frontierUnlockedAt: null,
+    monopolyAnnouncedAt: null,
     sparkAnnouncedAt: null,
     sparkPurchasedAt: null,
     sparkDeliveryAt: null,
+    sparkUltraAnnouncedAt: null,
+    sparkUltraPurchasedAt: null,
+    sparkUltraDeliveryAt: null,
+    shortsUnlocked: false,
+    inactivityElapsed: 0,
+    inactivityDecay: 1,
     mercuryOwned: false,
     mercuryEnabled: false,
     tokenAutoBuy: false,
     tokenPacks: 10,
     market: null,
+    lossReason: null,
   }
   const welcomed = appendMessage(hired, { id: 'welcome', type: 'welcome', jobId: 'primary', elapsed: hired.elapsed })
   return issueAvailableAssignments(welcomed)
@@ -770,6 +804,18 @@ function appendFeatureAnnouncements(state: GameState): GameState {
   }
   if (current.socialInstalledAt !== null && current.fastModeUnlocked && !current.socialPosts.some((post) => post.type === 'fast-mode')) {
     current = appendSocialPost(current, { id: 'fast-mode-unlocked', type: 'fast-mode', elapsed: current.elapsed, likes: 0 })
+  }
+  if (current.frontierUnlockedAt !== null && current.monopolyAnnouncedAt === null &&
+    current.elapsed >= current.frontierUnlockedAt + 60) {
+    const announcedAt = current.frontierUnlockedAt + 60
+    current = { ...current, monopolyAnnouncedAt: announcedAt }
+    current = appendSocialPost(current, { id: 'monopoly-announced', type: 'monopoly', elapsed: announcedAt, likes: 0 })
+  }
+  if (current.monopolyAnnouncedAt !== null && current.sparkUltraAnnouncedAt === null &&
+    current.elapsed >= current.monopolyAnnouncedAt + 60) {
+    const announcedAt = current.monopolyAnnouncedAt + 60
+    current = { ...current, sparkUltraAnnouncedAt: announcedAt }
+    current = appendSocialPost(current, { id: 'spark-ultra-announced', type: 'spark-ultra', elapsed: announcedAt, likes: 0 })
   }
   return current
 }
@@ -790,16 +836,23 @@ function maybeUnlockProgression(state: GameState): GameState {
     current = appendSocialPost(current, { id: 'second-job-unlocked', type: 'second-job', elapsed: current.elapsed, likes: 0 })
   }
   if (current.frontierModelUnlocked === false && current.secondJob !== null && completedTaskCount(current) >= FRONTIER_TASK_GATE) {
-    current = { ...current, frontierModelUnlocked: true }
+    current = {
+      ...current,
+      frontierModelUnlocked: true,
+      frontierUnlockedAt: current.elapsed,
+    }
     current = appendSocialPost(current, { id: 'frontier-model-unlocked', type: 'frontier-model', elapsed: current.elapsed, likes: 0 })
   }
-  return current
+  return appendFeatureAnnouncements(current)
 }
 
-function lose(state: GameState, failure: string, jobId: JobId = 'primary'): GameState {
-  const lost = { ...state, stage: 'lost' as const, failure }
-  return appendMessage(lost, { id: 'firing', type: 'firing', jobId, elapsed: state.elapsed, failure })
+function lose(state: GameState, failure: string, reason: 'deadline' | 'energy', jobId: JobId = 'primary'): GameState {
+  const lost = { ...state, stage: 'lost' as const, failure, lossReason: reason }
+  return reason === 'deadline'
+    ? appendMessage(lost, { id: 'firing', type: 'firing', jobId, elapsed: state.elapsed, failure })
+    : lost
 }
+
 export const initialGame: GameState = {
   stage: 'ready', tiroAvatar: TIRO_AVATARS[0]!, submissions: 0, company: null, lastResult: null, energy: MAX_ENERGY,
   tokens: MAX_TOKENS, money: 0, elapsed: 0, tickRemainder: 0, tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }],
@@ -808,18 +861,34 @@ export const initialGame: GameState = {
   socialPosts: [], nextTaskId: 1, nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
   expectation: 0.2, rng: 1, socialRng: 1, secondJob: null, secondJobUnlocked: false, secondJobApplications: 0,
   secondJobOffer: null, advancedModelAnnouncedAt: null, advancedModelUnlocked: false, frontierModelUnlocked: false,
-  sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null, mercuryOwned: false,
-  mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null,
+  frontierUnlockedAt: null, monopolyAnnouncedAt: null,
+  sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null,
+  sparkUltraAnnouncedAt: null, sparkUltraPurchasedAt: null, sparkUltraDeliveryAt: null,
+  shortsUnlocked: false, inactivityElapsed: 0, inactivityDecay: 1,
+  mercuryOwned: false, mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null,
+  lossReason: null,
 }
 
 function getTerminal(state: Pick<GameState, 'terminals'>, terminalId: TerminalId): TerminalState | undefined {
   return state.terminals.find((terminal) => terminal.id === terminalId)
 }
 function isTerminalId(value: string): value is TerminalId {
-  return value === 'terminal' || value === 'terminal-2' || value === 'spark'
+  return value === 'terminal' || value === 'terminal-2' || value === 'spark' || value === 'spark-ultra'
+}
+export function isLocalTerminal(id: TerminalId): boolean {
+  return id === 'spark' || id === 'spark-ultra'
 }
 function cloudTerminalId(value: string): value is 'terminal' | 'terminal-2' {
   return value === 'terminal' || value === 'terminal-2'
+}
+export function gameNetWorth(state: Pick<GameState, 'money' | 'market'>): number {
+  const market = state.market
+  const markedBtc = market !== null && Number.isFinite(market.btc) && Number.isFinite(market.price)
+    ? market.btc * market.price
+    : 0
+  const tradingUsd = market !== null && Number.isFinite(market.usd) ? market.usd : 0
+  const cash = Number.isFinite(state.money) ? state.money : 0
+  return cash + tradingUsd + markedBtc
 }
 
 function advanceTask(task: WorkTask, elapsed: number, terminals: readonly TerminalState[], rng: number): readonly [WorkTask, number] {
@@ -840,14 +909,26 @@ function advanceTask(task: WorkTask, elapsed: number, terminals: readonly Termin
 }
 
 function updateSparkDelivery(state: GameState): GameState {
-  if (state.sparkDeliveryAt === null || state.sparkPurchasedAt === null || state.elapsed < state.sparkDeliveryAt || getTerminal(state, 'spark') !== undefined) return state
-  let next: GameState = {
-    ...state,
-    terminals: [...state.terminals, { id: 'spark', slots: 2, yolo: false, fastMode: false, model: 'reasoning' }],
-    advancedModelAnnouncedAt: state.advancedModelAnnouncedAt ?? state.elapsed,
+  let next = state
+  if (next.sparkDeliveryAt !== null && next.sparkPurchasedAt !== null && next.elapsed >= next.sparkDeliveryAt && getTerminal(next, 'spark') === undefined) {
+    next = {
+      ...next,
+      terminals: [...next.terminals, { id: 'spark', slots: 2, yolo: false, fastMode: false, model: 'reasoning' }],
+      advancedModelAnnouncedAt: next.advancedModelAnnouncedAt ?? next.elapsed,
+    }
+    next = appendSocialPost(next, { id: 'spark-delivered', type: 'spark-delivered', elapsed: next.elapsed, likes: 0 })
+    if (!next.socialPosts.some((post) => post.type === 'advanced-model')) {
+      next = appendSocialPost(next, { id: 'advanced-model-announced', type: 'advanced-model', elapsed: next.advancedModelAnnouncedAt ?? next.elapsed, likes: 0 })
+    }
   }
-  next = appendSocialPost(next, { id: 'spark-delivered', type: 'spark-delivered', elapsed: state.elapsed, likes: 0 })
-  if (!next.socialPosts.some((post) => post.type === 'advanced-model')) next = appendSocialPost(next, { id: 'advanced-model-announced', type: 'advanced-model', elapsed: next.advancedModelAnnouncedAt ?? state.elapsed, likes: 0 })
+  if (next.sparkUltraDeliveryAt !== null && next.sparkUltraPurchasedAt !== null &&
+    next.elapsed >= next.sparkUltraDeliveryAt && getTerminal(next, 'spark-ultra') === undefined) {
+    next = {
+      ...next,
+      terminals: [...next.terminals, { id: 'spark-ultra', slots: 2, yolo: false, fastMode: false, model: 'advanced' }],
+    }
+    next = appendSocialPost(next, { id: 'spark-ultra-delivered', type: 'spark-ultra-delivered', elapsed: next.elapsed, likes: 0 })
+  }
   return next
 }
 
@@ -861,20 +942,17 @@ function firstFreeSlot(state: GameState, terminal: TerminalState): number | null
 function canFundAssignedTask(state: GameState, task: WorkTask): boolean {
   return state.terminals.some((terminal) => {
     if (firstFreeSlot(state, terminal) === null) return false
-    const fastMode = terminal.id === 'spark' ? false : terminal.fastMode
+    const fastMode = isLocalTerminal(terminal.id) ? false : terminal.fastMode
     return state.mercuryOwned && state.mercuryEnabled
       ? canFundMercuryAttempt(state, task, terminal.id)
       : canFundTaskAttempt(state, task, fastMode, terminal.id)
   })
 }
-
 function canFundRetryTask(state: GameState, task: WorkTask): boolean {
   if (task.terminalId === null || task.slot === null) return false
   const terminal = getTerminal(state, task.terminalId)
-  if (terminal === undefined || task.slot < 0 || task.slot >= terminal.slots || !taskSlotFree(state, task.terminalId, task.slot, task.id)) {
-    return false
-  }
-  const fastMode = terminal.id === 'spark' ? false : terminal.fastMode
+  if (terminal === undefined || task.slot < 0 || task.slot >= terminal.slots || !taskSlotFree(state, task.terminalId, task.slot, task.id)) return false
+  const fastMode = isLocalTerminal(terminal.id) ? false : terminal.fastMode
   return state.mercuryOwned && state.mercuryEnabled
     ? task.failedAt !== null && state.elapsed >= task.failedAt + MERCURY_RETRY_DELAY && canFundMercuryRetry(state, task)
     : canFundTaskAttempt(state, task, fastMode, terminal.id)
@@ -910,9 +988,9 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
   const terminal = getTerminal(state, terminalId)
   const task = state.tasks[taskIndex]
   if (terminal === undefined || task === undefined) return state
-  const local = terminalId === 'spark'
+  const local = isLocalTerminal(terminalId)
   const fastMode = local ? false : terminal.fastMode === true
-  const model = local ? 'reasoning' : terminalModel(state, terminalId)
+  const model = terminalModel(state, terminalId)
   const cost = taskTokenCost(task, fastMode, model, local)
   const preserveAssignedReservations = !automatic
   if (!canFundTaskAttempt(state, task, fastMode, terminalId, preserveAssignedReservations) || !Number.isFinite(cost) || state.tokens < cost) return state
@@ -1063,55 +1141,116 @@ function deadlineFailure(state: GameState, task: WorkTask): string {
   const company = task.jobId === 'secondary' ? state.secondJob?.company : state.company
   return `You missed “${task.title}” at ${company ?? 'your company'}.`
 }
+function unlockShorts(state: GameState): GameState {
+  if (state.stage !== 'hired' || state.energy >= 80 || state.shortsUnlocked) return state
+  const unlocked = { ...state, shortsUnlocked: true }
+  return state.socialInstalledAt === null ? unlocked :
+    appendSocialPost(unlocked, { id: 'shorts-unlocked', type: 'shorts', elapsed: state.elapsed, likes: 0 })
+}
+
+function humanInteraction(state: GameState): GameState {
+  if (state.stage !== 'hired') return state
+  return unlockShorts({
+    ...state,
+    energy: Math.min(MAX_ENERGY, state.energy + 1),
+    inactivityElapsed: 0,
+    inactivityDecay: 1,
+  })
+}
+
+function applyIdleTime(state: GameState, seconds: number): GameState {
+  if (state.stage !== 'hired' || !Number.isFinite(seconds) || seconds <= 0) return state
+  let inactivityElapsed = Number.isFinite(state.inactivityElapsed) ? Math.max(0, state.inactivityElapsed) : 0
+  let inactivityDecay = Number.isFinite(state.inactivityDecay) ? clamp(state.inactivityDecay, 1, INACTIVITY_MAX_DECAY) : 1
+  let energy = state.energy
+  let remaining = seconds
+  while (remaining > 0 && state.stage === 'hired') {
+    const untilDecay = INACTIVITY_INTERVAL - inactivityElapsed
+    if (remaining + 1e-9 < untilDecay) {
+      inactivityElapsed += remaining
+      remaining = 0
+      break
+    }
+    remaining = Math.max(0, remaining - untilDecay)
+    inactivityElapsed = 0
+    energy = Math.max(0, energy - inactivityDecay)
+    inactivityDecay = Math.min(INACTIVITY_MAX_DECAY, inactivityDecay * 2)
+    if (energy <= 0) break
+  }
+  let next: GameState = { ...state, energy, inactivityElapsed, inactivityDecay }
+  next = unlockShorts(next)
+  return energy <= 0 ? lose(next, 'You ran out of energy and got to depression.', 'energy') : next
+}
+
+function maybeWin(state: GameState): GameState {
+  return state.stage === 'hired' && gameNetWorth(state) >= WIN_NET_WORTH
+    ? { ...state, stage: 'won', failure: null, lossReason: null }
+    : state
+}
+
 
 function tickHired(state: GameState, seconds: number): GameState {
   if (state.stage !== 'hired' || !Number.isFinite(seconds) || seconds <= 0) return state
-  const previousRemainder = Number.isFinite(state.tickRemainder) ? clamp(state.tickRemainder, 0, 0.999999999) : 0
-  const total = previousRemainder + seconds
-  const wholeSeconds = Math.floor(total + 1e-9)
-  let remainder = Math.max(0, total - wholeSeconds)
-  if (remainder >= 1 - 1e-9) remainder = 0
   let current = state
-  for (let second = 0; second < wholeSeconds; second += 1) {
-    const nextElapsed = current.elapsed + 1
+  let remaining = seconds
+  while (remaining > 1e-9) {
+    const fraction = Number.isFinite(current.tickRemainder) ? clamp(current.tickRemainder, 0, 0.999999999) : 0
+    const untilSecond = 1 - fraction
+    const untilMarket = current.market === null ? untilSecond : fraction < 0.5 - 1e-9 ? 0.5 - fraction : untilSecond
+    const untilDecay = Math.max(1e-9, INACTIVITY_INTERVAL - current.inactivityElapsed)
+    const step = Math.min(remaining, untilSecond, untilMarket, untilDecay)
+    const wholeSecond = fraction + step >= 1 - 1e-9
+    remaining = Math.max(0, remaining - step)
     current = {
       ...current,
-      elapsed: nextElapsed,
-      money: current.money + 1 + (current.secondJob === null ? 0 : 1),
-      tokens: nextElapsed % 100 === 0 ? MAX_TOKENS : current.tokens,
-      expectation: bossExpectationAt(nextElapsed),
+      elapsed: current.elapsed + Number(wholeSecond),
+      tickRemainder: wholeSecond ? 0 : fraction + step,
     }
-    if (current.secondJob !== null) current = withJob(current, 'secondary', (job) => ({ ...job, expectation: bossExpectationAt(nextElapsed) }))
-    current = autoBuyTokens(current)
-    current = updateSparkDelivery(current)
-    const overdue = current.tasks.find((task) => current.elapsed >= task.deadlineAt)
-    if (overdue !== undefined) return lose({ ...current, tickRemainder: remainder }, deadlineFailure(current, overdue), overdue.jobId)
-    const previousTasks = current.tasks
-    let nextRng = current.rng
-    const advancedTasks: WorkTask[] = []
-    for (const task of previousTasks) {
-      const [advanced, taskRng] = advanceTask(task, current.elapsed, current.terminals, nextRng)
-      advancedTasks.push(advanced)
-      nextRng = taskRng
+    if (wholeSecond) {
+      current = {
+        ...current,
+        money: current.money + 1 + (current.secondJob === null ? 0 : 1),
+        tokens: current.elapsed % 100 === 0 ? MAX_TOKENS : current.tokens,
+        expectation: bossExpectationAt(current.elapsed),
+      }
+      if (current.secondJob !== null) current = withJob(current, 'secondary', (job) => ({ ...job, expectation: bossExpectationAt(current.elapsed) }))
+      current = autoBuyTokens(current)
+      current = updateSparkDelivery(current)
+      const overdue = current.tasks.find((task) => current.elapsed >= task.deadlineAt)
+      if (overdue !== undefined) return lose(current, deadlineFailure(current, overdue), 'deadline', overdue.jobId)
     }
-    current = { ...current, tasks: advancedTasks, rng: nextRng }
-    for (let index = 0; index < advancedTasks.length; index += 1) {
-      const before = previousTasks[index]
-      const after = advancedTasks[index]
-      if (before?.status !== 'artifact' && after?.status === 'artifact') current = updateAssignmentArtifact(current, after)
-      if (before?.status !== 'failed' && after?.status === 'failed') current = appendMessage(current, {
-        id: `attempt-failed-${after.id}-${after.attempt}`, type: 'attempt-failed', jobId: after.jobId, elapsed: current.elapsed, task: snapshotTask(after),
-      })
+    current = applyIdleTime(current, step)
+    if (current.stage !== 'hired') return current
+    if (wholeSecond) {
+      const previousTasks = current.tasks
+      let nextRng = current.rng
+      const advancedTasks: WorkTask[] = []
+      for (const task of previousTasks) {
+        const [advanced, taskRng] = advanceTask(task, current.elapsed, current.terminals, nextRng)
+        advancedTasks.push(advanced)
+        nextRng = taskRng
+      }
+      current = { ...current, tasks: advancedTasks, rng: nextRng }
+      for (let index = 0; index < advancedTasks.length; index += 1) {
+        const before = previousTasks[index]
+        const after = advancedTasks[index]
+        if (before?.status !== 'artifact' && after?.status === 'artifact') current = updateAssignmentArtifact(current, after)
+        if (before?.status !== 'failed' && after?.status === 'failed') current = appendMessage(current, {
+          id: `attempt-failed-${after.id}-${after.attempt}`, type: 'attempt-failed', jobId: after.jobId, elapsed: current.elapsed, task: snapshotTask(after),
+        })
+      }
+      current = appendLotteryIfDue(current)
+      current = maybeUnlockProgression(current)
+      current = issueAvailableAssignments(current)
+      current = processMercury(current)
     }
-    current = appendLotteryIfDue(current)
-    current = maybeUnlockProgression(current)
-    current = issueAvailableAssignments(current)
-    current = processMercury(current)
-    if (current.market !== null) current = { ...current, market: advanceMarket(current.market, current.elapsed) }
+    if (current.market !== null) {
+      const market = advanceMarket(current.market, current.elapsed + current.tickRemainder)
+      if (market !== current.market) current = { ...current, market }
+    }
+    current = maybeWin(current)
+    if (current.stage !== 'hired') return current
   }
-  if (current.stage !== 'hired') return current
-  current = { ...current, tickRemainder: remainder }
-  if (current.market !== null) current = { ...current, market: advanceMarket(current.market, current.elapsed + remainder) }
   return current
 }
 
@@ -1121,7 +1260,7 @@ export function upgradePrice(state: GameState, upgrade: TerminalUpgrade, termina
   const terminal = getTerminal(state, terminalId)
   if (terminal === undefined) return null
   if (upgrade === 'yolo') return terminal.yolo ? null : YOLO_PRICE
-  if (upgrade !== 'split' || terminalId === 'spark' || terminal.slots < 1 || terminal.slots >= MAX_TERMINAL_SLOTS) return null
+  if (upgrade !== 'split' || isLocalTerminal(terminalId) || terminal.slots < 1 || terminal.slots >= MAX_TERMINAL_SLOTS) return null
   const basePrice = SPLIT_PRICES[terminal.slots - 1]
   return basePrice === undefined ? null : terminalId === 'terminal-2' ? basePrice * SECONDARY_PRICE_MULTIPLIER : basePrice
 }
@@ -1136,8 +1275,10 @@ function resetEmploymentPreview(state: GameState, stage: 'applying' | 'offer'): 
     reasoningUnlocked: false, fastModeUnlocked: false, watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
     socialPosts: [], nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
     secondJob: null, secondJobUnlocked: false, secondJobApplications: 0, secondJobOffer: null, advancedModelAnnouncedAt: null,
-    advancedModelUnlocked: false, frontierModelUnlocked: false, sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null,
-    mercuryOwned: false, mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null,
+    advancedModelUnlocked: false, frontierModelUnlocked: false, frontierUnlockedAt: null, monopolyAnnouncedAt: null,
+    sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null, sparkUltraAnnouncedAt: null,
+    sparkUltraPurchasedAt: null, sparkUltraDeliveryAt: null, shortsUnlocked: false, inactivityElapsed: 0, inactivityDecay: 1,
+    mercuryOwned: false, mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null, lossReason: null,
   }
 }
 
@@ -1154,6 +1295,7 @@ function previewHired(state: GameState): GameState {
 }
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
+  if ((state.stage === 'lost' || state.stage === 'won') && action.type !== 'reset' && action.type !== 'dev-jump') return state
   switch (action.type) {
     case 'start':
       return state.stage === 'ready'
@@ -1189,8 +1331,19 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       }
       if (action.stage === 'applying') return resetEmploymentPreview(state, 'applying')
       if (action.stage === 'offer') return resetEmploymentPreview(state, 'offer')
-      if (action.stage === 'hired') return createHiredState({ ...state, company: state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null })
-      if (action.stage === 'market' || action.stage === 'spark' || action.stage === 'mercury' || action.stage === 'second-job' || action.stage === 'frontier') {
+      if (action.stage === 'shorts') {
+        const preview = previewHired(state)
+        return appendSocialPost({ ...preview, energy: 79, shortsUnlocked: true, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER }, { id: 'shorts-unlocked', type: 'shorts', elapsed: 0, likes: 0 })
+      }
+      if (action.stage === 'energy-loss') {
+        const preview = previewHired(state)
+        return { ...preview, stage: 'lost', energy: 0, shortsUnlocked: true, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER, failure: 'You ran out of energy and got to depression.', lossReason: 'energy' }
+      }
+      if (action.stage === 'won') {
+        return { ...previewHired(state), stage: 'won', money: WIN_NET_WORTH, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER, failure: null, lossReason: null }
+      }
+      if (action.stage === 'hired' ) return createHiredState({ ...state, company: state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null })
+      if (action.stage === 'market' || action.stage === 'spark' || action.stage === 'mercury' || action.stage === 'second-job' || action.stage === 'frontier' || action.stage === 'monopoly' || action.stage === 'spark-ultra') {
         let preview = previewHired(state)
         preview = {
           ...preview,
@@ -1230,7 +1383,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           advancedModelUnlocked: true,
           mercuryOwned: true,
           mercuryEnabled: true,
-          terminals: preview.terminals.map((terminal) => terminal.id === 'spark' ? terminal : { ...terminal, model: 'advanced' }),
+          terminals: preview.terminals.map((terminal) => isLocalTerminal(terminal.id) ? terminal : { ...terminal, model: 'advanced' }),
           money: 30_000,
         }
         preview = appendSocialPost(preview, { id: 'mercury-owned', type: 'mercury', elapsed: preview.elapsed, likes: 0 })
@@ -1276,13 +1429,36 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             completedArchitectureTasks: 10,
           },
           frontierModelUnlocked: true,
+          frontierUnlockedAt: 30,
           terminals: preview.terminals.map((terminal) => terminal.id === 'terminal' ? { ...terminal, model: 'frontier' } : terminal),
         }
-        return appendSocialPost(issueAvailableAssignments(preview), { id: 'frontier-model-unlocked', type: 'frontier-model', elapsed: 30, likes: 0 })
+        let frontierPreview = appendSocialPost(issueAvailableAssignments(preview), { id: 'frontier-model-unlocked', type: 'frontier-model', elapsed: 30, likes: 0 })
+        if (action.stage === 'frontier') return frontierPreview
+        frontierPreview = {
+          ...frontierPreview,
+          elapsed: 90,
+          monopolyAnnouncedAt: 90,
+          money: 300_000,
+          tasks: [],
+          taskQueue: [],
+          nextTaskAt: 90,
+          secondJob: frontierPreview.secondJob === null ? null : { ...frontierPreview.secondJob, nextTaskAt: 90 },
+        }
+        frontierPreview = appendSocialPost(frontierPreview, { id: 'monopoly-announced', type: 'monopoly', elapsed: 90, likes: 0 })
+        if (action.stage === 'monopoly') return issueAvailableAssignments(frontierPreview)
+        frontierPreview = {
+          ...frontierPreview,
+          elapsed: 150,
+          sparkUltraAnnouncedAt: 150,
+          nextTaskAt: 150,
+          secondJob: frontierPreview.secondJob === null ? null : { ...frontierPreview.secondJob, nextTaskAt: 150 },
+        }
+        frontierPreview = appendSocialPost(frontierPreview, { id: 'spark-ultra-announced', type: 'spark-ultra', elapsed: 150, likes: 0 })
+        return issueAvailableAssignments(frontierPreview)
       }
       const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? 'your company'
       const failure = `The developer preview did not clear ${company}'s hiring bar.`
-      return lose({ ...state, company }, failure)
+      return lose({ ...state, company }, failure, 'deadline')
     }
     case 'tick':
       return tickHired(state, action.seconds)
@@ -1320,10 +1496,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'deliver-task': {
       if (state.stage !== 'hired') return state
       const task = state.tasks.find((candidate) => candidate.id === action.id)
-      return task === undefined || task.status !== 'artifact' ? state : completeDelivery(state, task, 0)
+      return task === undefined || task.status !== 'artifact' ? state : maybeWin(completeDelivery(state, task, 0))
     }
-    case 'buy-tokens':
-      return purchaseTokens(state, action.packs)
+    case 'buy-tokens': {
+      const purchased = purchaseTokens(state, action.packs)
+      return purchased === state ? state : maybeWin(humanInteraction(purchased))
+    }
     case 'set-token-packs':
       return TOKEN_PACK_COUNTS.includes(action.packs) && state.tokenPacks !== action.packs
         ? { ...state, tokenPacks: action.packs }
@@ -1391,46 +1569,59 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
     case 'buy-upgrade': {
       const price = upgradePrice(state, action.upgrade, action.terminalId)
+      if (action.source !== 'click' && action.source !== 'drag') return state
       if (price === null || !Number.isFinite(state.money) || state.money < price) return state
+      let purchased: GameState
       if (action.upgrade === 'terminal') {
-        return {
+        purchased = {
           ...state,
           money: state.money - price,
           terminals: [...state.terminals, { id: 'terminal-2', slots: 1, yolo: false, fastMode: false, model: state.advancedModelUnlocked ? 'advanced' : state.reasoningUnlocked ? 'reasoning' : 'basic' }],
         }
-      }
-      if (action.upgrade === 'split') {
-        return {
+      } else if (action.upgrade === 'split') {
+        purchased = {
           ...state,
           money: state.money - price,
           terminals: state.terminals.map((terminal) => terminal.id === action.terminalId ? { ...terminal, slots: Math.min(MAX_TERMINAL_SLOTS, terminal.slots + 1) } : terminal),
         }
+      } else {
+        purchased = {
+          ...state,
+          money: state.money - price,
+          terminals: state.terminals.map((terminal) => terminal.id === action.terminalId ? { ...terminal, yolo: true } : terminal),
+          tasks: state.tasks.map((task) => task.terminalId === action.terminalId
+            ? { ...task, status: task.status === 'approval' || task.status === 'blocked' ? 'working' : task.status, nextApprovalAt: 0, approvalPrompt: null }
+            : task),
+        }
       }
-      return {
-        ...state,
-        money: state.money - price,
-        terminals: state.terminals.map((terminal) => terminal.id === action.terminalId ? { ...terminal, yolo: true } : terminal),
-        tasks: state.tasks.map((task) => task.terminalId === action.terminalId
-          ? { ...task, status: task.status === 'approval' || task.status === 'blocked' ? 'working' : task.status, nextApprovalAt: 0, approvalPrompt: null }
-          : task),
-      }
+      return maybeWin(action.source === 'click' ? humanInteraction(purchased) : purchased)
     }
     case 'buy-spark': {
       if (state.stage !== 'hired' || !Number.isFinite(state.money) || state.market === null || state.sparkAnnouncedAt === null || state.sparkPurchasedAt !== null || state.elapsed < state.sparkAnnouncedAt + 10 || state.money < SPARK_PRICE) return state
       const purchaseElapsed = state.elapsed - (state.sparkAnnouncedAt + 10)
       const delay = Math.min(60, 15 + 5 * Math.max(0, purchaseElapsed))
-      return { ...state, money: state.money - SPARK_PRICE, sparkPurchasedAt: state.elapsed, sparkDeliveryAt: state.elapsed + delay }
+      return maybeWin(humanInteraction({ ...state, money: state.money - SPARK_PRICE, sparkPurchasedAt: state.elapsed, sparkDeliveryAt: state.elapsed + delay }))
     }
-    case 'buy-model':
-      return state.stage !== 'hired' || action.model !== 'advanced' || state.advancedModelUnlocked || state.advancedModelAnnouncedAt === null || !Number.isFinite(state.money) || state.money < ADVANCED_MODEL_PRICE
-        ? state
-        : { ...state, money: state.money - ADVANCED_MODEL_PRICE, advancedModelUnlocked: true, terminals: state.terminals.map((terminal) => terminal.id === 'spark' ? terminal : { ...terminal, model: 'advanced' }) }
+    case 'buy-spark-ultra': {
+      if (state.stage !== 'hired' || !Number.isFinite(state.money) || state.sparkUltraAnnouncedAt === null || state.sparkUltraPurchasedAt !== null ||
+        state.elapsed < state.sparkUltraAnnouncedAt + 10 || state.money < SPARK_ULTRA_PRICE) return state
+      const purchaseElapsed = state.elapsed - (state.sparkUltraAnnouncedAt + 10)
+      const delay = Math.min(60, 15 + 5 * Math.max(0, purchaseElapsed))
+      return maybeWin(humanInteraction({ ...state, money: state.money - SPARK_ULTRA_PRICE, sparkUltraPurchasedAt: state.elapsed, sparkUltraDeliveryAt: state.elapsed + delay }))
+    }
+    case 'buy-model': {
+      if (state.stage !== 'hired' || action.model !== 'advanced' || state.advancedModelUnlocked || state.advancedModelAnnouncedAt === null || !Number.isFinite(state.money) || state.money < ADVANCED_MODEL_PRICE) return state
+      const purchased = { ...state, money: state.money - ADVANCED_MODEL_PRICE, advancedModelUnlocked: true, terminals: state.terminals.map((terminal) => isLocalTerminal(terminal.id) ? terminal : { ...terminal, model: 'advanced' as const }) }
+      return maybeWin(humanInteraction(purchased))
+    }
     case 'set-terminal-model':
       if (state.stage !== 'hired' || !cloudTerminalId(action.terminalId) || !state.frontierModelUnlocked || !availableModels(state, action.terminalId).includes(action.model)) return state
       return { ...state, terminals: state.terminals.map((terminal) => terminal.id === action.terminalId ? { ...terminal, model: action.model } : terminal) }
-    case 'buy-mercury':
+    case 'buy-mercury': {
       if (state.stage !== 'hired' || !state.advancedModelUnlocked || state.mercuryOwned || !Number.isFinite(state.money) || state.money < MERCURY_PRICE) return state
-      return appendSocialPost({ ...state, money: state.money - MERCURY_PRICE, mercuryOwned: true, mercuryEnabled: true }, { id: 'mercury-owned', type: 'mercury', elapsed: state.elapsed, likes: 0 })
+      const purchased = appendSocialPost({ ...state, money: state.money - MERCURY_PRICE, mercuryOwned: true, mercuryEnabled: true }, { id: 'mercury-owned', type: 'mercury', elapsed: state.elapsed, likes: 0 })
+      return maybeWin(humanInteraction(purchased))
+    }
     case 'set-mercury':
       return state.stage === 'hired' && state.mercuryOwned && typeof action.enabled === 'boolean' && state.mercuryEnabled !== action.enabled ? { ...state, mercuryEnabled: action.enabled } : state
     case 'submit-second-job': {
@@ -1440,7 +1631,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const attempt = state.secondJobApplications + 1
       const chance = attempt >= 15 ? 1 : Math.min(1, 0.02 * 2 ** Math.max(0, attempt - 9))
       const offered = Number.isFinite(action.roll) && action.roll < chance
-      return { ...state, secondJobApplications: attempt, secondJobOffer: offered ? company : null, energy: state.energy - 3 }
+      const next = unlockShorts({ ...state, secondJobApplications: attempt, secondJobOffer: offered ? company : null, energy: state.energy - 3 })
+      return next.energy <= 0 ? lose(next, 'You ran out of energy and got to depression.', 'energy') : next
     }
     case 'accept-second-job': {
       if (state.stage !== 'hired' || !state.secondJobUnlocked || state.secondJob !== null) return state
@@ -1450,6 +1642,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const accepted = appendMessage({ ...state, secondJob: job, secondJobOffer: null }, { id: 'welcome-secondary', type: 'welcome', jobId: 'secondary', elapsed: state.elapsed })
       return issueAvailableAssignments(refillTaskQueue(accepted))
     }
+    case 'scroll-short':
+      return state.stage === 'hired' && state.shortsUnlocked ? maybeWin(humanInteraction(state)) : state
     case 'market-transfer': {
       if (state.stage !== 'hired' || state.market === null) return state
       const amount = action.amount === 'max'
@@ -1461,7 +1655,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'market-trade': {
       if (state.stage !== 'hired' || state.market === null) return state
       const nextMarket = tradeMarket(state.market, action.side, action.amount)
-      return nextMarket === state.market ? state : { ...state, market: nextMarket }
+      if (nextMarket === state.market) return state
+      const soldProfit = action.side === 'sell' && nextMarket.realizedPnl > state.market.realizedPnl
+      const next = { ...state, market: nextMarket }
+      return maybeWin(soldProfit ? humanInteraction(next) : next)
     }
     default:
       return state

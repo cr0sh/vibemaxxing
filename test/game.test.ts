@@ -3,12 +3,15 @@ import {
   canFundMercuryRetry,
   hasTokenDeficit,
   companies,
+  gameNetWorth,
   gameReducer,
   initialGame,
   MAX_TOKENS,
   SOCIAL_LOTTERY_COPY,
   MERCURY_FORWARD_COST,
   MERCURY_RETRY_DELAY,
+  SPARK_ULTRA_PRICE,
+  WIN_NET_WORTH,
   mercuryReturnReservations,
   taskReward,
   taskTokenCost,
@@ -17,6 +20,7 @@ import {
   type WorkTask,
   upgradePrice,
 } from '../src/game'
+import { createMarket } from '../src/trading'
 function hire(seed = 12345): GameState {
   const started = gameReducer(initialGame, { type: 'start', seed })
   const offered = gameReducer(started, { type: 'submit', roll: 0, companyIndex: 0 })
@@ -349,8 +353,8 @@ describe('employment transitions', () => {
   })
   test('missing a task deadline preserves firing evidence and stops wages', () => {
     const hired = hire()
-    const task = taskWith(hired, 1)
-    const lost = gameReducer(hired, { type: 'tick', seconds: Math.ceil(task.deadlineAt) + 1 })
+    const task = { ...taskWith(hired, 1), deadlineAt: 5 }
+    const lost = gameReducer({ ...hired, tasks: [task] }, { type: 'tick', seconds: 6 })
     expect(lost.stage).toBe('lost')
     expect(lost.tasks).toContainEqual(task)
     expect(lost.messages.at(-1)?.type).toBe('firing')
@@ -359,13 +363,18 @@ describe('employment transitions', () => {
     expect(lost.failure).toContain(hired.company!)
     expect(gameReducer(lost, { type: 'tick', seconds: 100 })).toEqual(lost)
   })
-  test('task-free employment remains active during extended elapsed time', () => {
-    const longRunning = gameReducer({
+  test('task-free employment remains active when the player keeps scrolling Shorts', () => {
+    let longRunning: GameState = {
       ...hire(),
       tasks: [],
       taskQueue: [],
       nextTaskAt: 1_000_000,
-    }, { type: 'tick', seconds: 10_000 })
+      shortsUnlocked: true,
+    }
+    for (let second = 0; second < 10_000; second += 2) {
+      longRunning = gameReducer(longRunning, { type: 'tick', seconds: 2 })
+      longRunning = gameReducer(longRunning, { type: 'scroll-short' })
+    }
     expect(longRunning.stage).toBe('hired')
     expect(longRunning.failure).toBeNull()
     expect(longRunning.elapsed).toBe(10_000)
@@ -384,7 +393,7 @@ describe('terminal upgrades and concurrent work', () => {
       money: 200,
     }
     state = gameReducer(state, { type: 'tick', seconds: 18 })
-    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'drag' })
     const first = taskWith(state, 1)
     const second = taskWith(state, 2)
     state = gameReducer(state, {
@@ -410,14 +419,14 @@ describe('terminal upgrades and concurrent work', () => {
     expect(upgradePrice(state, 'split', 'terminal')).toBe(200)
     expect(upgradePrice(state, 'yolo', 'terminal')).toBe(420)
     expect(upgradePrice(state, 'terminal', 'terminal')).toBe(1_000)
-    expect(gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })).toEqual(state)
+    expect(gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'click' })).toEqual(state)
 
     state = { ...state, money: 200 }
-    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'click' })
     expect(state.money).toBe(0)
     expect(state.terminals[0]?.slots).toBe(2)
     expect(upgradePrice(state, 'split', 'terminal')).toBe(400)
-    expect(gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' }).money).toBe(0)
+    expect(gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'click' }).money).toBe(0)
   })
 
   test('YOLO resumes paused work and bypasses future approval prompts without another token charge', () => {
@@ -435,7 +444,7 @@ describe('terminal upgrades and concurrent work', () => {
     }
     expect(taskWith(state, id).status).toBe('approval')
     const moneyBeforeYolo = state.money
-    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'terminal' })
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'terminal', source: 'click' })
     expect(state.money).toBe(moneyBeforeYolo - 420)
     expect(state.terminals[0]?.yolo).toBe(true)
     expect(taskWith(state, id).status).toBe('working')
@@ -455,7 +464,7 @@ describe('terminal upgrades and concurrent work', () => {
       money: 1_000,
       tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
     }
-    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'terminal', terminalId: 'terminal' })
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'terminal', terminalId: 'terminal', source: 'click' })
     state = gameReducer(state, { type: 'tick', seconds: 18 })
     const first = taskWith(state, 1)
     const second = taskWith(state, 2)
@@ -517,7 +526,7 @@ describe('hidden boss assignment inventory', () => {
     const requiredTokens = taskTokenCost(first) + taskTokenCost(next)
     state = gameReducer(
       { ...state, tokens: requiredTokens - 1 },
-      { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' },
+      { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'click' },
     )
     expect(state.tasks).toHaveLength(1)
     const underfunded = state
@@ -542,6 +551,7 @@ describe('hidden boss assignment inventory', () => {
       type: 'buy-upgrade',
       upgrade: 'split',
       terminalId: 'terminal',
+      source: 'click',
     })
     expect(upgraded.tasks).toEqual(hired.tasks)
     expect(upgraded.taskQueue).toEqual(hired.taskQueue)
@@ -662,7 +672,11 @@ describe('extended progression boundaries', () => {
     expect(activeMiss.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(2)
     expect(activeMiss.socialPosts.find((post) => post.id === refreshedLottery.id)?.likes).toBe(1)
 
-    const waiting = gameReducer({ ...won, tokens: 100 }, { type: 'tick', seconds: 94 })
+    let waiting = { ...won, tokens: 100, shortsUnlocked: true }
+    for (let elapsed = 0; elapsed < 94; elapsed += 2) {
+      waiting = gameReducer(waiting, { type: 'tick', seconds: 2 })
+      waiting = gameReducer(waiting, { type: 'scroll-short' })
+    }
     expect(waiting.tokens).toBe(100)
     const refilled = gameReducer(waiting, { type: 'tick', seconds: 1 })
     expect(refilled.tokens).toBe(MAX_TOKENS)
@@ -787,7 +801,7 @@ describe('developer previews', () => {
     expect(tiro.energy).toBe(100)
     expect(tiro.tokens).toBe(MAX_TOKENS)
     expect(tiro.money).toBe(1_000)
-    expect(tiro.failure).toBeNull()
+    expect(tiro.tasks.every((task) => task.assignedAt === 0 && task.deadlineAt > 0)).toBe(true)
     expect(tiro.watercoolerUnlocked).toBe(true)
     expect(tiro.watercoolerRead).toBe(true)
     expect(tiro.completedTasks).toBe(0)
@@ -797,15 +811,15 @@ describe('developer previews', () => {
     expect(tiro.socialInstalledAt).toBe(0)
 
     expect(tiro.socialPosts.map((post) => post.type)).toEqual(['campaign', 'reset'])
-    expect(tiro.tasks.every((task) => task.assignedAt === 0 && task.deadlineAt > 0)).toBe(true)
-    const additionalSplit = gameReducer(tiro, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })
+    const additionalSplit = gameReducer(tiro, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'click' })
     expect(additionalSplit.money).toBe(600)
     expect(additionalSplit.terminals[0]?.slots).toBe(3)
-    expect(gameReducer(tiro, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'terminal' })).toBe(tiro)
+    expect(gameReducer(tiro, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'terminal', source: 'click' })).toBe(tiro)
     const additionalTerminal = gameReducer(tiro, {
       type: 'buy-upgrade',
       upgrade: 'terminal',
       terminalId: 'terminal',
+      source: 'click',
     })
     expect(additionalTerminal.money).toBe(0)
     expect(additionalTerminal.terminals).toHaveLength(2)
@@ -1372,9 +1386,152 @@ describe('extended engine contracts', () => {
     const purchased = gameReducer({
       ...base, tasks: [task], tokens: 1_000_000,
       terminals: [{ id: 'terminal', slots: 1, model: 'frontier', fastMode: false, yolo: true }],
-    }, { type: 'buy-upgrade', upgrade: 'terminal', terminalId: 'terminal' })
+    }, { type: 'buy-upgrade', upgrade: 'terminal', terminalId: 'terminal', source: 'click' })
     const started = gameReducer(purchased, { type: 'start-task', id: task.id, terminalId: 'terminal-2', slot: 0 })
     expect(taskWith(started, task.id).model).toBe('advanced')
     expect(started.tokens).toBe(900_000)
+  })
+  test('fractional idle time crosses the decay boundary exactly once', () => {
+    let state: GameState = {
+      ...hire(),
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+      shortsUnlocked: true,
+    }
+    state = gameReducer(state, { type: 'tick', seconds: 0.5 })
+    expect(state.energy).toBe(100)
+    state = gameReducer(state, { type: 'tick', seconds: 0.5 })
+    expect(state.energy).toBe(100)
+    state = gameReducer(state, { type: 'tick', seconds: 1.9 })
+    expect(state.energy).toBe(100)
+    state = gameReducer(state, { type: 'tick', seconds: 0.1 })
+    expect(state.energy).toBe(99)
+  })
+
+  test('idle decay ramps, while a genuine Shorts scroll resets the ramp and timer', () => {
+    let state: GameState = {
+      ...hire(),
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+      shortsUnlocked: true,
+    }
+    state = gameReducer(state, { type: 'tick', seconds: 3 })
+    expect(state.energy).toBe(99)
+    state = gameReducer(state, { type: 'tick', seconds: 3 })
+    expect(state.energy).toBe(97)
+    state = gameReducer(state, { type: 'scroll-short' })
+    expect(state.energy).toBe(98)
+    state = gameReducer(state, { type: 'tick', seconds: 3 })
+    expect(state.energy).toBe(97)
+  })
+
+  test('token autopurchase does not count as human interaction', () => {
+    let state: GameState = {
+      ...hire(),
+      money: 100,
+      tokens: 0,
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+    }
+    state = gameReducer(state, { type: 'set-token-packs', packs: 1 })
+    state = gameReducer(state, { type: 'set-token-auto-buy', enabled: true })
+    expect(state.tokens).toBe(100_000)
+    state = gameReducer(state, { type: 'tick', seconds: 3 })
+    expect(state.energy).toBe(99)
+  })
+
+  test('Spark Ultra delivers on schedule and completes advanced local work without tokens', () => {
+    let state = gameReducer(hire(), { type: 'dev-jump', stage: 'spark-ultra' })
+    state = { ...state, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER, secondJob: null, mercuryEnabled: false }
+    expect(gameReducer(state, { type: 'buy-spark-ultra' })).toBe(state)
+    state = gameReducer(state, { type: 'tick', seconds: 10 })
+    const moneyBefore = state.money
+    state = gameReducer(state, { type: 'buy-spark-ultra' })
+    expect(moneyBefore - state.money).toBe(SPARK_ULTRA_PRICE)
+    state = gameReducer(state, { type: 'tick', seconds: 14.5 })
+    expect(state.terminals.some((terminal) => terminal.id === 'spark-ultra')).toBe(false)
+    state = gameReducer(state, { type: 'tick', seconds: 0.5 })
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'spark-ultra', source: 'click' })
+    const task: WorkTask = { ...hire().tasks[0]!, difficulty: 1, complexity: 3, deadlineAt: 1_000 }
+    state = gameReducer({ ...state, tasks: [task], tokens: 0 }, { type: 'start-task', id: task.id, terminalId: 'spark-ultra', slot: 0 })
+    state = gameReducer(state, { type: 'tick', seconds: 2 })
+    expect(taskWith(state, task.id).status).toBe('artifact')
+    expect(state.tokens).toBe(0)
+  })
+
+  test('win accounting marks cash, trading USD, and BTC once and freezes gameplay', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'market' })
+    const state = {
+      ...base,
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+      money: WIN_NET_WORTH - 100,
+      market: { ...base.market!, usd: 100 },
+    }
+    expect(gameNetWorth(state)).toBe(WIN_NET_WORTH)
+    const won = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(won.stage).toBe('won')
+    expect(won.lossReason).toBeNull()
+    expect(gameReducer(won, { type: 'tick', seconds: 100 })).toEqual(won)
+  })
+
+  test('idle energy caps each penalty at sixteen and stops the run at zero', () => {
+    let state = { ...hire(), tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER } as GameState
+    state = gameReducer(state, { type: 'tick', seconds: 12 })
+    expect(state.energy).toBe(85)
+    expect(state.shortsUnlocked).toBe(false)
+    state = gameReducer(state, { type: 'tick', seconds: 15 })
+    expect(state.energy).toBe(5)
+    expect(state.shortsUnlocked).toBe(true)
+    state = gameReducer(state, { type: 'tick', seconds: 100 })
+    expect(state.stage).toBe('lost')
+    expect(state.lossReason).toBe('energy')
+    expect(state.energy).toBe(0)
+    expect(state.elapsed).toBe(30)
+    expect(gameReducer(state, { type: 'scroll-short' })).toBe(state)
+  })
+
+  test('a clicked Shop upgrade resets inactivity but an equivalent drag purchase does not', () => {
+    const state = { ...hire(), money: 1_000, energy: 80, inactivityElapsed: 2.5, inactivityDecay: 16 }
+    const clicked = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'click' })
+    const dragged = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'drag' })
+    expect(clicked.money).toBe(dragged.money)
+    expect(gameReducer(clicked, { type: 'tick', seconds: 0.5 }).energy).toBe(81)
+    expect(gameReducer(dragged, { type: 'tick', seconds: 0.5 }).energy).toBe(64)
+  })
+
+  test('a profitable BTC sale restores energy even when lifetime realized profit remains negative', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'market' })
+    const state = { ...base, energy: 80, market: { ...base.market!, btc: 1, btcCostBasis: 100, price: 120, realizedPnl: -100 } }
+    const sold = gameReducer(state, { type: 'market-trade', side: 'sell', amount: 0.5 })
+    expect(sold.market!.realizedPnl).toBe(-90)
+    expect(sold.energy).toBe(81)
+    const breakEven = gameReducer({ ...state, market: { ...state.market, price: 100 } }, { type: 'market-trade', side: 'sell', amount: 0.5 })
+    expect(breakEven.energy).toBe(80)
+  })
+
+  test('monopoly purchases compound on five second boundaries without an extra rounding cent', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'monopoly' })
+    for (const [seconds, price] of [[4, 100], [5, 110], [10, 121]] as const) {
+      const state = { ...base, elapsed: base.monopolyAnnouncedAt! + seconds, tokens: 0 }
+      const bought = gameReducer(state, { type: 'buy-tokens', packs: 1 })
+      expect(state.money - bought.money).toBe(price)
+      expect(bought.tokens).toBe(100_000)
+    }
+  })
+
+  test('a transient BTC valuation victory is retained across a later market crash in the same tick', () => {
+    const market = { ...createMarket(1, 0), btc: 42_000, btcCostBasis: 4_200_000 }
+    const state: GameState = { ...hire(), money: 0, market, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER }
+    expect(gameNetWorth(state)).toBe(4_200_000)
+    const won = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(won.stage).toBe('won')
+    expect(gameNetWorth(won)).toBeGreaterThanOrEqual(WIN_NET_WORTH)
+    expect(won.market!.history.at(-1)!.elapsed).toBe(0.5)
+    expect(gameReducer(won, { type: 'market-trade', side: 'sell', amount: 1 })).toBe(won)
   })
 })

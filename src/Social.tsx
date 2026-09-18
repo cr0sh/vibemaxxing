@@ -1,7 +1,11 @@
 import { useRef } from 'react'
 import type { Dispatch } from 'react'
 import {
+  ADVANCED_MODEL_PRICE,
+  MERCURY_PRICE,
   SOCIAL_LOTTERY_COPY,
+  SPARK_PRICE,
+  SPARK_ULTRA_PRICE,
   type GameAction,
   type GameState,
   type SocialPost,
@@ -22,6 +26,8 @@ const elapsedLabel = (elapsed: number): string => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
+const moneyLabel = (amount: number): string => `$${amount.toLocaleString()}`
+
 const postAuthor = (post: SocialPost): string => {
   switch (post.type) {
     case 'campaign':
@@ -33,9 +39,14 @@ const postAuthor = (post: SocialPost): string => {
     case 'advanced-model':
     case 'frontier-model':
       return 'Tiro Labs'
+    case 'spark-ultra':
+    case 'spark-ultra-delivered':
+      return 'Mapple'
     case 'market':
     case 'spark':
     case 'spark-delivered':
+    case 'monopoly':
+    case 'shorts':
     case 'mercury':
     case 'second-job':
       return 'Tiro'
@@ -43,10 +54,11 @@ const postAuthor = (post: SocialPost): string => {
 }
 
 function ProfileAvatar({ post, state }: { post: SocialPost; state: GameState }) {
-  const laboratory = postAuthor(post) === 'Tiro Labs'
+  const author = postAuthor(post)
+  const laboratory = author === 'Tiro Labs'
   return (
     <span className={`social-avatar ${laboratory ? 'social-avatar-lab' : 'social-avatar-tiro'}`} aria-hidden="true">
-      {laboratory ? '🧪' : state.tiroAvatar}
+      {laboratory ? '🧪' : author === 'Mapple' ? 'M' : state.tiroAvatar}
     </span>
   )
 }
@@ -62,8 +74,7 @@ function PostBody({
   dispatch: Dispatch<GameAction>
   activeLotteryId: string | null
 }) {
-  const isLost = state.stage === 'lost'
-
+  const isReadOnly = state.stage !== 'hired'
   if (post.type === 'campaign') {
     return (
       <p className="social-post-copy">
@@ -84,7 +95,7 @@ function PostBody({
               <button
                 className="social-heart-button"
                 type="button"
-                disabled={isLost}
+                disabled={isReadOnly}
                 onClick={() => dispatch({ type: 'like-reset', postId: post.id })}
                 aria-label={`Like Tiro’s post. ${post.likes.toLocaleString()} ${post.likes === 1 ? 'like' : 'likes'} so far.`}
               >
@@ -93,7 +104,7 @@ function PostBody({
               </button>
               <span className="social-like-count" aria-live="polite">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'}</span>
             </div>
-            {isLost && <p className="social-action-note">Your work account is read-only now.</p>}
+            {isReadOnly && <p className="social-action-note">Your work account is read-only now.</p>}
           </>
         ) : (
           <p className="social-action-note">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'} · This giveaway has ended.</p>
@@ -137,7 +148,7 @@ function PostBody({
   if (post.type === 'spark') {
     return (
       <p className="social-post-copy">
-        Finally got the Mapple Spark ready: two local ConvexLM Reasoning agents, no cloud-token bill. It’ll be in Shop in 10 seconds for <strong>$15,000</strong>.
+        Finally got the Mapple Spark ready: two local ConvexLM Reasoning agents, no cloud-token bill. It’ll be in Shop in 10 seconds for <strong>{moneyLabel(SPARK_PRICE)}</strong>.
       </p>
     )
   }
@@ -150,10 +161,42 @@ function PostBody({
     )
   }
 
+  if (post.type === 'spark-ultra') {
+    return (
+      <p className="social-post-copy">
+        Mapple Spark Ultra is on the way: two local ConvexLM Pro agents with no cloud-token bill. Shop opens in 10 seconds for <strong>{moneyLabel(SPARK_ULTRA_PRICE)}</strong>.
+      </p>
+    )
+  }
+
+  if (post.type === 'spark-ultra-delivered') {
+    return (
+      <p className="social-post-copy">
+        Mapple Spark Ultra has arrived. Two fixed local ConvexLM Pro panes are ready for token-free work, with no Fast mode or cloud bill.
+      </p>
+    )
+  }
+
+  if (post.type === 'monopoly') {
+    return (
+      <p className="social-post-copy">
+        <strong>WE MONOPOLIZED THE FRONTIERS</strong>. Token refills now rise 10% every five seconds. Keep earning, or trade your way out.
+      </p>
+    )
+  }
+
+  if (post.type === 'shorts') {
+    return (
+      <p className="social-post-copy">
+        Your energy is taking a hit. Shorts is now in the dock: scroll through a short to recover a little energy and keep going.
+      </p>
+    )
+  }
+
   if (post.type === 'advanced-model') {
     return (
       <p className="social-post-copy">
-        We’ve got something for the harder jobs: ConvexLM Pro. Same speed as ConvexLM Reasoning, smarter answers. It’s <strong>$5,000</strong> in Shop.
+        We’ve got something for the harder jobs: ConvexLM Pro. Same speed as ConvexLM Reasoning, smarter answers. It’s <strong>{moneyLabel(ADVANCED_MODEL_PRICE)}</strong> in Shop.
       </p>
     )
   }
@@ -161,7 +204,7 @@ function PostBody({
   if (post.type === 'mercury') {
     return (
       <p className="social-post-copy">
-        I got tired of dragging files around, so I built Mercury. <strong>$8,000</strong> in Shop. It handles both handoffs for 300K tokens each and retries failures after 10 seconds. You’ll still need to approve commands.
+        I got tired of dragging files around, so I built Mercury. <strong>{moneyLabel(MERCURY_PRICE)}</strong> in Shop. It handles both handoffs for 300K tokens each and retries failures after 10 seconds. You’ll still need to approve commands.
       </p>
     )
   }
