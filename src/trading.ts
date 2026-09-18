@@ -9,7 +9,7 @@ export type MarketState = {
 type RandomStep = [state: number, value: number]
 
 const UINT_RANGE = 4_294_967_296
-const INITIAL_PRICE = 30_000
+const INITIAL_PRICE = 100
 const MIN_PRICE = 1
 const MAX_PRICE = 10_000_000
 const HISTORY_LIMIT = 120
@@ -40,8 +40,8 @@ function validMarket(market: MarketState): boolean {
 }
 
 export function createMarket(seed: number, elapsed: number): MarketState {
-  const [rng, roll] = nextRandom(seedState(seed))
-  const price = boundedPrice(INITIAL_PRICE * (0.9 + roll * 0.2))
+  const [rng] = nextRandom(seedState(seed))
+  const price = boundedPrice(INITIAL_PRICE)
   const at = Number.isFinite(elapsed) ? Math.max(0, Math.floor(elapsed)) : 0
   return {
     usd: 0,
@@ -86,11 +86,11 @@ export function tradeMarket(market: MarketState, side: 'buy' | 'sell', amount: n
   if (!validMarket(market) || !Number.isFinite(amount) || amount <= 0) return market
 
   if (side === 'buy') {
-    if (amount > market.usd) return market
-    const btcReceived = amount / market.price
-    const usd = market.usd - amount
-    const btc = market.btc + btcReceived
-    if (!Number.isFinite(btcReceived) || !Number.isFinite(usd) || !Number.isFinite(btc) || usd >= market.usd || btc <= market.btc || usd < -EPSILON || btc < 0) return market
+    const usdSpent = amount * market.price
+    if (!Number.isFinite(usdSpent) || usdSpent > market.usd) return market
+    const usd = market.usd - usdSpent
+    const btc = market.btc + amount
+    if (!Number.isFinite(usd) || !Number.isFinite(btc) || usd >= market.usd || btc <= market.btc || usd < -EPSILON || btc < 0) return market
     return { ...market, usd: usd < 0 ? 0 : usd, btc }
   }
 
