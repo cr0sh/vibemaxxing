@@ -166,11 +166,45 @@
 }
 
 
-.mercury-section-heading {
+.mercury-failed-notice {
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.7rem;
+}
+
+.mercury-failed-notice span {
+  min-width: 0;
+}
+
+.mercury-failed-notice button {
+  flex: 0 0 auto;
+  padding: 0.28rem 0.58rem;
+  color: #fff;
+  border: 1px solid #a46b20;
+  border-radius: 0.4rem;
+  background: #a46b20;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mercury-failed-notice button:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.mercury-failed-notice button:focus-visible {
+  outline: 2px solid #7954f6;
+  outline-offset: 2px;
+}
+
+.mercury-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.45rem;
   margin-bottom: 0.56rem;
 }
 
@@ -346,6 +380,10 @@
   font-size: 0.65rem;
 }
 
+.mercury-task-retry-note {
+  font-variant-numeric: tabular-nums;
+}
+
 .mercury-task-artifact .mercury-task-note {
   color: #3a7354;
   border-color: rgba(63, 153, 108, 0.2);
@@ -478,6 +516,10 @@
 
   .mercury-terminal-facts {
     grid-template-columns: 1fr 1fr;
+  }
+  .mercury-failed-notice {
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
 }
 

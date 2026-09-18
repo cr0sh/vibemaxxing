@@ -216,8 +216,8 @@ function MercuryProduct({ state, dispatch }: ShopProps) {
         <p>Your most intelligent AI agent.</p>
         <p>
           {state.mercuryOwned
-            ? 'Owned · 300K tokens per automatic handoff, both directions. Mercury does not approve or retry tasks.'
-            : `${moneyLabel(MERCURY_PRICE)} · automatic handoffs cost 300K tokens each way.`}
+            ? 'Owned · 300K outbound plus 300K return reserve per automatic handoff. Failed attempts retry after 10s without another outbound fee; manual retries are immediate. Approvals remain manual in the terminal.'
+            : `${moneyLabel(MERCURY_PRICE)} · automatic handoffs cost 300K outbound plus a 300K return reserve.`}
         </p>
       </div>
       {state.mercuryOwned ? (
