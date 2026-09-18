@@ -602,7 +602,7 @@
   margin-top: 0.72rem;
 }
 .window.terminal-window-yolo {
-  border: 3px solid #ff267f;
+  border: 1px solid #ff267f;
   box-shadow:
     0 0 0 3px #ff267f,
     0 0 0 5px rgba(255, 38, 127, 0.54),

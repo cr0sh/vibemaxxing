@@ -820,7 +820,6 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
           title={soundsMuted ? 'Unmute sounds' : 'Mute sounds'}
         >
           <SpeakerIcon muted={soundsMuted} />
-          <span className="sound-toggle-label">{soundsMuted ? 'Unmute' : 'Mute'}</span>
         </button>
       </div>
     </section>

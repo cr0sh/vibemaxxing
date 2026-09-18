@@ -18,7 +18,7 @@ type WorkspaceState = {
 
 const WorkspaceContext = createContext<WorkspaceState | null>(null)
 const windowDefaults: Record<string, Size & Point> = {
-  apply: { width: 975, height: 540, x: 0.5, y: 0.17 },
+  apply: { width: 812.5, height: 540, x: 0.5, y: 0.17 },
   offer: { width: 930, height: 440, x: 0.5, y: 0.22 },
   messenger: { width: 855, height: 560, x: 0.12, y: 0.1 },
   terminal: { width: 705, height: 500, x: 0.72, y: 0.3 },
