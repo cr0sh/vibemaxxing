@@ -242,7 +242,7 @@ const YOLO_PRICE = 420
 const SECONDARY_PRICE_MULTIPLIER = 2
 const ADDITIONAL_TERMINAL_PRICE = 1_000
 const WATERCOOLER_THRESHOLD = MAX_TOKENS * 0.2
-const TOKEN_AUTO_BUY_THRESHOLD = 1_000_000
+export const TOKEN_AUTO_BUY_THRESHOLD = 1_000_000
 const SOCIAL_LOTTERY_DELAY = 5
 const TIRO_PREVIEW_TOKENS = 1_900_000
 export const MERCURY_RETRY_DELAY = 10
@@ -858,6 +858,43 @@ function firstFreeSlot(state: GameState, terminal: TerminalState): number | null
   for (let slot = 0; slot < terminal.slots; slot += 1) if (taskSlotFree(state, terminal.id, slot)) return slot
   return null
 }
+function canFundAssignedTask(state: GameState, task: WorkTask): boolean {
+  return state.terminals.some((terminal) => {
+    if (firstFreeSlot(state, terminal) === null) return false
+    const fastMode = terminal.id === 'spark' ? false : terminal.fastMode
+    return canFundTaskAttempt(state, task, fastMode, terminal.id) ||
+      canFundMercuryAttempt(state, task, terminal.id)
+  })
+}
+
+function canFundRetryTask(state: GameState, task: WorkTask): boolean {
+  if (task.terminalId === null || task.slot === null) return false
+  const terminal = getTerminal(state, task.terminalId)
+  if (terminal === undefined || task.slot < 0 || task.slot >= terminal.slots || !taskSlotFree(state, task.terminalId, task.slot, task.id)) {
+    return false
+  }
+  const fastMode = terminal.id === 'spark' ? false : terminal.fastMode
+  const manual = canFundTaskAttempt(state, task, fastMode, terminal.id)
+  const mercuryDue = task.failedAt !== null && state.elapsed >= task.failedAt + MERCURY_RETRY_DELAY
+  return manual || (mercuryDue && canFundMercuryRetry(state, task))
+}
+
+export function hasTokenDeficit(state: GameState): boolean {
+  if (state.stage !== 'hired') return false
+  if (state.tokens < TOKEN_AUTO_BUY_THRESHOLD) return true
+
+  const fundedState = { ...state, tokens: Number.MAX_VALUE }
+  return state.tasks.some((task) => {
+    if (task.status === 'assigned' && task.terminalId === null && task.slot === null) {
+      return !canFundAssignedTask(state, task) && canFundAssignedTask(fundedState, task)
+    }
+    if (task.status === 'failed') {
+      return !canFundRetryTask(state, task) && canFundRetryTask(fundedState, task)
+    }
+    return false
+  })
+}
+
 
 function startTaskAttempt(state: GameState, taskIndex: number, terminalId: TerminalId, slot: number, automatic = false): GameState {
   const terminal = getTerminal(state, terminalId)

@@ -10,6 +10,7 @@ import {
   type GameAction,
   type GameState,
   type TerminalId,
+  hasTokenDeficit,
 } from './game'
 import { getSoundsMuted, playSound, setSoundsMuted } from './sounds'
 import { useInteractionSounds } from './useInteractionSounds'
@@ -768,6 +769,20 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
   const monthLabel = now.toLocaleDateString([], { month: 'short' }).toUpperCase()
   const weekdayLabel = now.toLocaleDateString([], { weekday: 'short' }).toUpperCase()
   const showPaidResources = state.stage === 'hired' || (state.stage === 'lost' && state.company !== null)
+  const tokenDeficit = hasTokenDeficit(state)
+  const previousTokenDeficitRef = useRef(tokenDeficit)
+  const [tokenDeficitAnnouncement, setTokenDeficitAnnouncement] = useState('')
+
+  useEffect(() => {
+    const previousTokenDeficit = previousTokenDeficitRef.current
+    previousTokenDeficitRef.current = tokenDeficit
+    if (tokenDeficit && !previousTokenDeficit) {
+      setTokenDeficitAnnouncement('Token funding is blocking available work.')
+    } else if (!tokenDeficit && previousTokenDeficit && state.stage === 'hired') {
+      setTokenDeficitAnnouncement('Token funding restored; pending work can be funded.')
+    }
+  }, [state.stage, tokenDeficit])
+
   const [soundsMuted, setSoundsMutedState] = useState(() => getSoundsMuted())
 
   const toggleSounds = () => {
@@ -777,7 +792,8 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
   }
 
   return (
-    <section className={`widget-band ${showPaidResources ? 'widget-band-paid' : ''}`} aria-label="Desktop widgets">
+    <>
+      <section className={`widget-band ${showPaidResources ? 'widget-band-paid' : ''}`} aria-label="Desktop widgets">
       <div className="widget-cluster">
         <div className={`paid-resources ${showPaidResources ? 'paid-resources-visible' : ''}`} aria-hidden={!showPaidResources}>
           <div className="paid-resources-inner">
@@ -788,7 +804,7 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
                 <span className="resource-values"><ResourceCounter value={state.money} prefix="$" formatter={state.money >= 100_000 ? tokenFormatter : undefined} /></span>
               </div>
             </div>
-            <div className="resource-widget resource-widget-tokens" aria-label={`Tokens ${state.tokens}`}>
+            <div className={`resource-widget resource-widget-tokens${tokenDeficit ? ' resource-widget-token-deficit' : ''}`} aria-label={`Tokens ${state.tokens}`} aria-describedby="tokens-deficit-status">
               <span className="resource-widget-icon" aria-hidden="true">◇</span>
               <div>
                 <span className="widget-label">Tokens</span>
@@ -824,7 +840,11 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
           <SpeakerIcon muted={soundsMuted} />
         </button>
       </div>
-    </section>
+      </section>
+      <span id="tokens-deficit-status" className="token-deficit-status" role="status" aria-live="polite" aria-atomic="true">
+        {tokenDeficitAnnouncement}
+      </span>
+    </>
   )
 }
 
