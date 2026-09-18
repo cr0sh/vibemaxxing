@@ -181,6 +181,14 @@ export type GameState = {
   tokenAutoBuy: boolean
   tokenPacks: TokenPackCount
   market: MarketState | null
+  taskBags: {
+    standard: number[]
+    architecture: number[]
+  }
+  lastTaskBlueprint: {
+    standard: number | null
+    architecture: number | null
+  }
   lossReason: 'deadline' | 'energy' | null
 }
 
@@ -334,6 +342,14 @@ const taskBlueprints: readonly Pick<TaskDescriptor, 'title' | 'description' | 'a
   { title: 'Tune the search signal', description: 'Make the most useful matches rise to the top without hiding exact hits.', artifactName: 'search-ranking.json' },
   { title: 'Rescue the empty state', description: 'Write a friendly next step for the screen that currently says nothing.', artifactName: 'empty-state-copy.txt' },
   { title: 'Compress the release notes', description: 'Shape the scattered changes into a release note people will actually read.', artifactName: 'release-notes.md' },
+  { title: 'Stabilize the webhook retry', description: 'Make duplicate deliveries harmless while keeping failed events visible.', artifactName: 'webhook-retry.spec.ts' },
+  { title: 'Refresh the billing summary', description: 'Present the current period totals without losing refunds or adjustments.', artifactName: 'billing-summary.sql' },
+  { title: 'Guard the upload boundary', description: 'Reject unsafe files early and explain the accepted formats clearly.', artifactName: 'upload-policy.ts' },
+  { title: 'Repair the notification digest', description: 'Group noisy alerts into a digest that still surfaces urgent changes.', artifactName: 'notification-digest.json' },
+  { title: 'Trace the stale cache', description: 'Find the invalidation gap and make fresh data win reliably.', artifactName: 'cache-invalidation.diff' },
+  { title: 'Clarify the permission prompt', description: 'Turn a confusing access denial into a useful path forward.', artifactName: 'permission-prompt.copy' },
+  { title: 'Measure the queue backlog', description: 'Expose enough queue health to spot delayed work before users do.', artifactName: 'queue-health.dashboard' },
+  { title: 'Trim the startup path', description: 'Remove avoidable work from startup without hiding real failures.', artifactName: 'startup-profile.txt' },
 ]
 
 const architectureBlueprints: readonly Pick<TaskDescriptor, 'title' | 'description' | 'artifactName'>[] = [
@@ -341,7 +357,12 @@ const architectureBlueprints: readonly Pick<TaskDescriptor, 'title' | 'descripti
   { title: 'Design the event backbone', description: 'Define durable event delivery, ordering, and recovery across services.', artifactName: 'event-backbone.md' },
   { title: 'Partition the tenant datastore', description: 'Design tenant isolation and a migration path without downtime.', artifactName: 'tenant-partition-plan.md' },
   { title: 'Untangle the service boundary', description: 'Split a critical service while preserving its contracts and rollout safety.', artifactName: 'service-boundaries.md' },
+  { title: 'Map the regional data plane', description: 'Choose ownership and replication rules that keep regional reads predictable.', artifactName: 'regional-data-plane.md' },
+  { title: 'Shape the deployment strategy', description: 'Stage releases across environments with safe rollback and clear gates.', artifactName: 'deployment-strategy.md' },
+  { title: 'Model the identity perimeter', description: 'Define trust boundaries, session lifetimes, and recovery for every client.', artifactName: 'identity-perimeter.md' },
+  { title: 'Plan the observability contract', description: 'Standardize signals and escalation paths so incidents become diagnosable.', artifactName: 'observability-contract.md' },
 ]
+
 
 const APPROVAL_PROMPTS: readonly string[] = [
   'Apply the generated patch?', 'Run the test suite?', 'Execute the build?', 'Update the lockfile?',
@@ -369,6 +390,35 @@ function nextRandom(rng: number): readonly [number, number] {
 function drawInteger(rng: number, minimum: number, maximum: number): readonly [number, number] {
   const [next, unit] = nextRandom(rng)
   return [next, minimum + Math.floor(unit * (maximum - minimum + 1))]
+}
+function drawBlueprintIndex(
+  rng: number,
+  kind: TaskDescriptor['kind'],
+  bags: GameState['taskBags'],
+  previousIndex: number | null,
+): readonly [number, number[], number] {
+  const blueprints = kind === 'architecture' ? architectureBlueprints : taskBlueprints
+  let nextRng = rng
+  let bag = [...bags[kind]]
+  if (bag.length === 0) {
+    bag = Array.from({ length: blueprints.length }, (_, index) => index)
+    for (let index = bag.length - 1; index > 0; index -= 1) {
+      const [shuffledRng, otherIndex] = drawInteger(nextRng, 0, index)
+      nextRng = shuffledRng
+      const current = bag[index]!
+      bag[index] = bag[otherIndex]!
+      bag[otherIndex] = current
+    }
+  }
+  let pickedIndex = bag[bag.length - 1] ?? 0
+  if (bag.length > 1 && pickedIndex === previousIndex) {
+    const first = bag[0] ?? pickedIndex
+    bag[0] = pickedIndex
+    bag[bag.length - 1] = first
+    pickedIndex = first
+  }
+  bag.pop()
+  return [nextRng, bag, pickedIndex]
 }
 function drawLotteryVariant(rng: number, previousVariant: number | undefined): readonly [number, number] {
   const [candidateRng, candidate] = drawInteger(rng, 0, SOCIAL_LOTTERY_COPY.length - 1)
@@ -473,10 +523,10 @@ function withJob(state: GameState, jobId: JobId, update: (job: EmploymentJob) =>
 }
 
 function createDescriptor(
-  state: Pick<GameState, 'rng' | 'nextTaskId' | 'secondJobUnlocked'>,
+  state: Pick<GameState, 'rng' | 'nextTaskId' | 'secondJobUnlocked' | 'taskBags' | 'lastTaskBlueprint'>,
   jobId: JobId,
   job: EmploymentJob,
-): readonly [TaskDescriptor, number, number] {
+): readonly [TaskDescriptor, number, number, GameState['taskBags'], GameState['lastTaskBlueprint']] {
   let rng = state.rng
   let kind: TaskDescriptor['kind'] = 'standard'
   if (job.level >= 4) {
@@ -486,16 +536,24 @@ function createDescriptor(
     kind = architectureRoll < architectureChance ? 'architecture' : 'standard'
   }
   const blueprints = kind === 'architecture' ? architectureBlueprints : taskBlueprints
-  const [blueprintRng, blueprintIndex] = drawInteger(rng, 0, blueprints.length - 1)
+  const [blueprintRng, bag, blueprintIndex] = drawBlueprintIndex(rng, kind, state.taskBags, state.lastTaskBlueprint[kind])
+  rng = blueprintRng
   const expanded = state.secondJobUnlocked
   const complexityRange = expanded
     ? [Math.max(1, job.level - 2), job.level] as const
     : kind === 'architecture' ? [2, 2] as const : [1, 1] as const
-  const [complexityRng, complexity] = drawInteger(blueprintRng, complexityRange[0], complexityRange[1])
+  const [complexityRng, complexity] = drawInteger(rng, complexityRange[0], complexityRange[1])
   const difficultyMinimum = expanded ? (job.level === 5 ? 6 : job.level === 4 ? 4 : 3) : (job.level === 4 ? 4 : 3)
   const difficultyMaximum = expanded ? (job.level === 5 ? 12 : job.level === 4 ? 9 : 6) : (job.level === 4 ? 8 : 6)
   const [finalRng, difficulty] = drawInteger(complexityRng, difficultyMinimum, difficultyMaximum)
   const blueprint = blueprints[blueprintIndex] ?? blueprints[0]
+  const taskBags = kind === 'standard'
+    ? { standard: bag, architecture: state.taskBags.architecture }
+    : { standard: state.taskBags.standard, architecture: bag }
+  const lastTaskBlueprint = {
+    ...state.lastTaskBlueprint,
+    [kind]: blueprintIndex,
+  }
   return [{
     id: state.nextTaskId,
     jobId,
@@ -505,18 +563,20 @@ function createDescriptor(
     artifactName: blueprint.artifactName,
     kind,
     complexity,
-  }, finalRng, state.nextTaskId + 1]
+  }, finalRng, state.nextTaskId + 1, taskBags, lastTaskBlueprint]
 }
 
 function refillTaskQueue(state: GameState): GameState {
   let current = state
   if (current.secondJob !== null && current.taskQueue.length === TASK_QUEUE_SIZE && !current.taskQueue.some((task) => task.jobId === 'secondary')) {
-    const [secondaryDescriptor, rng, nextTaskId] = createDescriptor(current, 'secondary', current.secondJob)
+    const [secondaryDescriptor, rng, nextTaskId, taskBags, lastTaskBlueprint] = createDescriptor(current, 'secondary', current.secondJob)
     current = {
       ...current,
       taskQueue: [...current.taskQueue.slice(0, TASK_QUEUE_SIZE - 1), secondaryDescriptor],
       rng,
       nextTaskId,
+      taskBags,
+      lastTaskBlueprint,
     }
   }
   while (current.taskQueue.length < TASK_QUEUE_SIZE) {
@@ -530,8 +590,8 @@ function refillTaskQueue(state: GameState): GameState {
     }
     const job = jobFromState(current, jobId)
     if (job === null) break
-    const [descriptor, rng, nextTaskId] = createDescriptor(current, jobId, job)
-    current = { ...current, taskQueue: [...current.taskQueue, descriptor], rng, nextTaskId }
+    const [descriptor, rng, nextTaskId, taskBags, lastTaskBlueprint] = createDescriptor(current, jobId, job)
+    current = { ...current, taskQueue: [...current.taskQueue, descriptor], rng, nextTaskId, taskBags, lastTaskBlueprint }
   }
   return current
 }
@@ -809,6 +869,8 @@ function createHiredState(state: GameState): GameState {
     tokenAutoBuy: false,
     tokenPacks: 10,
     market: null,
+    taskBags: { standard: [], architecture: [] },
+    lastTaskBlueprint: { standard: null, architecture: null },
     lossReason: null,
   }
   const welcomed = appendMessage(hired, { id: 'welcome', type: 'welcome', jobId: 'primary', elapsed: hired.elapsed })
@@ -887,7 +949,7 @@ export const initialGame: GameState = {
   frontierUnlockedAt: null, monopolyAnnouncedAt: null,
   sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null,
   sparkUltraAnnouncedAt: null, sparkUltraPurchasedAt: null, sparkUltraDeliveryAt: null,
-  shortsUnlocked: false, inactivityElapsed: 0, inactivityDecay: 1,
+  taskBags: { standard: [], architecture: [] }, lastTaskBlueprint: { standard: null, architecture: null },
   mercuryOwned: false, mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null,
   lossReason: null,
 }
@@ -1320,6 +1382,7 @@ function resetEmploymentPreview(state: GameState, stage: 'applying' | 'offer'): 
     sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null, sparkUltraAnnouncedAt: null,
     sparkUltraPurchasedAt: null, sparkUltraDeliveryAt: null, shortsUnlocked: false, inactivityElapsed: 0, inactivityDecay: 1,
     mercuryOwned: false, mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null, lossReason: null,
+    taskBags: { standard: [], architecture: [] }, lastTaskBlueprint: { standard: null, architecture: null },
   }
 }
 
