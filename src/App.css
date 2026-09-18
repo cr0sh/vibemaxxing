@@ -1691,3 +1691,25 @@ textarea:focus-visible {
     padding: 0.7rem;
   }
 }
+.dock-item-shorts .dock-icon {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 0.65rem;
+  background: linear-gradient(145deg, #111827, #4c1d95);
+  color: #fff;
+  font-size: 2.1rem;
+}
+
+.shorts-window-frame .window-content {
+  overflow: hidden;
+}
+
+.victory-window .loss-icon {
+  background: linear-gradient(135deg, #d09a35, #7954f6);
+}
+
+.energy-loss-window .loss-icon {
+  background: linear-gradient(135deg, #64748b, #475569);
+}
+.terminal-window-spark-ultra .terminal-topline {
+  background: linear-gradient(180deg, #3b245f, #23153c);
+}

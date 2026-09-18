@@ -24,9 +24,11 @@ const windowDefaults: Record<string, Size & Point> = {
   terminal: { width: 900, height: 760, x: 0.72, y: 0.3 },
   'terminal-2': { width: 900, height: 760, x: 0.26, y: 0.28 },
   spark: { width: 705, height: 500, x: 0.8, y: 0.18 },
+  'spark-ultra': { width: 705, height: 500, x: 0.74, y: 0.2 },
   market: { width: 960, height: 600, x: 0.5, y: 0.1 },
   shop: { width: 546, height: 686.4, x: 0.5, y: 0.14 },
   social: { width: 468, height: 600, x: 0.76, y: 0.12 },
+  shorts: { width: 350, height: 600, x: 0.72, y: 0.08 },
   mercury: { width: 960, height: 600, x: 0.5, y: 0.12 },
   defeat: { width: 645, height: 330, x: 0.5, y: 0.28 },
 }
@@ -42,6 +44,8 @@ const minimumWindowSizes: Record<string, Size> = {
   terminal: { width: 280, height: 320 },
   'terminal-2': { width: 280, height: 320 },
   spark: { width: 280, height: 320 },
+  'spark-ultra': { width: 280, height: 320 },
+  shorts: { width: 280, height: 420 },
 }
 
 function clampSize(candidate: Size, workspace: Size, minimum = minimumWindowSize): Size {

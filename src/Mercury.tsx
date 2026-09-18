@@ -4,6 +4,7 @@ import {
   canFundMercuryAttempt,
   canFundMercuryRetry,
   canFundTaskAttempt,
+  isLocalTerminal,
   mercuryReturnReservations,
   MERCURY_FORWARD_COST,
   MERCURY_RETRY_DELAY,
@@ -40,7 +41,7 @@ const employerName = (state: GameState, jobId: JobId): string => (
   jobId === 'secondary' ? state.secondJob?.company ?? 'Second employer' : state.company ?? 'Primary employer'
 )
 
-const taskSnapshotModel = (task: Pick<WorkTask, 'model' | 'local'>): AgentModelId => task.local ? 'reasoning' : task.model ?? 'basic'
+const taskSnapshotModel = (task: Pick<WorkTask, 'model' | 'local'>): AgentModelId => task.local ? 'advanced' : task.model ?? 'basic'
 
 const isMercuryAutoTask = (task: WorkTask): boolean => (
   task.mercuryAuto === true
@@ -97,7 +98,7 @@ function FailedRetryNotice({ state, failedTasks, dispatch }: {
   return (
     <div className="mercury-waiting mercury-failed-notice" role="status">
       <span>{message}</span>
-      <button type="button" onClick={() => dispatch({ type: 'retry-all' })} disabled={state.stage === 'lost' || !canRetry}>
+      <button type="button" onClick={() => dispatch({ type: 'retry-all' })} disabled={state.stage !== 'hired' || !canRetry}>
         Retry all
       </button>
     </div>
@@ -107,9 +108,8 @@ function FailedRetryNotice({ state, failedTasks, dispatch }: {
 
 function TaskCard({ state, task }: { state: GameState; task: WorkTask }) {
   const modelId = taskSnapshotModel(task)
-  const model = AGENT_MODELS[modelId]
+  const location = isLocalTerminal(task.terminalId ?? 'terminal') ? task.terminalId === 'spark-ultra' ? 'Spark Ultra' : 'Spark' : task.terminalId === 'terminal-2' ? 'Terminal 2' : 'Terminal'
   const remaining = task.deadlineAt - state.elapsed
-  const location = task.terminalId === 'spark' ? 'Spark' : task.terminalId === 'terminal-2' ? 'Terminal 2' : 'Terminal'
   const progress = task.status === 'artifact' ? 100 : taskProgress(task)
   return (
     <article className={`mercury-task-card mercury-task-${task.status}`}>
@@ -173,14 +173,14 @@ function TaskGroup({ state, title, tasks, empty }: {
 function TerminalCard({ state, terminalId }: { state: GameState; terminalId: TerminalId }) {
   const terminal = state.terminals.find((candidate) => candidate.id === terminalId)
   if (terminal === undefined) return null
-  const local = terminalId === 'spark'
-  const modelId = local ? 'reasoning' : terminalModel(state, terminalId)
+  const local = isLocalTerminal(terminalId)
+  const modelId = local ? 'advanced' : terminalModel(state, terminalId)
   const model = AGENT_MODELS[modelId]
   const paneCount = local ? 2 : terminal.slots
   const activeTasks = state.tasks.filter((task) => task.terminalId === terminalId && task.slot !== null && task.status !== 'assigned')
-  const effectiveSpeed = model.speed * (terminal.fastMode ? 2 : 1)
+  const effectiveSpeed = model.speed * (local ? 1 : terminal.fastMode ? 2 : 1)
   const tokenMultiplier = local ? 0 : model.tokenMultiplier * (terminal.fastMode ? 2 : 1)
-  const label = local ? 'Mapple Spark' : terminalId === 'terminal-2' ? 'Terminal 2' : 'Terminal'
+  const label = local ? terminalId === 'spark-ultra' ? 'Mapple Spark Ultra' : 'Mapple Spark' : terminalId === 'terminal-2' ? 'Terminal 2' : 'Terminal'
   return (
     <article className="mercury-terminal-card">
       <div className="mercury-terminal-heading">
@@ -235,7 +235,7 @@ function WaitingReason({ state, queuedTasks, pausedTasks, artifacts, reservedRet
   const unreservedTokens = Math.max(0, state.tokens - reservedReturnTokens)
   let reason: string | null = null
   if (state.stage !== 'hired') {
-    reason = 'You’ve been fired. Automatic handoffs have stopped.'
+    reason = 'The run has ended. Automatic handoffs have stopped; this dashboard is read-only.'
   } else if (!state.mercuryEnabled) {
     reason = 'Automatic handoffs are off. Manual handoffs remain free.'
   } else if (state.tokens < reservedReturnTokens) {

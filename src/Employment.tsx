@@ -4,6 +4,7 @@ import {
   AGENT_MODELS,
   availableModels,
   canFundTaskAttempt,
+  isLocalTerminal,
   MAX_TOKENS,
   taskReward,
   taskSuccessChance,
@@ -62,7 +63,7 @@ const employerLevel = (state: GameState, jobId: JobId): 3 | 4 | 5 => (
   jobId === 'secondary' ? state.secondJob?.level ?? 3 : state.level
 )
 const taskModel = (task: Pick<WorkTask, 'model' | 'local'>): AgentModelId => (
-  task.model ?? (task.local ? 'reasoning' : 'basic')
+  task.model ?? (task.local ? 'advanced' : 'basic')
 )
 
 const taskCost = (task: Pick<WorkTask, 'difficulty' | 'fastMode' | 'model' | 'local'>): number => (
@@ -177,7 +178,7 @@ function TaskAttachment({
           <strong>{task.title}</strong>
           <TaskDifficulty complexity={task.complexity} />
         </div>
-        <span className="employment-employer-line">{employerName(state, task.jobId)}{task.local ? ' · Spark local' : ''}</span>
+        <span className="employment-employer-line">{employerName(state, task.jobId)}{task.local ? ' · Local terminal' : ''}</span>
         <span>{task.description}</span>
         {task.baseReward > 0 && (
         <span className="employment-reward-line">
@@ -187,9 +188,9 @@ function TaskAttachment({
         </span>
         )}
         {isAssigned && !archived ? state.terminals.map((terminal) => {
-          const model = terminalModel(state, terminal.id)
-          const local = terminal.id === 'spark'
-          const label = local ? 'Spark' : terminal.id === 'terminal-2' ? 'Terminal 2' : 'Terminal'
+          const local = isLocalTerminal(terminal.id)
+          const model = local ? 'advanced' : terminalModel(state, terminal.id)
+          const label = local ? terminal.id === 'spark-ultra' ? 'Spark Ultra' : 'Spark' : terminal.id === 'terminal-2' ? 'Terminal 2' : 'Terminal'
           return (
             <div className="employment-attachment-meta employment-task-economy" key={terminal.id}>
               {state.terminals.length > 1 && <span>{label}</span>}
@@ -277,7 +278,7 @@ function ArtifactAttachment({
       </div>
       <div className="employment-attachment-copy">
         <strong>{task.artifactName}</strong>
-        <span className="employment-employer-line">{employerName(state, task.jobId)}{task.local ? ' · Spark local' : ''}</span>
+        <span className="employment-employer-line">{employerName(state, task.jobId)}{task.local ? ' · Local terminal' : ''}</span>
         {!compact && (
           <>
             <span>{archived ? 'Delivered artifact' : 'Ready for delivery'}</span>
@@ -343,7 +344,7 @@ function WatercoolerPane({
             <span aria-hidden="true">↗</span> {installed ? 'Open Social Network' : 'Install Social Network and open it'}
           </button>
           {!installed && !canOpen && <span className="employment-control-hint">Keep working until this channel unlocks.</span>}
-          {installed && state.stage === 'lost' && <span className="employment-control-hint">The social network is read-only after the run ends.</span>}
+          {installed && state.stage !== 'hired' && <span className="employment-control-hint">The social network is read-only after the run ends.</span>}
         </div>
       </div>
       ) : <p className="employment-control-hint">No messages yet.</p>}
@@ -519,7 +520,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
               <TaskDifficulty complexity={message.task.complexity} />
               <span>Cost {compactTokens.format(taskCost(message.task))} tokens</span>
               <span>{taskModelLabel(message.task)}</span>
-              {message.task.local && <span>Spark local</span>}
+              {message.task.local && <span>Local terminal</span>}
               {message.task.fastMode && <span>Fast mode</span>}
               <span>Attempt {Math.max(1, message.task.attempt)}</span>
             </div>
@@ -572,7 +573,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
               <TaskDifficulty complexity={message.task.complexity} />
               <span>Cost {compactTokens.format(taskCost(message.task))} tokens</span>
               <span>{taskModelLabel(message.task)}</span>
-              {message.task.local && <span>Spark local</span>}
+              {message.task.local && <span>Local terminal</span>}
               <span>{message.task.fastMode ? 'Fast mode' : 'Standard pace'}</span>
               <span>Attempt {Math.max(1, message.task.attempt)}</span>
             </div>
@@ -652,7 +653,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
             <strong>#{channel}</strong>
             <span>{channel === 'general' ? 'Team chat' : 'Colleague chat'}</span>
           </div>
-          <span className="employment-chat-state">{employerName(state, activeJobId)} · {state.stage === 'lost' ? 'archived' : 'online'}</span>
+          <span className="employment-chat-state">{employerName(state, activeJobId)} · {state.stage === 'hired' ? 'online' : 'archived'}</span>
           {state.secondJob !== null && (
             <select
               className="employment-mobile-employer"
@@ -721,8 +722,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
       if (upgradePrice(state, upgrade, terminalTarget) === null) return
       event.preventDefault()
       event.stopPropagation()
-      dispatch({ type: 'buy-upgrade', upgrade, terminalId: terminalTarget })
-      clear()
+      dispatch({ type: 'buy-upgrade', upgrade, terminalId: terminalTarget, source: 'drag' })
       return
     }
     const kind = event.dataTransfer.getData('application/x-vibemaxxer-task')
@@ -742,8 +742,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
     if (state.stage !== 'hired' || !task || (task.status !== 'approval' && task.status !== 'blocked')) return
     dispatch({ type: 'approve-task', id: task.id, approved })
   }
-  const progress = task ? Math.min(100, Math.max(0, (task.progress / Math.max(1, task.difficulty)) * 100)) : 0
-  const retryCost = task ? taskTokenCost(task, fastMode, terminalModel(state, terminalId), terminalId === 'spark') : 0
+  const retryCost = task ? taskTokenCost(task, fastMode, isLocalTerminal(terminalId) ? 'advanced' : terminalModel(state, terminalId), isLocalTerminal(terminalId)) : 0
   return (
     <section
       ref={laneRef}
@@ -781,7 +780,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
           <div className="employment-terminal-stats">
             <span>{taskProgressLabel(task)}</span>
             <span>deadline {taskDeadline(task, state.elapsed)}</span>
-            <span>{task.local ? 'Spark local' : taskModelLabel(task)}</span>
+            <span>{task.local ? 'Local terminal' : taskModelLabel(task)}</span>
           </div>
 
           {task.status === 'approval' && !yolo && (
@@ -822,11 +821,11 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
 
 export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) {
   const terminal = state.terminals.find((candidate) => candidate.id === terminalId)
-  const isSpark = terminalId === 'spark'
-  const slots = isSpark ? 2 : terminal?.slots ?? 0
+  const isLocal = isLocalTerminal(terminalId)
+  const slots = isLocal ? 2 : terminal?.slots ?? 0
   const yolo = terminal?.yolo ?? false
-  const fastMode = isSpark ? false : terminal?.fastMode ?? false
-  const model = isSpark ? 'reasoning' : terminalModel(state, terminalId)
+  const fastMode = isLocal ? false : terminal?.fastMode ?? false
+  const model = isLocal ? 'advanced' : terminalModel(state, terminalId)
   const refillIn = 100 - (state.elapsed % 100 || 0)
   const terminalRef = useRef<HTMLDivElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
@@ -850,8 +849,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
       if (state.stage !== 'hired') return
       if (source.kind === 'upgrade' && (source.id === 'split' || source.id === 'yolo' || source.id === 'terminal')) {
         const target = source.id === 'terminal' ? 'terminal' : terminalId
-        if (upgradePrice(state, source.id, target) !== null) dispatch({ type: 'buy-upgrade', upgrade: source.id, terminalId: target })
-        return
+        if (upgradePrice(state, source.id, target) !== null) dispatch({ type: 'buy-upgrade', upgrade: source.id, terminalId: target, source: 'drag' })
       }
       if (source.kind === 'task' && idleSlot !== null) {
         const id = Number(source.id)
@@ -868,8 +866,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
       const terminalTarget = upgrade === 'terminal' ? 'terminal' : terminalId
       if (upgradePrice(state, upgrade, terminalTarget) === null) return
       event.preventDefault()
-      dispatch({ type: 'buy-upgrade', upgrade, terminalId: terminalTarget })
-      clear()
+      dispatch({ type: 'buy-upgrade', upgrade, terminalId: terminalTarget, source: 'drag' })
       return
     }
     const kind = event.dataTransfer.getData('application/x-vibemaxxer-task')
@@ -894,6 +891,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
     }
   }
 
+  const terminalLabel = isLocal ? terminalId === 'spark-ultra' ? 'Mapple Spark Ultra' : 'Mapple Spark' : terminalId === 'terminal-2' ? 'Terminal 2' : 'Terminal'
   return (
     <div
       ref={terminalRef}
@@ -902,8 +900,8 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
       onDrop={handleTerminalDrop}
     >
       <div className="terminal-topline">
-        <span>{isSpark ? 'spark · local ConvexLM Reasoning' : `${terminalId} · ${AGENT_MODELS[model].label}`}{yolo ? ' · YOLO' : ''}</span>
-        {!isSpark && state.frontierModelUnlocked && (
+        <span>{terminalLabel} · {AGENT_MODELS[model].label}{yolo ? ' · YOLO' : ''}</span>
+        {!isLocal && state.frontierModelUnlocked && (
           <label className="employment-model-selector">
             <span>Model</span>
             <select
@@ -935,9 +933,9 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
       </div>
       <div className="employment-terminal-footer">
         <div className="employment-token-line">
-          <span><strong>{isSpark ? 'Spark local' : state.tokens.toLocaleString()}</strong>{isSpark ? ' · no task-token cost' : ' tokens available'}</span>
+          <span><strong>{isLocal ? `${terminalLabel} local` : state.tokens.toLocaleString()}</strong>{isLocal ? ' · no task-token cost' : ' tokens available'}</span>
           <span className="employment-refill-countdown">
-            {isSpark ? 'ConvexLM Reasoning model' : state.tokens >= MAX_TOKENS ? 'Balance full' : `Refill in ${formatSeconds(refillIn)}`}
+            {isLocal ? `${AGENT_MODELS[model].label} model` : state.tokens >= MAX_TOKENS ? 'Balance full' : `Refill in ${formatSeconds(refillIn)}`}
           </span>
         </div>
       </div>
