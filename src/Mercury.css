@@ -1,7 +1,10 @@
 .mercury-app {
   min-width: 0;
-  min-height: 100%;
-  overflow: auto;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: clamp(0.8rem, 2.4vw, 1.45rem);
   color: #2b2340;
   background:
@@ -18,28 +21,23 @@
 }
 
 .mercury-header {
+  flex-shrink: 0;
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding-bottom: 1rem;
+  padding-bottom: 0.5rem;
   border-bottom: 1px solid rgba(77, 52, 128, 0.14);
 }
 
-.mercury-header h2 {
+.mercury-app .mercury-header h2 {
   margin: 0.22rem 0 0.38rem;
   color: #30204d;
-  font-size: clamp(1.2rem, 3vw, 1.8rem);
+  font-size: 1.2rem;
   letter-spacing: -0.045em;
   line-height: 1.05;
 }
 
-.mercury-header p {
-  max-width: 48rem;
-  margin: 0;
-  color: #685d7c;
-  font-size: 0.76rem;
-}
 
 .mercury-eyebrow {
   display: block;
@@ -107,14 +105,14 @@
 }
 
 .mercury-summary {
+  flex-shrink: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
-  margin: 0.9rem 0;
+  margin: 0.6rem 0;
 }
 
 .mercury-summary > div,
-.mercury-employer-card,
 .mercury-terminal-card,
 .mercury-task-card {
   border: 1px solid rgba(91, 66, 145, 0.15);
@@ -152,7 +150,8 @@
 }
 
 .mercury-waiting {
-  margin: 0 0 1rem;
+  flex-shrink: 0;
+  margin: 0 0 0.5rem;
   padding: 0.58rem 0.7rem;
   color: #5c4d2e;
   border: 1px solid rgba(193, 144, 51, 0.28);
@@ -166,9 +165,6 @@
   color: #6d5120;
 }
 
-.mercury-section {
-  margin-top: 1rem;
-}
 
 .mercury-section-heading {
   display: flex;
@@ -185,11 +181,6 @@
   letter-spacing: -0.025em;
 }
 
-.mercury-section-heading p {
-  margin: 0.16rem 0 0;
-  color: #766c89;
-  font-size: 0.7rem;
-}
 
 .mercury-count {
   display: grid;
@@ -205,19 +196,16 @@
   font-weight: 800;
 }
 
-.mercury-employer-grid,
 .mercury-terminal-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 0.58rem;
 }
 
-.mercury-employer-card,
 .mercury-terminal-card {
   padding: 0.72rem;
 }
 
-.mercury-employer-heading,
 .mercury-terminal-heading {
   display: flex;
   align-items: start;
@@ -225,14 +213,12 @@
   gap: 0.6rem;
 }
 
-.mercury-employer-heading strong,
 .mercury-terminal-heading h4 {
   margin: 0;
   color: #392653;
   font-size: 0.84rem;
 }
 
-.mercury-employer-heading span,
 .mercury-terminal-state {
   flex: 0 0 auto;
   color: #705f91;
@@ -240,28 +226,7 @@
   font-weight: 800;
 }
 
-.mercury-employer-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem 0.68rem;
-  margin-top: 0.54rem;
-  color: #766a89;
-  font-size: 0.68rem;
-}
 
-.mercury-employer-facts span + span::before {
-  margin-right: 0.68rem;
-  color: #b0a5bf;
-  content: '·';
-}
-
-.mercury-tasks {
-  padding-top: 0.1rem;
-}
-
-.mercury-section-heading-main {
-  margin-bottom: 0.75rem;
-}
 
 .mercury-task-group + .mercury-task-group {
   margin-top: 1rem;
@@ -418,23 +383,19 @@
   font-size: 0.7rem;
 }
 
-.mercury-terminal-model span {
-  color: #786c8c;
-  font-size: 0.63rem;
-}
 
 .mercury-terminal-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.35rem 0.58rem;
   color: #6f637f;
-  font-size: 0.65rem;
+  font-size: 0.78rem;
 }
 
 .mercury-terminal-facts b {
   display: block;
   color: #4f4265;
-  font-size: 0.6rem;
+  font-size: 0.68rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -477,45 +438,24 @@
 .mercury-pane span,
 .mercury-pane small {
   color: #796c88;
-  font-size: 0.6rem;
+  font-size: 0.68rem;
 }
 
 .mercury-pane strong {
   overflow: hidden;
   color: #4a375f;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.mercury-terminal-costs,
-.mercury-terminal-chance {
+.mercury-terminal-costs {
   margin: 0;
   color: #746985;
   font-size: 0.62rem;
 }
 
-.mercury-terminal-chance {
-  padding-top: 0.4rem;
-  border-top: 1px solid rgba(77, 52, 128, 0.1);
-}
 
-@media (max-width: 720px) {
-  .mercury-header {
-    flex-direction: column;
-  }
-
-  .mercury-switch {
-    align-self: flex-end;
-  }
-
-  .mercury-summary,
-  .mercury-employer-grid,
-  .mercury-terminal-grid,
-  .mercury-task-list {
-    grid-template-columns: 1fr 1fr;
-  }
-}
 
 @media (max-width: 500px) {
   .mercury-app {
@@ -524,7 +464,6 @@
   }
 
   .mercury-summary,
-  .mercury-employer-grid,
   .mercury-terminal-grid,
   .mercury-task-list {
     grid-template-columns: 1fr;
@@ -536,9 +475,6 @@
     column-gap: 0.45rem;
   }
 
-  .mercury-summary small {
-    grid-column: 2;
-  }
 
   .mercury-terminal-facts {
     grid-template-columns: 1fr 1fr;
@@ -550,4 +486,40 @@
   .mercury-switch-track > span {
     transition: none;
   }
+}
+
+.mercury-views {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.4rem;
+  margin-bottom: 0.7rem;
+}
+
+.mercury-views button {
+  flex: 1;
+  padding: 0.5rem 0.35rem;
+  border: 1px solid #c7b8e3;
+  border-radius: 0.45rem;
+  background: #f5f0ff;
+  color: #503774;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mercury-views button[aria-pressed="true"] {
+  background: #6743aa;
+  color: white;
+}
+
+.mercury-views button:focus-visible {
+  outline: 2px solid #7954f6;
+  outline-offset: 2px;
+}
+
+.mercury-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }

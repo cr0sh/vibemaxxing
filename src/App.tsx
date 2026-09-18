@@ -192,7 +192,7 @@ function Desktop({
   const fillRun = useRef(0)
   const lastSample = useRef<number | null>(null)
   const [previousRevisions, setPreviousRevisions] = useState<RevisionMap>({})
-  const mercuryOwnedRef = useRef(state.mercuryOwned)
+  const [previousMercuryOwned, setPreviousMercuryOwned] = useState(state.mercuryOwned)
   const devWindowOpenedRef = useRef(false)
 
   const cancelAutofill = () => {
@@ -255,8 +255,7 @@ function Desktop({
     market: state.market === null ? 'unavailable' : 'available',
     mercury: new Set([
       `enabled:${state.mercuryEnabled}`,
-      ...state.tasks.map((task) => `task:${task.id}:${task.status}:${task.attempt}:${task.terminalId ?? ''}:${(task as GameState['tasks'][number] & { mercuryAuto?: boolean }).mercuryAuto === true ? 'auto' : 'manual'}`),
-      ...state.taskQueue.map((task) => `queue:${task.id}`),
+      ...state.tasks.map((task) => `task:${task.id}:${task.status}:${task.attempt}:${task.terminalId ?? ''}:${task.mercuryAuto === true ? 'auto' : 'manual'}`),
       ...state.terminals.map((terminal) => `terminal:${terminal.id}:${terminal.slots}:${terminal.yolo}:${terminal.fastMode}:${terminal.model}`),
     ]),
   }
@@ -346,11 +345,10 @@ function Desktop({
     setFocusRequest((request) => request + 1)
     setActiveWindow(id)
   }
-  useEffect(() => {
-    const wasOwned = mercuryOwnedRef.current
-    mercuryOwnedRef.current = state.mercuryOwned
-    if (!wasOwned && state.mercuryOwned) openWindow('mercury')
-  }, [state.mercuryOwned])
+  if (previousMercuryOwned !== state.mercuryOwned) {
+    setPreviousMercuryOwned(state.mercuryOwned)
+    if (state.mercuryOwned) openWindow('mercury')
+  }
   const focusDefeat = () => {
     acknowledgeDockWindow('defeat')
     setDefeatClaimed(true)
