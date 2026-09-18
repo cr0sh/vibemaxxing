@@ -2,6 +2,7 @@ import { useState, type Dispatch } from 'react'
 import {
   AGENT_MODELS,
   canFundMercuryAttempt,
+  canFundMercuryRetry,
   canFundTaskAttempt,
   mercuryReturnReservations,
   MERCURY_FORWARD_COST,
@@ -56,13 +57,14 @@ const taskStatus = (task: WorkTask): string => {
   }
 }
 
-const canFundFailedRetry = (state: GameState, task: WorkTask): boolean => (
-  state.stage === 'hired' &&
-  task.status === 'failed' &&
-  task.terminalId !== null &&
-  task.slot !== null &&
-  canFundTaskAttempt(state, task, task.fastMode, task.terminalId)
-)
+const canFundFailedRetry = (state: GameState, task: WorkTask): boolean => {
+  const terminal = state.terminals.find((candidate) => candidate.id === task.terminalId)
+  return state.stage === 'hired' &&
+    task.status === 'failed' &&
+    terminal !== undefined &&
+    task.slot !== null &&
+    canFundTaskAttempt(state, task, terminal.fastMode, terminal.id)
+}
 
 const failedRetryNote = (state: GameState, task: WorkTask): string => {
   if (state.stage !== 'hired' || !state.mercuryOwned) return 'Retry immediately in the terminal. Mercury automatic retries are unavailable.'
@@ -70,7 +72,7 @@ const failedRetryNote = (state: GameState, task: WorkTask): string => {
   if (task.failedAt === null) return 'Retry immediately in the terminal. Automatic retry timing is unavailable for this attempt.'
   const retryIn = task.failedAt + MERCURY_RETRY_DELAY - state.elapsed
   if (retryIn > 0) return `Mercury automatic retry in ${formatTime(retryIn)}.`
-  return canFundFailedRetry(state, task)
+  return canFundMercuryRetry(state, task)
     ? 'Mercury automatic retry is ready.'
     : 'Mercury automatic retry is waiting for funds.'
 }

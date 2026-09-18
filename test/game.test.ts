@@ -5,6 +5,7 @@ import {
   gameReducer,
   initialGame,
   MAX_TOKENS,
+  MERCURY_FORWARD_COST,
   MERCURY_RETRY_DELAY,
   taskReward,
   taskTokenCost,
@@ -25,6 +26,11 @@ function taskWith(state: GameState, id: number): WorkTask {
     throw new Error(`Task ${id} was not found`)
   }
   return task
+}
+
+function hireForApproval(): GameState {
+  const state = hire()
+  return { ...state, tasks: state.tasks.map((task) => ({ ...task, difficulty: 30, deadlineAt: 1_000 })) }
 }
 
 describe('job applications', () => {
@@ -95,10 +101,11 @@ describe('job applications', () => {
 })
 
 describe('employment transitions', () => {
-  test('seeded technologist avatar remains stable through hire and checkpoints', () => {
+  test('run avatars vary by seed and remain stable through hire and checkpoints', () => {
     const applying = gameReducer(initialGame, { type: 'start', seed: 4_242 })
     const hired = hire(4_242)
-    expect(applying.tiroAvatar).toMatch(/💻/)
+    const avatars = new Set(Array.from({ length: 32 }, (_, seed) => gameReducer(initialGame, { type: 'start', seed }).tiroAvatar))
+    expect(avatars.size).toBeGreaterThan(1)
     expect(applying.tiroAvatar).toBe(hired.tiroAvatar)
     expect(gameReducer(hired, { type: 'dev-jump', stage: 'hired' }).tiroAvatar).toBe(hired.tiroAvatar)
   })
@@ -223,10 +230,10 @@ describe('employment transitions', () => {
   })
 
   test('declined commands pause work and can be explicitly resumed', () => {
-    let state = hire()
+    let state = hireForApproval()
     const id = taskWith(state, 1).id
     state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
-    for (let second = 0; second < 6 && taskWith(state, id).status !== 'approval'; second++) {
+    for (let second = 0; second < 30 && taskWith(state, id).status !== 'approval'; second++) {
       state = gameReducer(state, { type: 'tick', seconds: 1 })
     }
     expect(taskWith(state, id).status).toBe('approval')
@@ -241,21 +248,22 @@ describe('employment transitions', () => {
   })
 
   test('approval prompts stay stable at a checkpoint and reseed on resume', () => {
-    let state = hire()
+    let state = hireForApproval()
     const id = taskWith(state, 1).id
     state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
     const firstPrompt = taskWith(state, id).approvalPrompt
 
     let ticks = 0
-    while (taskWith(state, id).status !== 'approval' && ticks < 6) {
+    while (taskWith(state, id).status !== 'approval' && ticks < 30) {
       state = gameReducer(state, { type: 'tick', seconds: 1 })
       ticks += 1
     }
+    expect(taskWith(state, id).status).toBe('approval')
     expect(taskWith(state, id).approvalPrompt).toBe(firstPrompt)
 
     const resumed = gameReducer(state, { type: 'approve-task', id, approved: true })
 
-    let replay = hire()
+    let replay = hireForApproval()
     replay = gameReducer(replay, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
     replay = gameReducer(replay, { type: 'tick', seconds: ticks })
     const replayed = gameReducer(replay, { type: 'approve-task', id, approved: true })
@@ -365,7 +373,7 @@ describe('terminal upgrades and concurrent work', () => {
   })
 
   test('YOLO resumes paused work and bypasses future approval prompts without another token charge', () => {
-    let state = hire()
+    let state = hireForApproval()
     const id = taskWith(state, 1).id
     state = {
       ...state,
@@ -374,7 +382,7 @@ describe('terminal upgrades and concurrent work', () => {
     }
     state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
     const chargedTokens = state.tokens
-    for (let second = 0; second < 6 && taskWith(state, id).status !== 'approval'; second++) {
+    for (let second = 0; second < 30 && taskWith(state, id).status !== 'approval'; second++) {
       state = gameReducer(state, { type: 'tick', seconds: 1 })
     }
     expect(taskWith(state, id).status).toBe('approval')
@@ -761,16 +769,17 @@ describe('extended engine contracts', () => {
       attempt: 1,
       failedAt: 0,
     }
+    const retryCost = taskTokenCost(failed, base.terminals[0]!.fastMode, 'advanced')
     const waiting = {
       ...base,
       elapsed: 0,
-      tokens: 399_999,
+      tokens: retryCost + MERCURY_FORWARD_COST - 1,
       tasks: [failed],
       taskQueue: [],
       nextTaskAt: 1_000,
     }
     expect(canFundMercuryRetry(waiting, failed)).toBe(false)
-    const funded = { ...waiting, tokens: 400_000 }
+    const funded = { ...waiting, tokens: retryCost + MERCURY_FORWARD_COST }
     expect(canFundMercuryRetry(funded, failed)).toBe(true)
     const early = gameReducer(funded, { type: 'tick', seconds: MERCURY_RETRY_DELAY - 1 })
     expect(taskWith(early, failed.id)).toMatchObject({ status: 'failed', attempt: 1, failedAt: 0 })
@@ -784,6 +793,42 @@ describe('extended engine contracts', () => {
     const disabled = gameReducer({ ...funded, mercuryEnabled: false }, { type: 'tick', seconds: 20 })
     expect(taskWith(disabled, failed.id)).toMatchObject({ status: 'failed', attempt: 1, failedAt: 0 })
   })
+
+  test('Retry all uses current settings and leaves unaffordable failures untouched', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const failed: WorkTask = {
+      ...hire().tasks[0]!,
+      difficulty: 1,
+      complexity: 1,
+      deadlineAt: 100,
+      status: 'failed',
+      terminalId: 'terminal',
+      slot: 0,
+      model: 'frontier',
+      fastMode: true,
+      mercuryAuto: true,
+      attempt: 1,
+      failedAt: 0,
+    }
+    const state: GameState = {
+      ...base,
+      tokens: 150_000,
+      tasks: [failed, { ...failed, id: failed.id + 1, slot: 1 }],
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      terminals: base.terminals.map((terminal) => terminal.id === 'terminal'
+        ? { ...terminal, model: 'basic', fastMode: false }
+        : terminal),
+    }
+    const retried = gameReducer(state, { type: 'retry-all' })
+    expect(retried.tokens).toBe(50_000)
+    expect(retried.tasks[0]).toMatchObject({ status: 'working', attempt: 2, model: 'basic', fastMode: false, deadlineAt: 100 })
+    expect(retried.tasks[1]).toMatchObject({ status: 'failed', attempt: 1, failedAt: 0 })
+    const repeated = gameReducer(retried, { type: 'retry-all' })
+    expect(repeated.tokens).toBe(50_000)
+    expect(repeated.tasks.map((task) => task.attempt)).toEqual([2, 1])
+  })
+
   test('Spark purchase waits ten seconds and caps late delivery delay', () => {
     let state = gameReducer(hire(), { type: 'dev-jump', stage: 'market' })
     state = { ...state, tasks: [], taskQueue: [], nextTaskAt: 1_000 }

@@ -170,6 +170,7 @@ export type GameAction =
   | { type: 'deliver-task'; id: number }
   | { type: 'buy-tokens'; packs: TokenPackCount }
   | { type: 'buy-upgrade'; upgrade: TerminalUpgrade; terminalId: TerminalId }
+  | { type: 'read-watercooler' }
   | { type: 'install-social' }
   | { type: 'like-reset' }
   | { type: 'set-fast-mode'; terminalId: TerminalId; enabled: boolean }
@@ -568,7 +569,7 @@ export function canFundTaskAttempt(
   } else if (state.reasoningUnlocked) {
     model = 'reasoning'
   }
-  const otherReservations = assignedReservations + mercuryReturnReservations(state.tasks, state.mercuryEnabled !== false)
+  const otherReservations = assignedTaskReservations(state, task) + mercuryReturnReservations(state.tasks, state.mercuryEnabled !== false)
   const cost = taskTokenCost(task, fastMode, model, local)
   return Number.isFinite(cost) && cost >= 0 && Number.isFinite(otherReservations) &&
     Number.isFinite(state.tokens) && state.tokens >= 0 && (local || state.tokens >= cost + otherReservations)
