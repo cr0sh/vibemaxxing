@@ -84,6 +84,7 @@ export function MarketContent({ state, dispatch }: MarketProps) {
   const canWithdraw = withdrawValue !== null && withdrawValue <= (market?.usd ?? 0)
   const canBuy = canUseMarket && btcValue !== null && executableBtcQuantity(market, 'buy', btcValue) !== null
   const canSell = canUseMarket && btcValue !== null && executableBtcQuantity(market, 'sell', btcValue) !== null
+  const canSellAll = canUseMarket && executableBtcQuantity(market, 'sell', market.btc) !== null
   const history = market?.history ?? EMPTY_HISTORY
   const chart = useMemo(() => buildChart(history), [history])
 
@@ -197,6 +198,9 @@ export function MarketContent({ state, dispatch }: MarketProps) {
             <div className="market-actions">
               <button type="submit" disabled={!canBuy}>Buy BTC</button>
               <button type="button" disabled={!canSell} onClick={() => executeTrade('sell')}>Sell BTC</button>
+              <button type="button" disabled={!canSellAll} onClick={() => {
+                if (canUseMarket) dispatch({ type: 'market-trade', side: 'sell', amount: market.btc })
+              }}>Sell all BTC</button>
             </div>
           </form>
         </section>
