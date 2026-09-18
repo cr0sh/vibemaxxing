@@ -18,11 +18,12 @@ import { MessengerContent, TerminalContent } from './Employment'
 import { MarketContent } from './Market'
 import { ShopContent } from './Shop'
 import { SocialContent } from './Social'
+import { MercuryContent } from './Mercury'
 import { WindowFrame, WindowWorkspace } from './DesktopWindows'
 import { ResourceCounter } from './ResourceCounter'
 import './App.css'
 
-type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'spark' | 'shop' | 'social' | 'market' | 'defeat'
+type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'spark' | 'shop' | 'social' | 'market' | 'mercury' | 'defeat'
 type WindowState = Record<WindowId, boolean>
 type RevisionMap = Partial<Record<WindowId, string | GameState['messages'] | GameState['socialPosts'] | Set<string>>>
 
@@ -114,7 +115,7 @@ function App() {
               devOpenTarget === 'tiro' ? 'social' :
                 devOpenTarget === 'market' ? 'market' :
                   devOpenTarget === 'spark' ? 'spark' :
-                    devOpenTarget === 'mercury' ? 'shop' :
+                    devOpenTarget === 'mercury' ? 'mercury' :
                       devOpenTarget === 'second-job' ? 'messenger' :
                         devOpenTarget === 'frontier' ? 'terminal' : null
   return (
@@ -167,6 +168,7 @@ function Desktop({
     'terminal-2': openWindowOnMount === 'terminal-2',
     spark: openWindowOnMount === 'spark',
     shop: openWindowOnMount === 'shop',
+    mercury: state.mercuryOwned || openWindowOnMount === 'mercury',
     social: openWindowOnMount === 'social',
     market: openWindowOnMount === 'market',
     defeat: state.stage === 'lost',
@@ -190,6 +192,7 @@ function Desktop({
   const fillRun = useRef(0)
   const lastSample = useRef<number | null>(null)
   const [previousRevisions, setPreviousRevisions] = useState<RevisionMap>({})
+  const mercuryOwnedRef = useRef(state.mercuryOwned)
   const devWindowOpenedRef = useRef(false)
 
   const cancelAutofill = () => {
@@ -220,6 +223,7 @@ function Desktop({
             'messenger',
             ...terminalIds,
             'shop',
+            ...(state.mercuryOwned ? ['mercury' as const] : []),
             ...(state.market !== null ? ['market' as const] : []),
             ...(state.socialInstalledAt !== null ? ['social' as const] : []),
             ...(state.stage === 'lost' ? ['defeat' as const] : []),
@@ -249,6 +253,12 @@ function Desktop({
     apply: `${state.stage === 'applying'}|${secondApplicationAvailable}`,
     offer: `${state.stage === 'offer'}|${secondOfferAvailable}`,
     market: state.market === null ? 'unavailable' : 'available',
+    mercury: new Set([
+      `enabled:${state.mercuryEnabled}`,
+      ...state.tasks.map((task) => `task:${task.id}:${task.status}:${task.attempt}:${task.terminalId ?? ''}:${(task as GameState['tasks'][number] & { mercuryAuto?: boolean }).mercuryAuto === true ? 'auto' : 'manual'}`),
+      ...state.taskQueue.map((task) => `queue:${task.id}`),
+      ...state.terminals.map((terminal) => `terminal:${terminal.id}:${terminal.slots}:${terminal.yolo}:${terminal.fastMode}:${terminal.model}`),
+    ]),
   }
   for (const terminal of state.terminals) {
     const revision = new Set([
@@ -336,6 +346,11 @@ function Desktop({
     setFocusRequest((request) => request + 1)
     setActiveWindow(id)
   }
+  useEffect(() => {
+    const wasOwned = mercuryOwnedRef.current
+    mercuryOwnedRef.current = state.mercuryOwned
+    if (!wasOwned && state.mercuryOwned) openWindow('mercury')
+  }, [state.mercuryOwned])
   const focusDefeat = () => {
     acknowledgeDockWindow('defeat')
     setDefeatClaimed(true)
@@ -606,6 +621,21 @@ function Desktop({
                   >
                     <ShopContent state={state} dispatch={dispatch} />
                   </WindowFrame>
+                  {state.mercuryOwned && (
+                    <WindowFrame
+                      id="mercury"
+                      icon="☿"
+                      title="Mercury"
+                      active={isWindowActive('mercury')}
+                      className="mercury-window-frame"
+                      contentLayout="fill"
+                      hidden={!windows.mercury}
+                      onFocus={() => focusWindow('mercury')}
+                      onMinimize={() => minimizeWindow('mercury')}
+                    >
+                      <MercuryContent state={state} dispatch={dispatch} />
+                    </WindowFrame>
+                  )}
                   {state.market !== null && (
                     <WindowFrame
                       id="market"
@@ -695,8 +725,10 @@ function Desktop({
                     ? { icon: '💬', label: 'Messenger' }
                     : id === 'shop'
                       ? { icon: '🛍️', label: 'Shop' }
-                      : id === 'market'
-                        ? { icon: '📈', label: 'Market' }
+                      : id === 'mercury'
+                        ? { icon: '☿', label: 'Mercury' }
+                        : id === 'market'
+                          ? { icon: '📈', label: 'Market' }
                         : id === 'social'
                           ? { icon: 'Z', label: 'ZZZ' }
                           : id === 'defeat'
