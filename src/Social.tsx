@@ -188,7 +188,7 @@ function PostBody({
   if (post.type === 'shorts') {
     return (
       <p className="social-post-copy">
-        Your energy is taking a hit. Shorts is now in the dock: scroll through a short to recover a little energy and keep going.
+        Mercury has the work covered. Bored already? Shorts is now in your dock.
       </p>
     )
   }

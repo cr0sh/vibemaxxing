@@ -98,13 +98,19 @@ function App() {
     }
     if (previousState.stage !== 'hired' || state.stage !== 'hired') return
 
-    const previousMessageIds = new Set(previousState.messages.map((message) => message.id))
-    const incomingMessage = state.messages.some((message) => !previousMessageIds.has(message.id))
-    if (incomingMessage) playSound('messenger-message')
+    if (state.messages !== previousState.messages) {
+      const previousMessageIds = new Set(previousState.messages.map((message) => message.id))
+      if (state.messages.some((message) => !previousMessageIds.has(message.id))) {
+        playSound('messenger-message')
+      }
+    }
 
-    const previousPostIds = new Set(previousState.socialPosts.map((post) => post.id))
-    const incomingPost = state.socialPosts.some((post) => !previousPostIds.has(post.id))
-    if (incomingPost) playSound('social-post')
+    if (state.socialPosts !== previousState.socialPosts) {
+      const previousPostIds = new Set(previousState.socialPosts.map((post) => post.id))
+      if (state.socialPosts.some((post) => !previousPostIds.has(post.id))) {
+        playSound('social-post')
+      }
+    }
   }, [state])
 
   useEffect(() => {
@@ -317,8 +323,9 @@ function Desktop({
         const revision = revisions[id]
         if (revision === undefined) continue
         const previousRevision = previousRevisions[id]
+        const isOpen = windows[id] || (id === 'messenger' && defeatAutoFront)
         if (previousRevision === undefined) {
-          if (!next.has(id)) {
+          if (isOpen && !next.has(id)) {
             next.add(id)
             changed = true
           }
@@ -334,7 +341,6 @@ function Desktop({
             }
           }
         }
-        const isOpen = windows[id] || (id === 'messenger' && defeatAutoFront)
         if (hasUpdate) {
           if (isWindowActive(id) && isOpen) {
             if (!next.has(id)) {
@@ -412,7 +418,7 @@ function Desktop({
     }
     if (activeWindow === id) {
       const remaining = stageWindows.find((windowId) => windowId !== id && windows[windowId])
-      if (remaining) setActiveWindow(remaining)
+      if (remaining) focusWindow(remaining)
     }
   }
 

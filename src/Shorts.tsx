@@ -90,9 +90,8 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
   const recenterFeed = useCallback(() => {
     const feed = feedRef.current
     if (!feed || feed.clientHeight <= 0) return false
-    // Direct assignment deliberately bypasses scroll-behavior and cannot look like
-    // another user navigation. The card at the center slot is unchanged visually.
-    feed.scrollTop = centerSlot * feed.clientHeight
+    // Recycle only after the native snap settles, and never animate the reset.
+    feed.scrollTo({ top: centerSlot * feed.clientHeight, behavior: 'instant' })
     return true
   }, [])
 
@@ -129,14 +128,11 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
   const announceTransition = useCallback((delta: number) => {
     if (!playbackActive || delta === 0) return
     const nextPosition = virtualPositionRef.current + delta
-    const transitionCount = Math.abs(delta)
     virtualPositionRef.current = nextPosition
     pendingRecenterRef.current = true
     setVirtualPosition(nextPosition)
-    setViewingCount((count) => count + transitionCount)
-    for (let transition = 0; transition < transitionCount; transition += 1) {
-      dispatch({ type: 'scroll-short' })
-    }
+    setViewingCount((count) => count + 1)
+    dispatch({ type: 'scroll-short' })
   }, [dispatch, playbackActive])
 
   const markUserGesture = useCallback(() => {
@@ -149,6 +145,7 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
     if (!feed || !playbackActive || pendingRecenterRef.current) return
     const slot = nearestSlot(feed)
     if (slot === centerSlot || !userGestureRef.current) return
+    if (Math.abs(feed.scrollTop - slot * feed.clientHeight) > 2) return
 
     userGestureRef.current = false
     announceTransition(slot - centerSlot)
@@ -217,7 +214,6 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
               tabIndex={-1}
             >
               <div className="shorts-card-topline">
-                <span className="shorts-card-index">{String(index + 1).padStart(2, '0')}</span>
                 <span className="shorts-card-source">{video.creator}</span>
               </div>
               {isCurrent && playbackActive ? <VideoEmbed video={video} /> : <div className="shorts-media-frame shorts-media-unloaded" aria-label="Video unloaded until this short is active"><span>Scroll here to load this clip</span></div>}
