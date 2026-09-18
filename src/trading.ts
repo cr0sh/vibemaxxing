@@ -82,28 +82,28 @@ export function advanceMarket(market: MarketState, elapsed: number): MarketState
   return { ...market, price, history, rng }
 }
 
+export function executableBtcQuantity(market: MarketState, side: 'buy' | 'sell', amount: number): number | null {
+  if (!validMarket(market) || !Number.isFinite(amount) || amount <= 0 || (side !== 'buy' && side !== 'sell')) return null
+  const available = side === 'buy' ? market.usd / market.price : market.btc
+  const tolerance = EPSILON * available
+  if (amount - available > tolerance) return null
+  // Treat floating-point noise at a wallet boundary as the full balance.
+  const quantity = Math.abs(amount - available) <= tolerance ? available : amount
+  const value = quantity * market.price
+  const usd = side === 'buy' ? Math.max(0, market.usd - value) : market.usd + value
+  const btc = side === 'buy' ? market.btc + quantity : market.btc - quantity
+  if (quantity <= 0 || !Number.isFinite(value) || !Number.isFinite(usd) || !Number.isFinite(btc)) return null
+  if (side === 'buy' ? usd >= market.usd || btc <= market.btc : usd <= market.usd || btc >= market.btc) return null
+  return quantity
+}
+
 export function tradeMarket(market: MarketState, side: 'buy' | 'sell', amount: number): MarketState {
-  if (!validMarket(market) || !Number.isFinite(amount) || amount <= 0) return market
-
-  if (side === 'buy') {
-    const usdSpent = amount * market.price
-    if (!Number.isFinite(usdSpent) || usdSpent > market.usd) return market
-    const usd = market.usd - usdSpent
-    const btc = market.btc + amount
-    if (!Number.isFinite(usd) || !Number.isFinite(btc) || usd >= market.usd || btc <= market.btc || usd < -EPSILON || btc < 0) return market
-    return { ...market, usd: usd < 0 ? 0 : usd, btc }
-  }
-
-  if (side === 'sell') {
-    if (amount > market.btc) return market
-    const usdReceived = amount * market.price
-    const usd = market.usd + usdReceived
-    const btc = market.btc - amount
-    if (!Number.isFinite(usdReceived) || !Number.isFinite(usd) || !Number.isFinite(btc) || usd <= market.usd || btc >= market.btc || usd < 0 || btc < -EPSILON) return market
-    return { ...market, usd, btc: btc < 0 ? 0 : btc }
-  }
-
-  return market
+  const quantity = executableBtcQuantity(market, side, amount)
+  if (quantity === null) return market
+  const value = quantity * market.price
+  return side === 'buy'
+    ? { ...market, usd: Math.max(0, market.usd - value), btc: market.btc + quantity }
+    : { ...market, usd: market.usd + value, btc: market.btc - quantity }
 }
 
 export function transferMarket(

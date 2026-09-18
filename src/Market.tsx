@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Dispatch, FormEvent } from 'react'
 import type { GameAction, GameState } from './game'
+import { executableBtcQuantity } from './trading'
 import './Market.css'
 
 const usdFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -64,7 +65,7 @@ function buildChart(history: readonly { elapsed: number; price: number }[]): Cha
 export function MarketContent({ state, dispatch }: MarketProps) {
   const market = state.market
   const [transferAmount, setTransferAmount] = useState('100')
-  const [btcAmount, setBtcAmount] = useState('0.001')
+  const [btcAmount, setBtcAmount] = useState('1')
   const canUseMarket = state.stage === 'hired' && market !== null
   const transferMax = transferAmount === 'MAX'
   const transferValue = parseAmount(transferAmount)
@@ -72,7 +73,7 @@ export function MarketContent({ state, dispatch }: MarketProps) {
     if (!canUseMarket) return null
     if (transferMax) {
       const available = direction === 'deposit' ? state.money : market.usd
-      return parseAmount(String(available))
+      return Number.isFinite(available) && available > 0 ? available : null
     }
     return transferValue
   }
@@ -81,8 +82,8 @@ export function MarketContent({ state, dispatch }: MarketProps) {
   const btcValue = parseAmount(btcAmount)
   const canDeposit = depositValue !== null && depositValue <= state.money
   const canWithdraw = withdrawValue !== null && withdrawValue <= (market?.usd ?? 0)
-  const canBuy = canUseMarket && btcValue !== null && Number.isFinite(btcValue * (market?.price ?? Number.NaN)) && btcValue * (market?.price ?? Number.NaN) <= (market?.usd ?? 0)
-  const canSell = canUseMarket && btcValue !== null && btcValue <= (market?.btc ?? 0)
+  const canBuy = canUseMarket && btcValue !== null && executableBtcQuantity(market, 'buy', btcValue) !== null
+  const canSell = canUseMarket && btcValue !== null && executableBtcQuantity(market, 'sell', btcValue) !== null
   const history = market?.history ?? EMPTY_HISTORY
   const chart = useMemo(() => buildChart(history), [history])
 
@@ -90,7 +91,7 @@ export function MarketContent({ state, dispatch }: MarketProps) {
     event.preventDefault()
     const amount = direction === 'deposit' ? depositValue : withdrawValue
     if (!canUseMarket || amount === null) return
-    dispatch({ type: 'market-transfer', direction, amount })
+    dispatch({ type: 'market-transfer', direction, amount: transferMax ? 'max' : amount })
   }
 
   const executeTrade = (side: 'buy' | 'sell') => {
@@ -173,7 +174,7 @@ export function MarketContent({ state, dispatch }: MarketProps) {
               <button type="submit" disabled={!canDeposit}>{transferMax ? 'Deposit MAX' : 'Deposit USD'}</button>
               <button type="button" disabled={!canWithdraw} onClick={() => {
                 if (!canUseMarket || withdrawValue === null) return
-                dispatch({ type: 'market-transfer', direction: 'withdraw', amount: withdrawValue })
+                dispatch({ type: 'market-transfer', direction: 'withdraw', amount: transferMax ? 'max' : withdrawValue })
               }}>{transferMax ? 'Withdraw MAX' : 'Withdraw USD'}</button>
             </div>
           </form>
@@ -182,12 +183,12 @@ export function MarketContent({ state, dispatch }: MarketProps) {
         <section className="market-panel" aria-labelledby="market-trade-heading">
           <h3 id="market-trade-heading">Trade</h3>
           <form className="market-form" onSubmit={submitTrade('buy')}>
-            <label htmlFor="market-btc-amount">BTC quantity <span>(BTC)</span></label>
+            <label htmlFor="market-btc-amount">Quantity <span>(BTC)</span></label>
             <input
               id="market-btc-amount"
               type="number"
               min="0.00000001"
-              step="0.00000001"
+              step="any"
               inputMode="decimal"
               value={btcAmount}
               onChange={(event) => setBtcAmount(event.currentTarget.value)}
@@ -202,6 +203,5 @@ export function MarketContent({ state, dispatch }: MarketProps) {
       </div>
         </div>
       </div>
-    </div>
   )
 }
