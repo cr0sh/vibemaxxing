@@ -105,13 +105,28 @@ export type EmploymentMessage =
   | ({ id: string; type: 'attempt-failed'; elapsed: number; task: EmploymentTaskSnapshot } & JobMessage)
   | ({ id: string; type: 'firing'; elapsed: number; failure: string } & JobMessage)
 
-export type SocialPost = {
+type SocialPostType = 'campaign' | 'lottery' | 'reset' | 'model' | 'fast-mode' | 'market' | 'spark' | 'spark-delivered' |
+  'advanced-model' | 'mercury' | 'second-job' | 'frontier-model'
+type SocialPostBase = {
   id: string
-  type: 'campaign' | 'lottery' | 'reset' | 'model' | 'fast-mode' | 'market' | 'spark' | 'spark-delivered' |
-    'advanced-model' | 'mercury' | 'second-job' | 'frontier-model'
   elapsed: number
   likes: number
 }
+export type SocialPost =
+  | (SocialPostBase & { type: 'lottery'; lotteryVariant: number })
+  | (SocialPostBase & { type: Exclude<SocialPostType, 'lottery'> })
+
+const SOCIAL_LOTTERY_DELAY = 5
+export const SOCIAL_LOTTERY_COPY: readonly string[] = [
+  'Feeling generous today. Drop a Like and I might top your tokens back up to 10M. No luck? Try me again.',
+  'Quick favor: leave a Like and I’ll roll the dice on a 10M-token top-up.',
+  'You look like someone who could use another 10M tokens. Hit Like and let’s test your luck.',
+  'One Like, one lottery ticket, maybe 10M tokens. I make no promises, but I’m feeling optimistic.',
+  'The token fairy is online. Like this post and I might send 10M tokens your way.',
+  'No pitch, just vibes: Like this post and I’ll try to refill your tokens to 10M.',
+  'I found a spare 10M tokens in the couch. Like this post and I’ll see if they land in your account.',
+  'I’m handing out a fresh 10M-token refill today. Like this post and maybe I’ll pick you.',
+] as const
 
 export type GameState = {
   stage: Stage
@@ -143,6 +158,7 @@ export type GameState = {
   failure: string | null
   expectation: number
   rng: number
+  socialRng: number
   secondJob: EmploymentJob | null
   secondJobUnlocked: boolean
   secondJobApplications: number
@@ -177,7 +193,7 @@ export type GameAction =
   | { type: 'buy-upgrade'; upgrade: TerminalUpgrade; terminalId: TerminalId }
   | { type: 'read-watercooler' }
   | { type: 'install-social' }
-  | { type: 'like-reset' }
+  | { type: 'like-reset'; postId: string }
   | { type: 'set-fast-mode'; terminalId: TerminalId; enabled: boolean }
   | { type: 'retry-task'; id: number }
   | { type: 'retry-all' }
@@ -314,6 +330,7 @@ const APPROVAL_PROMPTS: readonly string[] = [
 function normalizeSeed(seed: number): number {
   return Number.isFinite(seed) ? Math.trunc(seed) >>> 0 : 1
 }
+
 const TIRO_AVATARS: readonly string[] = ['🧑🏻‍💻', '👩🏼‍💻', '👨🏽‍💻', '🧑🏾‍💻', '👩🏿‍💻', '👨🏻‍💻']
 function avatarForSeed(seed: number): string {
   const normalized = normalizeSeed(seed)
@@ -331,6 +348,13 @@ function drawInteger(rng: number, minimum: number, maximum: number): readonly [n
   const [next, unit] = nextRandom(rng)
   return [next, minimum + Math.floor(unit * (maximum - minimum + 1))]
 }
+function drawLotteryVariant(rng: number, previousVariant: number | undefined): readonly [number, number] {
+  const [candidateRng, candidate] = drawInteger(rng, 0, SOCIAL_LOTTERY_COPY.length - 1)
+  if (previousVariant === undefined || candidate !== previousVariant) return [candidateRng, candidate]
+  const [nextRng, alternative] = drawInteger(candidateRng, 0, SOCIAL_LOTTERY_COPY.length - 2)
+  return [nextRng, alternative >= previousVariant ? alternative + 1 : alternative]
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value))
 }
@@ -500,6 +524,15 @@ function appendSocialPost(state: GameState, post: SocialPost): GameState {
   return state.socialPosts.some((candidate) => candidate.id === post.id)
     ? state
     : { ...state, socialPosts: [...state.socialPosts, post] }
+}
+function appendLotteryPost(state: GameState, elapsed: number, previousVariant?: number): GameState {
+  const lotteryCount = state.socialPosts.reduce((count, post) => count + Number(post.type === 'lottery'), 0)
+  const id = lotteryCount === 0 ? 'lottery' : `lottery-${lotteryCount}`
+  const [socialRng, lotteryVariant] = drawLotteryVariant(state.socialRng, previousVariant)
+  return appendSocialPost(
+    { ...state, socialRng },
+    { id, type: 'lottery', elapsed, likes: 0, lotteryVariant },
+  )
 }
 function updateAssignmentArtifact(state: GameState, task: WorkTask): GameState {
   return {
@@ -726,7 +759,7 @@ function createHiredState(state: GameState): GameState {
 
 function appendLotteryIfDue(state: GameState): GameState {
   if (state.socialInstalledAt === null || state.socialPosts.some((post) => post.type === 'lottery') || state.elapsed < state.socialInstalledAt + SOCIAL_LOTTERY_DELAY) return state
-  return appendSocialPost(state, { id: 'lottery', type: 'lottery', elapsed: state.socialInstalledAt + SOCIAL_LOTTERY_DELAY, likes: 0 })
+  return appendLotteryPost(state, state.socialInstalledAt + SOCIAL_LOTTERY_DELAY)
 }
 
 function appendFeatureAnnouncements(state: GameState): GameState {
@@ -772,7 +805,7 @@ export const initialGame: GameState = {
   completedTasks: 0, level: 3, completedArchitectureTasks: 0, reasoningUnlocked: false, fastModeUnlocked: false,
   watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
   socialPosts: [], nextTaskId: 1, nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
-  expectation: 0.2, rng: 1, secondJob: null, secondJobUnlocked: false, secondJobApplications: 0,
+  expectation: 0.2, rng: 1, socialRng: 1, secondJob: null, secondJobUnlocked: false, secondJobApplications: 0,
   secondJobOffer: null, advancedModelAnnouncedAt: null, advancedModelUnlocked: false, frontierModelUnlocked: false,
   sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null, mercuryOwned: false,
   mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null,
@@ -1067,7 +1100,7 @@ function previewHired(state: GameState): GameState {
     company,
     elapsed: 0,
     rng: normalizeSeed(state.rng),
-    money: 30_000,
+    socialRng: normalizeSeed(state.socialRng),
   })
 }
 
@@ -1075,7 +1108,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'start':
       return state.stage === 'ready'
-        ? { ...initialGame, stage: 'applying', tiroAvatar: avatarForSeed(action.seed), rng: normalizeSeed(action.seed) }
+        ? { ...initialGame, stage: 'applying', tiroAvatar: avatarForSeed(action.seed), rng: normalizeSeed(action.seed), socialRng: normalizeSeed(normalizeSeed(action.seed) ^ 0x9e3779b9) }
         : state
     case 'submit': {
       if (state.stage !== 'applying' || state.energy < 3) return state
@@ -1100,6 +1133,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           tokens: TIRO_PREVIEW_TOKENS,
           money: 1_000,
           rng: normalizeSeed(state.rng),
+          socialRng: normalizeSeed(state.socialRng),
         })
         const tiro = { ...base, terminals: [{ ...base.terminals[0]!, slots: 2, yolo: true }] }
         return gameReducer({ ...tiro, watercoolerUnlocked: true, watercoolerRead: true }, { type: 'install-social' })
@@ -1260,12 +1294,18 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return appendFeatureAnnouncements(appendSocialPost(campaign, { id: `reset-${resetCount}`, type: 'reset', elapsed: state.elapsed, likes: 0 }))
     }
     case 'like-reset': {
-      if (state.stage !== 'hired' || !state.socialPosts.some((post) => post.type === 'lottery')) return state
+      const activeLottery = state.socialPosts.findLast((post) => post.type === 'lottery')
+      if (state.stage !== 'hired' || activeLottery?.type !== 'lottery' || action.postId !== activeLottery.id) return state
       const [nextRng, successRoll] = nextRandom(state.rng)
-      let liked: GameState = { ...state, rng: nextRng, socialPosts: state.socialPosts.map((post) => post.type === 'lottery' ? { ...post, likes: post.likes + 1 } : post) }
+      let liked: GameState = {
+        ...state,
+        rng: nextRng,
+        socialPosts: state.socialPosts.map((post) => post.id === activeLottery.id ? { ...post, likes: post.likes + 1 } : post),
+      }
       if (successRoll < 0.01) {
         const resetCount = state.socialPosts.reduce((count, post) => count + Number(post.type === 'reset'), 1)
         liked = appendSocialPost({ ...liked, tokens: MAX_TOKENS }, { id: `reset-${resetCount}`, type: 'reset', elapsed: state.elapsed, likes: 0 })
+        liked = appendLotteryPost(liked, state.elapsed, activeLottery.lotteryVariant)
       }
       return liked
     }
