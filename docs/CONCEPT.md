@@ -174,6 +174,29 @@ The flow of the game is:
 - Reaching \$4.242M in liquid net worth records a victory. “Keep playing” resumes
   the same run beyond that target without resetting progress or repeating the win.
 
+## Localization
+
+- English, German, French, Spanish, Japanese, and Korean are available from the
+  globe picker aligned with the top-right widgets. Language names remain native.
+  A saved explicit choice wins; otherwise the first supported browser language
+  is selected, including regional variants. Unsupported preferences fall back
+  to English. Unavailable browser storage does not prevent session-only changes.
+- Changing language preserves the current run, window state, task and dialogue
+  history, and the current Shorts media element. Number, currency, and time
+  formatting follows the selected locale. Brands, company and model names,
+  technical code, and player-entered application text are not translated.
+  Sample application pitches are translated when inserted into the form.
+- `src/i18n/catalogs/en.ts` defines the message-key schema. Every shipped locale
+  implements the complete `Catalog`; catalog tests reject missing or blank
+  entries and interpolation-placeholder mismatches. English remains the runtime
+  fallback. Rich messages interpolate React nodes without parsing HTML.
+- Durable game messages store keys and parameters rather than translated prose.
+  Nested `MessageReference` values are resolved at render time, so existing
+  task titles and failure explanations follow language changes too.
+- Cached `Intl.NumberFormat` instances are keyed by both locale and options.
+  React Compiler can retain the formatter map across locale changes; an
+  options-only cache key would leave existing counters in the previous locale.
+
 ## Implementation and balance notes
 
 - The inactivity clock starts on accepting the first job, not during initial
