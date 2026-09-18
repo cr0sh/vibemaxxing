@@ -8,6 +8,7 @@ import {
   SOCIAL_LOTTERY_COPY,
   MERCURY_FORWARD_COST,
   MERCURY_RETRY_DELAY,
+  mercuryReturnReservations,
   taskReward,
   taskTokenCost,
   type EmploymentJob,
@@ -1160,6 +1161,83 @@ describe('extended engine contracts', () => {
     for (const terminal of state.terminals) {
       expect(dispatched.tasks.filter((task) => task.terminalId === terminal.id)).toHaveLength(terminal.slots)
     }
+  })
+
+  test('Mercury ignores inactive assignment reservations for automatic dispatch without spending the return reserve', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
+    const source = hire().tasks[0]!
+    const assigned = (id: number): WorkTask => ({
+      ...source,
+      id,
+      difficulty: 1,
+      deadlineAt: 100,
+      status: 'assigned',
+      terminalId: null,
+      slot: null,
+    })
+    const state: GameState = {
+      ...base,
+      tokens: 700_000,
+      tasks: [assigned(801), assigned(802)],
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      terminals: [
+        { id: 'terminal', slots: 1, model: 'advanced', fastMode: false, yolo: true },
+        { id: 'terminal-2', slots: 1, model: 'advanced', fastMode: false, yolo: true },
+      ],
+    }
+    const forwarded = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(forwarded, 801)).toMatchObject({ status: 'working', terminalId: 'terminal', slot: 0, mercuryAuto: true })
+    expect(taskWith(forwarded, 802).status).toBe('assigned')
+    expect(forwarded.tokens).toBe(300_000)
+    expect(mercuryReturnReservations(forwarded.tasks)).toBe(MERCURY_FORWARD_COST)
+  })
+
+  test('Mercury balances pending work across mixed-cost terminals before reusing the best lane', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const source = hire().tasks[0]!
+    const tasks = Array.from({ length: 5 }, (_, index) => ({
+      ...source,
+      id: 810 + index,
+      difficulty: 11,
+      complexity: 4,
+      deadlineAt: 1_000,
+      status: 'assigned' as const,
+      terminalId: null,
+      slot: null,
+    }))
+    const state: GameState = {
+      ...base,
+      tokens: MAX_TOKENS,
+      tasks,
+      taskQueue: [],
+      nextTaskAt: 1_000,
+      terminals: [
+        { id: 'terminal', slots: 4, model: 'frontier', fastMode: true, yolo: true },
+        { id: 'terminal-2', slots: 4, model: 'advanced', fastMode: false, yolo: true },
+        { id: 'spark', slots: 2, model: 'reasoning', fastMode: false, yolo: true },
+      ],
+    }
+    const dispatched = gameReducer(state, { type: 'tick', seconds: 1 })
+    const started = tasks.map((task) => taskWith(dispatched, task.id))
+    expect(started.every((task) => task.status === 'working')).toBe(true)
+    expect(new Set(started.map((task) => task.terminalId))).toEqual(new Set(['terminal', 'terminal-2', 'spark']))
+    expect(dispatched.tokens).toBe(1_900_000)
+    expect(mercuryReturnReservations(dispatched.tasks)).toBe(5 * MERCURY_FORWARD_COST)
+  })
+
+  test('Mercury starts a newly issued assignment in the same simulation second', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
+    const state: GameState = {
+      ...base,
+      tokens: 600_000,
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: 0,
+    }
+    const forwarded = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(forwarded, 1)).toMatchObject({ status: 'working', terminalId: 'spark', slot: 0, mercuryAuto: true })
+    expect(forwarded.tokens).toBe(0)
   })
 
   test('Mercury delivers a ready artifact before spending the last forwarding fee', () => {
