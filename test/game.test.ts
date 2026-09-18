@@ -1,16 +1,18 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  canFundMercuryRetry,
   companies,
   gameReducer,
   initialGame,
   MAX_TOKENS,
+  MERCURY_RETRY_DELAY,
   taskReward,
   taskTokenCost,
   type EmploymentJob,
+  type GameState,
   type WorkTask,
   upgradePrice,
 } from '../src/game'
-
 function hire(seed = 12345): GameState {
   const started = gameReducer(initialGame, { type: 'start', seed })
   const offered = gameReducer(started, { type: 'submit', roll: 0, companyIndex: 0 })
@@ -93,6 +95,14 @@ describe('job applications', () => {
 })
 
 describe('employment transitions', () => {
+  test('seeded technologist avatar remains stable through hire and checkpoints', () => {
+    const applying = gameReducer(initialGame, { type: 'start', seed: 4_242 })
+    const hired = hire(4_242)
+    expect(applying.tiroAvatar).toMatch(/💻/)
+    expect(applying.tiroAvatar).toBe(hired.tiroAvatar)
+    expect(gameReducer(hired, { type: 'dev-jump', stage: 'hired' }).tiroAvatar).toBe(hired.tiroAvatar)
+  })
+
   test('background elapsed time behaves like individual ticks', () => {
     const hired = hire()
     const task = taskWith(hired, 1)
@@ -424,6 +434,24 @@ describe('hidden boss assignment inventory', () => {
       ...state.taskQueue.map((task) => task.id),
     ]).size).toBe(3)
   })
+  test('opening grace eases assignment, deadline, and approval pressure before normal pacing', () => {
+    const hired = hire()
+    const first = taskWith(hired, 1)
+    expect(hired.nextTaskAt).toBeGreaterThan(6)
+    const started = gameReducer(hired, { type: 'start-task', id: first.id, terminalId: 'terminal', slot: 0 })
+    expect(taskWith(started, first.id).nextApprovalAt - started.elapsed).toBeGreaterThanOrEqual(6)
+    const lateDescriptor = hired.taskQueue[0]
+    if (lateDescriptor === undefined) throw new Error('The boss queue was empty')
+    const late = gameReducer({
+      ...hired,
+      elapsed: 180,
+      tasks: [],
+      taskQueue: [lateDescriptor],
+      nextTaskAt: 180,
+    }, { type: 'tick', seconds: 1 })
+    expect(first.deadlineAt - first.assignedAt).toBeGreaterThan(late.tasks[0]!.deadlineAt - late.tasks[0]!.assignedAt)
+  })
+
 
   test('funded assignments arrive one at a time on the boss timer and reserve tokens', () => {
     let state = { ...hire(), money: 300 }
@@ -539,18 +567,17 @@ describe('extended progression boundaries', () => {
     expect(below.watercoolerUnlocked).toBe(true)
   })
 
-  test('the one-time claim and five-second lottery preserve the refill schedule', () => {
+  test('campaign reset applies on install while lottery wins remain immediate', () => {
     let state: GameState = {
       ...hire(), watercoolerUnlocked: true, tokens: 100,
       tasks: [], taskQueue: [], nextTaskAt: 1_000,
     }
     state = gameReducer(state, { type: 'install-social' })
-    expect(gameReducer(state, { type: 'like-reset' })).toBe(state)
-    state = gameReducer(state, { type: 'claim-token-reset' })
     expect(state.tokens).toBe(MAX_TOKENS)
-    const spent = { ...state, tokens: 100 }
-    expect(gameReducer(spent, { type: 'claim-token-reset' })).toBe(spent)
-    state = gameReducer(spent, { type: 'tick', seconds: 4 })
+    expect(state.socialPosts.filter((post) => post.type === 'campaign')).toHaveLength(1)
+    expect(state.socialPosts.filter((post) => post.type === 'reset')).toHaveLength(1)
+    expect(gameReducer(state, { type: 'like-reset' })).toBe(state)
+    state = gameReducer({ ...state, tokens: 100 }, { type: 'tick', seconds: 4 })
     expect(state.socialPosts.some((post) => post.type === 'lottery')).toBe(false)
     state = gameReducer(state, { type: 'tick', seconds: 1 })
     expect(state.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(1)
@@ -684,10 +711,9 @@ describe('developer previews', () => {
     expect(tiro.company).toBe(hired.company)
     expect(tiro.elapsed).toBe(0)
     expect(tiro.energy).toBe(100)
-    expect(tiro.tokens).toBe(1_900_000)
+    expect(tiro.tokens).toBe(MAX_TOKENS)
     expect(tiro.money).toBe(1_000)
     expect(tiro.failure).toBeNull()
-    expect(tiro.resetClaimed).toBe(false)
     expect(tiro.watercoolerUnlocked).toBe(true)
     expect(tiro.watercoolerRead).toBe(true)
     expect(tiro.completedTasks).toBe(0)
@@ -695,7 +721,8 @@ describe('developer previews', () => {
     expect(tiro.reasoningUnlocked).toBe(false)
     expect(tiro.fastModeUnlocked).toBe(false)
     expect(tiro.socialInstalledAt).toBe(0)
-    expect(tiro.socialPosts).toEqual([{ id: 'campaign', type: 'campaign', elapsed: 0, likes: 0 }])
+
+    expect(tiro.socialPosts.map((post) => post.type)).toEqual(['campaign', 'reset'])
     expect(tiro.tasks.every((task) => task.assignedAt === 0 && task.deadlineAt > 0)).toBe(true)
     const additionalSplit = gameReducer(tiro, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal' })
     expect(additionalSplit.money).toBe(600)
@@ -709,10 +736,7 @@ describe('developer previews', () => {
     expect(additionalTerminal.money).toBe(0)
     expect(additionalTerminal.terminals).toHaveLength(2)
 
-    const claimed = gameReducer(tiro, { type: 'claim-token-reset' })
-    expect(claimed.tokens).toBe(MAX_TOKENS)
-    expect(claimed.resetClaimed).toBe(true)
-    const beforeLottery = gameReducer(claimed, { type: 'tick', seconds: 4 })
+    const beforeLottery = gameReducer(tiro, { type: 'tick', seconds: 4 })
     expect(beforeLottery.socialPosts.some((post) => post.type === 'lottery')).toBe(false)
     const lottery = gameReducer(beforeLottery, { type: 'tick', seconds: 1 })
     expect(lottery.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(1)
@@ -720,6 +744,46 @@ describe('developer previews', () => {
 })
  
 describe('extended engine contracts', () => {
+  test('Mercury retries wait ten seconds, reserve return fees, and yield to manual retries', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
+    const source = hire().tasks[0]!
+    const failed: WorkTask = {
+      ...source,
+      id: 901,
+      difficulty: 1,
+      complexity: 4,
+      deadlineAt: 100,
+      status: 'failed',
+      terminalId: 'terminal',
+      slot: 0,
+      model: 'advanced',
+      mercuryAuto: true,
+      attempt: 1,
+      failedAt: 0,
+    }
+    const waiting = {
+      ...base,
+      elapsed: 0,
+      tokens: 399_999,
+      tasks: [failed],
+      taskQueue: [],
+      nextTaskAt: 1_000,
+    }
+    expect(canFundMercuryRetry(waiting, failed)).toBe(false)
+    const funded = { ...waiting, tokens: 400_000 }
+    expect(canFundMercuryRetry(funded, failed)).toBe(true)
+    const early = gameReducer(funded, { type: 'tick', seconds: MERCURY_RETRY_DELAY - 1 })
+    expect(taskWith(early, failed.id)).toMatchObject({ status: 'failed', attempt: 1, failedAt: 0 })
+    const automatic = gameReducer(early, { type: 'tick', seconds: 1 })
+    expect(taskWith(automatic, failed.id)).toMatchObject({ status: 'working', attempt: 2, failedAt: null, deadlineAt: 100 })
+    expect(automatic.tokens).toBe(300_000)
+
+    const manual = gameReducer({ ...funded, elapsed: MERCURY_RETRY_DELAY - 1 }, { type: 'retry-task', id: failed.id })
+    expect(taskWith(manual, failed.id)).toMatchObject({ status: 'working', attempt: 2, failedAt: null })
+    expect(taskWith(gameReducer(manual, { type: 'tick', seconds: 1 }), failed.id).attempt).toBe(2)
+    const disabled = gameReducer({ ...funded, mercuryEnabled: false }, { type: 'tick', seconds: 20 })
+    expect(taskWith(disabled, failed.id)).toMatchObject({ status: 'failed', attempt: 1, failedAt: 0 })
+  })
   test('Spark purchase waits ten seconds and caps late delivery delay', () => {
     let state = gameReducer(hire(), { type: 'dev-jump', stage: 'market' })
     state = { ...state, tasks: [], taskQueue: [], nextTaskAt: 1_000 }
