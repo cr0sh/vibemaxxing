@@ -1,4 +1,4 @@
-export type SoundCue = 'click' | 'task-transfer' | 'artifact-transfer' | 'milestone'
+export type SoundCue = 'click' | 'task-transfer' | 'artifact-transfer' | 'milestone' | 'messenger-message' | 'social-post'
 
 type AudioContextConstructor = new () => AudioContext
 
@@ -49,6 +49,21 @@ const MILESTONE_VOICES: readonly VoiceSpec[] = [
   { frequency: 783.99, startOffset: 0.07, duration: 0.3, volume: 0.028, type: 'triangle' },
   { frequency: 1046.5, startOffset: 0.15, duration: 0.42, volume: 0.035, type: 'sine' },
   { frequency: 1318.5, startOffset: 0.18, duration: 0.34, volume: 0.019, type: 'sine' },
+]
+
+// Short, two-note handset pings: a bright first tone followed by a softer
+// response, intentionally unlike the longer transfer and milestone motifs.
+const MESSENGER_MESSAGE_VOICES: readonly VoiceSpec[] = [
+  { frequency: 1046.5, startOffset: 0, duration: 0.12, volume: 0.04, type: 'sine' },
+  { frequency: 783.99, startOffset: 0.105, duration: 0.16, volume: 0.034, type: 'sine' },
+]
+
+// A three-note timeline chime rises in pitch and uses a triangle tail so it
+// remains distinct from the handset ping when both feeds update together.
+const SOCIAL_POST_VOICES: readonly VoiceSpec[] = [
+  { frequency: 659.25, startOffset: 0, duration: 0.1, volume: 0.035, type: 'triangle' },
+  { frequency: 880, startOffset: 0.075, duration: 0.12, volume: 0.033, type: 'triangle' },
+  { frequency: 1174.66, startOffset: 0.15, duration: 0.2, volume: 0.03, type: 'triangle' },
 ]
 
 let audioContext: AudioContext | null = null
@@ -176,7 +191,6 @@ function disposeVoice(voice: ActiveVoice): void {
 }
 
 function makeVoice(context: AudioContext, spec: VoiceSpec, now: number): void {
-
   const startAt = now + spec.startOffset
   const stopAt = startAt + spec.duration
   const releaseAt = Math.max(startAt + ATTACK_SECONDS, stopAt - RELEASE_SECONDS)
@@ -234,6 +248,10 @@ function voicesForCue(cue: SoundCue): readonly VoiceSpec[] {
       return ARTIFACT_TRANSFER_VOICES
     case 'milestone':
       return MILESTONE_VOICES
+    case 'messenger-message':
+      return MESSENGER_MESSAGE_VOICES
+    case 'social-post':
+      return SOCIAL_POST_VOICES
   }
 }
 

@@ -31,7 +31,7 @@ import './App.css'
 type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'spark' | 'spark-ultra' | 'shop' | 'social' | 'market' | 'mercury' | 'shorts' | 'defeat'
 
 type WindowState = Record<WindowId, boolean>
-type RevisionMap = Partial<Record<WindowId, string | GameState['messages'] | GameState['socialPosts'] | Set<string>>>
+type RevisionMap = Partial<Record<WindowId, string | Set<string>>>
 
 function sameRevision(previous: RevisionMap[WindowId], current: RevisionMap[WindowId]): boolean {
   if (previous === current) return true
@@ -63,6 +63,7 @@ function App() {
   const [devRemount, setDevRemount] = useState(0)
   const [devOpenTarget, setDevOpenTarget] = useState<DevJumpTarget | null>(null)
   const previousStateRef = useRef(state)
+  const suppressEventSoundsRef = useRef(false)
 
   useEffect(() => {
     const previousState = previousStateRef.current
@@ -90,6 +91,26 @@ function App() {
         previousState.tasks.some((task) => task.status === 'artifact' && !state.tasks.some((candidate) => candidate.id === task.id))
       if (artifactDelivered) playSound('artifact-transfer')
     }
+
+    if (suppressEventSoundsRef.current) {
+      suppressEventSoundsRef.current = false
+      return
+    }
+    if (previousState.stage !== 'hired' || state.stage !== 'hired') return
+
+    if (state.messages !== previousState.messages) {
+      const previousMessageIds = new Set(previousState.messages.map((message) => message.id))
+      if (state.messages.some((message) => !previousMessageIds.has(message.id))) {
+        playSound('messenger-message')
+      }
+    }
+
+    if (state.socialPosts !== previousState.socialPosts) {
+      const previousPostIds = new Set(previousState.socialPosts.map((post) => post.id))
+      if (state.socialPosts.some((post) => !previousPostIds.has(post.id))) {
+        playSound('social-post')
+      }
+    }
   }, [state])
 
   useEffect(() => {
@@ -110,6 +131,7 @@ function App() {
   }, [state.stage, isDevPaused])
 
   const handleDevJump = (target: DevJumpTarget) => {
+    suppressEventSoundsRef.current = true
     setDevOpenTarget(target)
     setDevRemount((current) => current + 1)
   }
@@ -249,32 +271,37 @@ function Desktop({
   const isWindowActive = (id: WindowId): boolean => defeatAutoFront ? id === 'defeat' : activeWindow === id
 
   const revisions: RevisionMap = {
-    messenger: state.messages,
-    shop: [
-      state.fastModeUnlocked,
-      state.advancedModelAnnouncedAt !== null,
-      state.advancedModelUnlocked,
-      state.mercuryOwned,
-      state.sparkAnnouncedAt !== null,
-      state.sparkAnnouncedAt !== null && state.elapsed >= state.sparkAnnouncedAt + 10,
-      state.sparkPurchasedAt !== null,
-      state.sparkDeliveryAt !== null,
-      state.sparkUltraAnnouncedAt !== null,
-      state.sparkUltraAnnouncedAt !== null && state.elapsed >= state.sparkUltraAnnouncedAt + 10,
-      state.sparkUltraPurchasedAt !== null,
-      state.sparkUltraDeliveryAt !== null,
-      state.frontierModelUnlocked,
-      state.secondJobUnlocked,
-      state.terminals.map((terminal) => `${terminal.id}:${terminal.slots}:${terminal.yolo}`).join(','),
-    ].join('|'),
-    apply: `${state.stage === 'applying'}|${secondApplicationAvailable}`,
-    offer: `${state.stage === 'offer'}|${secondOfferAvailable}`,
-    market: state.market === null ? 'unavailable' : 'available',
-    mercury: new Set([
-      `enabled:${state.mercuryEnabled}`,
-      ...state.tasks.map((task) => `task:${task.id}:${task.status}:${task.attempt}:${task.terminalId ?? ''}:${task.mercuryAuto === true ? 'auto' : 'manual'}`),
-      ...state.terminals.map((terminal) => `terminal:${terminal.id}:${terminal.slots}:${terminal.yolo}:${terminal.fastMode}:${terminal.model}`),
-    ]),
+    ...(hasEmployment ? { messenger: new Set(state.messages.map((message) => message.id)) } : {}),
+    ...(state.socialInstalledAt !== null ? { social: new Set(state.socialPosts.map((post) => post.id)) } : {}),
+    ...(hasEmployment ? {
+      shop: [
+        state.fastModeUnlocked,
+        state.advancedModelAnnouncedAt !== null,
+        state.advancedModelUnlocked,
+        state.mercuryOwned,
+        state.sparkAnnouncedAt !== null,
+        state.sparkAnnouncedAt !== null && state.elapsed >= state.sparkAnnouncedAt + 10,
+        state.sparkPurchasedAt !== null,
+        state.sparkDeliveryAt !== null,
+        state.sparkUltraAnnouncedAt !== null,
+        state.sparkUltraAnnouncedAt !== null && state.elapsed >= state.sparkUltraAnnouncedAt + 10,
+        state.sparkUltraPurchasedAt !== null,
+        state.sparkUltraDeliveryAt !== null,
+        state.frontierModelUnlocked,
+        state.secondJobUnlocked,
+        state.terminals.map((terminal) => `${terminal.id}:${terminal.slots}:${terminal.yolo}`).join(','),
+      ].join('|'),
+    } : {}),
+    ...(showApplication ? { apply: `${state.stage === 'applying'}|${secondApplicationAvailable}` } : {}),
+    ...(showOffer ? { offer: `${state.stage === 'offer'}|${secondOfferAvailable}` } : {}),
+    ...(state.market !== null ? { market: 'available' } : {}),
+    ...(state.mercuryOwned ? {
+      mercury: new Set([
+        `enabled:${state.mercuryEnabled}`,
+        ...state.tasks.map((task) => `task:${task.id}:${task.status}:${task.attempt}:${task.terminalId ?? ''}:${task.mercuryAuto === true ? 'auto' : 'manual'}`),
+        ...state.terminals.map((terminal) => `terminal:${terminal.id}:${terminal.slots}:${terminal.yolo}:${terminal.fastMode}:${terminal.model}`),
+      ]),
+    } : {}),
   }
   for (const terminal of state.terminals) {
     const revision = new Set([
@@ -287,7 +314,6 @@ function Desktop({
     }
     revisions[terminal.id] = revision
   }
-
   if ((Object.keys(revisions) as WindowId[]).some((id) => !sameRevision(previousRevisions[id], revisions[id]))) {
     setPreviousRevisions(revisions)
     setAcknowledgedDockWindows((current) => {
@@ -297,7 +323,15 @@ function Desktop({
         const revision = revisions[id]
         if (revision === undefined) continue
         const previousRevision = previousRevisions[id]
-        let hasUpdate = previousRevision !== undefined && previousRevision !== revision
+        const isOpen = windows[id] || (id === 'messenger' && defeatAutoFront)
+        if (previousRevision === undefined) {
+          if (isOpen && !next.has(id)) {
+            next.add(id)
+            changed = true
+          }
+          continue
+        }
+        let hasUpdate = previousRevision !== revision
         if (revision instanceof Set && previousRevision instanceof Set) {
           hasUpdate = false
           for (const event of revision) {
@@ -307,7 +341,6 @@ function Desktop({
             }
           }
         }
-        const isOpen = windows[id] || (id === 'messenger' && defeatAutoFront)
         if (hasUpdate) {
           if (isWindowActive(id) && isOpen) {
             if (!next.has(id)) {
@@ -318,9 +351,6 @@ function Desktop({
             next.delete(id)
             changed = true
           }
-        } else if (previousRevision === undefined && isWindowActive(id) && isOpen && !next.has(id)) {
-          next.add(id)
-          changed = true
         }
       }
       return changed ? next : current
@@ -388,7 +418,7 @@ function Desktop({
     }
     if (activeWindow === id) {
       const remaining = stageWindows.find((windowId) => windowId !== id && windows[windowId])
-      if (remaining) setActiveWindow(remaining)
+      if (remaining) focusWindow(remaining)
     }
   }
 
@@ -801,7 +831,7 @@ function Desktop({
                 ? isEnding && !defeatDismissed
                 : windows[id] || (id === 'messenger' && defeatAutoFront)
               const isFrontmost = isOpen && isWindowActive(id)
-              const dockAcknowledged = acknowledgedDockWindows.has(id) || (isEnding && id === 'defeat')
+              const dockAcknowledged = isFrontmost || acknowledgedDockWindows.has(id) || (isEnding && id === 'defeat')
               return (
                 <button
                   className={`dock-item dock-item-${id} ${isFrontmost ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''} ${!dockAcknowledged ? 'dock-item-attention' : ''}`}

@@ -112,18 +112,18 @@ The flow of the game is:
 
 - (Til the above the targeted playtime cumulative is 15 mins)
 
-- At this stage, most works are "fully autonomous" that requires no human
-  intervention. Eventually, the "Energy" resource starts to decline. In fact, on
-  every 3s without any "human interaction", energy declines by 1(this had been
-  working since the game start, but the user couldn't find there is such
-  system). Cumulative declines make the delta 2x, so -1, -2, -4, ... (max -16 at
-  single update). The exhaustive list of "human interaction" that resets the timer is:
+- As work becomes automated, boredom becomes part of the resource pressure.
+  After the first hire, energy declines after an interval without qualifying
+  human interaction. The interval decreases continuously from 20 seconds
+  initially to 10 seconds at 10 elapsed minutes and 5 seconds at 30 minutes,
+  then stays at 5 seconds. Consecutive idle penalties double: -1, -2, -4, -8,
+  then -16 per interval. The qualifying interactions are:
   - Purchasing an item with CLICKING (so token autopurchase is not counted)
   - Realizing a positive PNL on BTC trading
   - Scrolling "shorts"(explained below)
 
-  When "human interaction" is happened, the 3secs timer is reset and player
-  gains energy by 1.
+  Each qualifying interaction resets the inactivity timer and penalty ramp,
+  and restores 1 energy.
 
 - Also, Tiro (eventually) announces "WE MONOPOLIZED THE FRONTIERS" and the token prices goes
   up by 1.1x for every 5s. So the user should eventually lose more money than
@@ -133,7 +133,10 @@ The flow of the game is:
   Spark Ultra) that costs \$100k, with intelligence=3. Same delivery delay
   applies too. It'll be helpful after the user is lacking cloud based tokens.
 
-- When the energy goes lower than 80 for the first time(excluding the initial job applying stage), there will be a mobile-like viewport app called "Shorts", clapper board icon. It's scrollable and shows one of the random list of short-form videos(try obtaining a list of viral videos like subway surfers or memes).
+- Purchasing Mercury immediately unlocks the clapper-board Shorts app. With
+  automation handling the work, the player has something to doomscroll.
+  The mobile-like feed scrolls continuously in both directions without a
+  visible scrollbar or a finite catalog counter.
 
 - When energy goes to 0, the player defeats. The end message is like "the user got
   to depression".
@@ -151,12 +154,19 @@ The flow of the game is:
   remains $100,000, with the same 15–60 second delivery rule as Spark.
 - L5 task rewards use a 600× multiplier instead of 200×. L4 remains at 100×;
   early-career rewards and existing purchase prices are unchanged.
-  Optimized reducer simulations with seeds 12345, 42, and 2026 reached victory in
-  25.6–27.9 minutes, after Ultra delivery, without injected cash or trading gains.
-  These runs allowed at most two actions per second; they are pacing checks,
-  not measured human playtimes.
+  With Mercury-gated Shorts and the relaxed inactivity intervals, seeded reducer
+  smoke runs (12345, 42, and 2026) reached Mercury in 6.1–7.4 minutes with
+  31–61 energy remaining, without injected cash or early Shorts access.
+  These runs allowed at most two actions per second and continued for one minute
+  after purchase; they are early-game pacing checks, not full-run human playtimes.
 - The $4.242M victory threshold includes cash, trading USD, and BTC at its current
   market price, without double-counting transfers. Both endings freeze gameplay.
-- Shorts shuffles four remotely hosted GIPHY MP4 meme loops and loads only the
-  foreground clip. Each clip links to its source; playback depends on the remote
+- Shorts shuffles four remotely hosted GIPHY MP4 meme loops, recycles five cards
+  for bounded infinite scrolling, and loads only the foreground clip. Each
+  genuine clip transition increments a running viewing count and restores
+  energy once. Each clip links to its source; playback depends on the remote
   host. Playback, focus changes, and layout changes do not restore energy.
+- Default-open and already-focused apps do not bounce in the dock. Unseen
+  background updates and newly available unopened apps can still attract attention.
+- Messenger and timeline updates use distinct original synthesized notification
+  chimes, not copied phone recordings. Both respect the existing sound mute.

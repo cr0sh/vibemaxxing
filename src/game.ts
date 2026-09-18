@@ -267,8 +267,8 @@ const MARKET_TASK_GATE = 55
 const MARKET_ARCHITECTURE_GATE = 8
 const SECOND_JOB_TASK_GATE = 100
 const FRONTIER_TASK_GATE = 290
-const INACTIVITY_INTERVAL = 3
 const INACTIVITY_MAX_DECAY = 16
+const ENERGY_DECAY_EPSILON = 1e-9
 
 export function taskTokenCost(
   task: Pick<WorkTask, 'difficulty'>,
@@ -380,6 +380,30 @@ function drawLotteryVariant(rng: number, previousVariant: number | undefined): r
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value))
 }
+export function energyDecayInterval(state: Pick<GameState, 'elapsed'>): number {
+  const elapsed = Number.isNaN(state.elapsed) ? 0 : Math.max(0, state.elapsed)
+  if (elapsed <= 600) return 20 - elapsed / 60
+  if (elapsed <= 1_800) return 10 - (elapsed - 600) / 240
+  return 5
+}
+
+function timeUntilEnergyDecay(elapsed: number, inactivityElapsed: number): number {
+  const start = Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0
+  let cursor = start
+  let timer = Number.isFinite(inactivityElapsed) ? Math.max(0, inactivityElapsed) : 0
+  while (true) {
+    const interval = energyDecayInterval({ elapsed: cursor })
+    if (timer >= interval - ENERGY_DECAY_EPSILON) return cursor - start
+    const slope = cursor < 600 ? -1 / 60 : cursor < 1_800 ? -1 / 240 : 0
+    const nextBoundary = cursor < 600 ? 600 : cursor < 1_800 ? 1_800 : Number.POSITIVE_INFINITY
+    const untilBoundary = nextBoundary - cursor
+    const candidate = (interval - timer) / (1 - slope)
+    if (candidate <= untilBoundary + ENERGY_DECAY_EPSILON) return cursor - start + Math.max(0, candidate)
+    timer += untilBoundary
+    cursor = nextBoundary
+  }
+}
+
 function openingGraceAt(elapsed: number): number {
   const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
   return 1 - clamp(safeElapsed / OPENING_GRACE_SECONDS, 0, 1)
@@ -1142,7 +1166,7 @@ function deadlineFailure(state: GameState, task: WorkTask): string {
   return `You missed “${task.title}” at ${company ?? 'your company'}.`
 }
 function unlockShorts(state: GameState): GameState {
-  if (state.stage !== 'hired' || state.energy >= 80 || state.shortsUnlocked) return state
+  if (state.stage !== 'hired' || !state.mercuryOwned || state.shortsUnlocked) return state
   const unlocked = { ...state, shortsUnlocked: true }
   return state.socialInstalledAt === null ? unlocked :
     appendSocialPost(unlocked, { id: 'shorts-unlocked', type: 'shorts', elapsed: state.elapsed, likes: 0 })
@@ -1150,35 +1174,47 @@ function unlockShorts(state: GameState): GameState {
 
 function humanInteraction(state: GameState): GameState {
   if (state.stage !== 'hired') return state
-  return unlockShorts({
+  return {
     ...state,
     energy: Math.min(MAX_ENERGY, state.energy + 1),
     inactivityElapsed: 0,
     inactivityDecay: 1,
-  })
+  }
 }
 
-function applyIdleTime(state: GameState, seconds: number): GameState {
-  if (state.stage !== 'hired' || !Number.isFinite(seconds) || seconds <= 0) return state
+function applyIdleTime(
+  state: GameState,
+  seconds: number,
+  startElapsed = state.elapsed + state.tickRemainder - seconds,
+): GameState {
+  if (state.stage !== 'hired' || !Number.isFinite(seconds) || seconds < 0) return state
+  let cursor = Number.isFinite(startElapsed) ? Math.max(0, startElapsed) : Math.max(0, state.elapsed)
   let inactivityElapsed = Number.isFinite(state.inactivityElapsed) ? Math.max(0, state.inactivityElapsed) : 0
   let inactivityDecay = Number.isFinite(state.inactivityDecay) ? clamp(state.inactivityDecay, 1, INACTIVITY_MAX_DECAY) : 1
   let energy = state.energy
   let remaining = seconds
-  while (remaining > 0 && state.stage === 'hired') {
-    const untilDecay = INACTIVITY_INTERVAL - inactivityElapsed
-    if (remaining + 1e-9 < untilDecay) {
-      inactivityElapsed += remaining
-      remaining = 0
-      break
+  while (remaining > ENERGY_DECAY_EPSILON || timeUntilEnergyDecay(cursor, inactivityElapsed) <= ENERGY_DECAY_EPSILON) {
+    const untilDecay = timeUntilEnergyDecay(cursor, inactivityElapsed)
+    if (untilDecay <= ENERGY_DECAY_EPSILON) {
+      inactivityElapsed = 0
+      energy = Math.max(0, energy - inactivityDecay)
+      inactivityDecay = Math.min(INACTIVITY_MAX_DECAY, inactivityDecay * 2)
+      if (energy <= 0) break
+      continue
     }
-    remaining = Math.max(0, remaining - untilDecay)
-    inactivityElapsed = 0
-    energy = Math.max(0, energy - inactivityDecay)
-    inactivityDecay = Math.min(INACTIVITY_MAX_DECAY, inactivityDecay * 2)
-    if (energy <= 0) break
+    if (remaining <= ENERGY_DECAY_EPSILON) break
+    const step = Math.min(remaining, untilDecay)
+    remaining = Math.max(0, remaining - step)
+    cursor += step
+    inactivityElapsed += step
+    if (step + ENERGY_DECAY_EPSILON >= untilDecay) {
+      inactivityElapsed = 0
+      energy = Math.max(0, energy - inactivityDecay)
+      inactivityDecay = Math.min(INACTIVITY_MAX_DECAY, inactivityDecay * 2)
+      if (energy <= 0) break
+    }
   }
-  let next: GameState = { ...state, energy, inactivityElapsed, inactivityDecay }
-  next = unlockShorts(next)
+  const next: GameState = { ...state, energy, inactivityElapsed, inactivityDecay }
   return energy <= 0 ? lose(next, 'You ran out of energy and got to depression.', 'energy') : next
 }
 
@@ -1193,13 +1229,19 @@ function tickHired(state: GameState, seconds: number): GameState {
   if (state.stage !== 'hired' || !Number.isFinite(seconds) || seconds <= 0) return state
   let current = state
   let remaining = seconds
-  while (remaining > 1e-9) {
+  while (remaining > ENERGY_DECAY_EPSILON) {
     const fraction = Number.isFinite(current.tickRemainder) ? clamp(current.tickRemainder, 0, 0.999999999) : 0
+    const currentElapsed = current.elapsed + fraction
     const untilSecond = 1 - fraction
-    const untilMarket = current.market === null ? untilSecond : fraction < 0.5 - 1e-9 ? 0.5 - fraction : untilSecond
-    const untilDecay = Math.max(1e-9, INACTIVITY_INTERVAL - current.inactivityElapsed)
+    const untilMarket = current.market === null ? untilSecond : fraction < 0.5 - ENERGY_DECAY_EPSILON ? 0.5 - fraction : untilSecond
+    const untilDecay = timeUntilEnergyDecay(currentElapsed, current.inactivityElapsed)
+    if (untilDecay <= ENERGY_DECAY_EPSILON) {
+      current = applyIdleTime(current, 0, currentElapsed)
+      if (current.stage !== 'hired') return current
+      continue
+    }
     const step = Math.min(remaining, untilSecond, untilMarket, untilDecay)
-    const wholeSecond = fraction + step >= 1 - 1e-9
+    const wholeSecond = fraction + step >= 1 - ENERGY_DECAY_EPSILON
     remaining = Math.max(0, remaining - step)
     current = {
       ...current,
@@ -1219,7 +1261,7 @@ function tickHired(state: GameState, seconds: number): GameState {
       const overdue = current.tasks.find((task) => current.elapsed >= task.deadlineAt)
       if (overdue !== undefined) return lose(current, deadlineFailure(current, overdue), 'deadline', overdue.jobId)
     }
-    current = applyIdleTime(current, step)
+    current = applyIdleTime(current, step, currentElapsed)
     if (current.stage !== 'hired') return current
     if (wholeSecond) {
       const previousTasks = current.tasks
@@ -1333,7 +1375,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (action.stage === 'offer') return resetEmploymentPreview(state, 'offer')
       if (action.stage === 'shorts') {
         const preview = previewHired(state)
-        return appendSocialPost({ ...preview, energy: 79, shortsUnlocked: true, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER }, { id: 'shorts-unlocked', type: 'shorts', elapsed: 0, likes: 0 })
+        const owned = appendSocialPost({
+          ...preview,
+          energy: 79,
+          mercuryOwned: true,
+          mercuryEnabled: true,
+          shortsUnlocked: true,
+          tasks: [],
+          taskQueue: [],
+          nextTaskAt: Number.MAX_SAFE_INTEGER,
+        }, { id: 'mercury-owned', type: 'mercury', elapsed: 0, likes: 0 })
+        return appendSocialPost(owned, { id: 'shorts-unlocked', type: 'shorts', elapsed: 0, likes: 0 })
       }
       if (action.stage === 'energy-loss') {
         const preview = previewHired(state)
@@ -1386,7 +1438,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           terminals: preview.terminals.map((terminal) => isLocalTerminal(terminal.id) ? terminal : { ...terminal, model: 'advanced' }),
           money: 30_000,
         }
-        preview = appendSocialPost(preview, { id: 'mercury-owned', type: 'mercury', elapsed: preview.elapsed, likes: 0 })
+        preview = unlockShorts(appendSocialPost(preview, { id: 'mercury-owned', type: 'mercury', elapsed: preview.elapsed, likes: 0 }))
         if (action.stage === 'mercury') return issueAvailableAssignments(preview)
         const secondary: EmploymentJob = {
           company: companies[1] ?? 'Ship It Labs',
@@ -1619,7 +1671,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, terminals: state.terminals.map((terminal) => terminal.id === action.terminalId ? { ...terminal, model: action.model } : terminal) }
     case 'buy-mercury': {
       if (state.stage !== 'hired' || !state.advancedModelUnlocked || state.mercuryOwned || !Number.isFinite(state.money) || state.money < MERCURY_PRICE) return state
-      const purchased = appendSocialPost({ ...state, money: state.money - MERCURY_PRICE, mercuryOwned: true, mercuryEnabled: true }, { id: 'mercury-owned', type: 'mercury', elapsed: state.elapsed, likes: 0 })
+      const purchased = unlockShorts(appendSocialPost({ ...state, money: state.money - MERCURY_PRICE, mercuryOwned: true, mercuryEnabled: true }, { id: 'mercury-owned', type: 'mercury', elapsed: state.elapsed, likes: 0 }))
       return maybeWin(humanInteraction(purchased))
     }
     case 'set-mercury':
@@ -1631,7 +1683,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const attempt = state.secondJobApplications + 1
       const chance = attempt >= 15 ? 1 : Math.min(1, 0.02 * 2 ** Math.max(0, attempt - 9))
       const offered = Number.isFinite(action.roll) && action.roll < chance
-      const next = unlockShorts({ ...state, secondJobApplications: attempt, secondJobOffer: offered ? company : null, energy: state.energy - 3 })
+      const next = { ...state, secondJobApplications: attempt, secondJobOffer: offered ? company : null, energy: state.energy - 3 }
       return next.energy <= 0 ? lose(next, 'You ran out of energy and got to depression.', 'energy') : next
     }
     case 'accept-second-job': {
