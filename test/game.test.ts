@@ -9,7 +9,7 @@ import {
   initialGame,
   MAX_TOKENS,
   TOKEN_REFILL_INTERVAL_SECONDS,
-  SOCIAL_LOTTERY_COPY,
+  SOCIAL_LOTTERY_KEYS,
   MERCURY_FORWARD_COST,
   MERCURY_PRICE,
   MERCURY_RETRY_DELAY,
@@ -385,7 +385,7 @@ describe('employment transitions', () => {
     let state = hireForApproval()
     const id = taskWith(state, 1).id
     state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
-    const firstPrompt = taskWith(state, id).approvalPrompt
+    const firstPrompt = taskWith(state, id).approvalPromptKey
 
     let ticks = 0
     while (taskWith(state, id).status !== 'approval' && ticks < 30) {
@@ -393,7 +393,7 @@ describe('employment transitions', () => {
       ticks += 1
     }
     expect(taskWith(state, id).status).toBe('approval')
-    expect(taskWith(state, id).approvalPrompt).toBe(firstPrompt)
+    expect(taskWith(state, id).approvalPromptKey).toBe(firstPrompt)
 
     const resumed = gameReducer(state, { type: 'approve-task', id, approved: true })
 
@@ -401,7 +401,7 @@ describe('employment transitions', () => {
     replay = gameReducer(replay, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
     replay = gameReducer(replay, { type: 'tick', seconds: ticks })
     const replayed = gameReducer(replay, { type: 'approve-task', id, approved: true })
-    expect(taskWith(replayed, id).approvalPrompt).toBe(taskWith(resumed, id).approvalPrompt)
+    expect(taskWith(replayed, id).approvalPromptKey).toBe(taskWith(resumed, id).approvalPromptKey)
   })
 
   test('non-YOLO work pauses at repeated approval checkpoints before completion', () => {
@@ -485,8 +485,10 @@ describe('employment transitions', () => {
     expect(lost.tasks).toContainEqual(task)
     expect(lost.messages.at(-1)?.type).toBe('firing')
     const overdue = lost.tasks.find((candidate) => candidate.deadlineAt <= lost.elapsed)!
-    expect(lost.failure).toContain(overdue.title)
-    expect(lost.failure).toContain(hired.company!)
+    expect(lost.failure).toEqual({
+      key: 'ending.deadlineFailure',
+      params: { title: { key: overdue.titleKey }, company: hired.company },
+    })
     expect(gameReducer(lost, { type: 'tick', seconds: 100 })).toEqual(lost)
   })
   test('task-free employment remains active when the player keeps scrolling Shorts', () => {
@@ -574,7 +576,7 @@ describe('terminal upgrades and concurrent work', () => {
     expect(state.money).toBe(moneyBeforeYolo - 420)
     expect(state.terminals[0]?.yolo).toBe(true)
     expect(taskWith(state, id).status).toBe('working')
-    expect(taskWith(state, id).approvalPrompt).toBeNull()
+    expect(taskWith(state, id).approvalPromptKey).toBeNull()
     expect(state.tokens).toBe(chargedTokens)
 
     const paused = taskWith(state, id).progress
@@ -628,24 +630,24 @@ describe('hidden boss assignment inventory', () => {
   test('standard assignments use every catalog entry once before refilling', () => {
     const collect = (seed: number) => {
       let state = hire(seed)
-      const titles: string[] = []
+      const titleKeys: string[] = []
       const seen = new Set<number>()
       const appendNewDescriptors = () => {
         for (const task of [...state.tasks, ...state.taskQueue]) {
           if (seen.has(task.id)) continue
           seen.add(task.id)
-          titles.push(task.title)
+          titleKeys.push(task.titleKey)
         }
       }
       appendNewDescriptors()
-      while (titles.length < 17) {
+      while (titleKeys.length < 17) {
         const [next] = nextQueuedAssignment(state)
         state = next
         appendNewDescriptors()
       }
-      expect(new Set(titles.slice(0, 16)).size).toBe(16)
-      expect(titles[16]).not.toBe(titles[15])
-      return titles
+      expect(new Set(titleKeys.slice(0, 16)).size).toBe(16)
+      expect(titleKeys[16]).not.toBe(titleKeys[15])
+      return titleKeys
     }
 
     const first = collect(17)
@@ -662,20 +664,20 @@ describe('hidden boss assignment inventory', () => {
       taskQueue: [],
       nextTaskAt: 0,
     }
-    const architectureTitles: string[] = []
+    const architectureTitleKeys: string[] = []
     const seen = new Set<number>()
-    for (let draw = 0; draw < 80 && architectureTitles.length < 9; draw += 1) {
+    for (let draw = 0; draw < 80 && architectureTitleKeys.length < 9; draw += 1) {
       const [next] = nextQueuedAssignment(state)
       state = next
       for (const task of [...state.tasks, ...state.taskQueue]) {
         if (seen.has(task.id)) continue
         seen.add(task.id)
-        if (task.kind === 'architecture') architectureTitles.push(task.title)
+        if (task.kind === 'architecture') architectureTitleKeys.push(task.titleKey)
       }
     }
-    expect(architectureTitles).toHaveLength(9)
-    expect(new Set(architectureTitles.slice(0, 8)).size).toBe(8)
-    expect(architectureTitles[8]).not.toBe(architectureTitles[7])
+    expect(architectureTitleKeys).toHaveLength(9)
+    expect(new Set(architectureTitleKeys.slice(0, 8)).size).toBe(8)
+    expect(architectureTitleKeys[8]).not.toBe(architectureTitleKeys[7])
   })
   test('opening grace eases assignment and deadline before normal pacing', () => {
     const hired = hire()
@@ -836,7 +838,7 @@ describe('extended progression boundaries', () => {
     const refreshedLottery = won.socialPosts.findLast((post) => post.type === 'lottery')
     if (refreshedLottery === undefined || refreshedLottery.type !== 'lottery') throw new Error('Winning Like did not append a new lottery post')
     expect(refreshedLottery.id).not.toBe(firstLottery.id)
-    expect(SOCIAL_LOTTERY_COPY[refreshedLottery.lotteryVariant]).not.toBe(SOCIAL_LOTTERY_COPY[firstLottery.lotteryVariant])
+    expect(SOCIAL_LOTTERY_KEYS[refreshedLottery.lotteryVariant]).not.toBe(SOCIAL_LOTTERY_KEYS[firstLottery.lotteryVariant])
     expect(won.socialPosts.find((post) => post.id === firstLottery.id)?.likes).toBe(2)
     expect(refreshedLottery.likes).toBe(0)
 
@@ -1046,7 +1048,7 @@ describe('token deficit detection', () => {
     const full = { ...hire(), tokens: 1_100_000, tasks: [working, pending], taskQueue: [], nextTaskAt: 1_000 }
     expect(hasTokenDeficit(full)).toBe(false)
 
-    const approval: WorkTask = { ...working, id: 904, status: 'approval', nextApprovalAt: 10, approvalPrompt: 'Approve the next command?' }
+    const approval: WorkTask = { ...working, id: 904, status: 'approval', nextApprovalAt: 10, approvalPromptKey: 'task.approval.applyPatch' }
     expect(hasTokenDeficit({ ...full, tasks: [approval] })).toBe(false)
 
     const retry: WorkTask = { ...working, id: 905, status: 'failed', failedAt: 0 }
