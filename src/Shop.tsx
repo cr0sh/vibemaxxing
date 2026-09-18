@@ -13,6 +13,7 @@ import {
   tokenPriceMultiplier,
   type GameAction,
   type GameState,
+  type ShopItemId,
   type TerminalId,
   type TerminalUpgrade,
   type TokenPackCount,
@@ -106,6 +107,9 @@ function UpgradeProductCard({
         dragSource.onDragStart(event)
       }}
       onDragEnd={dragSource.onDragEnd}
+      onPointerDown={dragSource.onPointerDown}
+      onPointerCancel={dragSource.onPointerCancel}
+      onLostPointerCapture={dragSource.onLostPointerCapture}
       aria-label={`${title} upgrade`}
     >
       <span className="shop-product-icon" aria-hidden="true">{icon}</span>
@@ -247,16 +251,13 @@ function AdvancedModelProduct({ state, dispatch }: ShopProps) {
 }
 
 function MercuryProduct({ state, dispatch }: ShopProps) {
-  const visible = state.advancedModelUnlocked
-  const canBuy = state.stage === 'hired' && visible && !state.mercuryOwned && state.money >= MERCURY_PRICE
+  const canBuy = state.stage === 'hired' && state.advancedModelUnlocked && !state.mercuryOwned && state.money >= MERCURY_PRICE
   const buyMercury = () => {
     if (canBuy) dispatch({ type: 'buy-mercury' })
   }
   const setMercury = (enabled: boolean) => {
     if (state.stage === 'hired' && state.mercuryOwned) dispatch({ type: 'set-mercury', enabled })
   }
-
-  if (!visible) return null
 
   return (
     <article className={`shop-product shop-mercury-product ${canBuy || state.mercuryOwned ? '' : 'shop-product-unavailable'}`} aria-label="Mercury automatic handoffs">
@@ -294,6 +295,9 @@ function MercuryProduct({ state, dispatch }: ShopProps) {
 
 export function ShopContent({ state, dispatch }: ShopProps) {
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
+  const hasDiscovery = (id: ShopItemId): boolean => state.shopDiscoveries.includes(id)
+  const hasVisibleProduct = (['split', 'yolo', 'terminal', 'tokens', 'fast-mode', 'spark', 'spark-ultra', 'advanced-model', 'mercury'] as const)
+    .some((id) => hasDiscovery(id))
 
   const selectedTargetTerminal = state.terminals.some((terminal) => terminal.id === targetTerminal)
     ? targetTerminal
@@ -346,7 +350,12 @@ export function ShopContent({ state, dispatch }: ShopProps) {
 
 
       <div className="shop-products">
-        {upgradeProducts.map((product) => (
+        {!hasVisibleProduct && (
+          <p className="shop-empty-guidance">
+            Keep working and earning—new products appear here when they become available.
+          </p>
+        )}
+        {upgradeProducts.filter((product) => hasDiscovery(product.upgrade)).map((product) => (
           <UpgradeProductCard
             key={product.upgrade}
             product={product}
@@ -355,7 +364,7 @@ export function ShopContent({ state, dispatch }: ShopProps) {
             targetTerminal={selectedTargetTerminal}
           />
         ))}
-        {state.fastModeUnlocked && (
+        {hasDiscovery('fast-mode') && (
           <article
             className={`shop-product shop-fast-mode-product ${fastModeAvailable ? '' : 'shop-product-unavailable'}`}
             aria-label="Fast mode"
@@ -378,57 +387,59 @@ export function ShopContent({ state, dispatch }: ShopProps) {
             </label>
           </article>
         )}
-        {state.sparkAnnouncedAt !== null && <SparkProduct state={state} dispatch={dispatch} />}
-        {state.sparkUltraAnnouncedAt !== null && <SparkUltraProduct state={state} dispatch={dispatch} />}
-        {state.advancedModelAnnouncedAt !== null && <AdvancedModelProduct state={state} dispatch={dispatch} />}
-        <MercuryProduct state={state} dispatch={dispatch} />
-        <article
-          className={`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`}
-          aria-label="Token refill"
-        >
-          <span className="shop-product-icon" aria-hidden="true">◇</span>
-          <div className="shop-product-copy">
-            <h3>Token refill</h3>
-            <div className="shop-token-options">
-              <label className="shop-pack-size">
-                Pack size
-                <select
-                  value={state.tokenPacks}
-                  disabled={state.stage !== 'hired'}
-                  onChange={(event) => dispatch({ type: 'set-token-packs', packs: Number(event.currentTarget.value) as TokenPackCount })}
-                >
-                  {TOKEN_PACK_COUNTS.map((packs) => {
-                    const amount = tokenPurchaseAmount(state.tokens, packs)
-                    const cost = tokenPurchaseCost(amount, state)
-                    const quantity = amount >= MAX_TOKENS - state.tokens ? 'Fill balance · 10M max' : `${amount.toLocaleString()} tokens`
-                    return <option key={packs} value={packs}>{quantity} · {moneyLabel(cost)}</option>
-                  })}
-                </select>
-              </label>
-              <label className="shop-fast-mode-toggle shop-auto-buy-toggle">
-                <span className="shop-auto-buy-name">Auto-buy</span>
-                <span className="shop-fast-mode-toggle-label">{state.tokenAutoBuy ? 'On' : 'Off'}</span>
-                <input
-                  type="checkbox"
-                  checked={state.tokenAutoBuy}
-                  disabled={state.stage !== 'hired'}
-                  onChange={(event) => dispatch({ type: 'set-token-auto-buy', enabled: event.currentTarget.checked })}
-                  aria-label="Automatically buy tokens when balance is low"
-                />
-                <span className="shop-toggle-track" aria-hidden="true"><span /></span>
-              </label>
+        {hasDiscovery('spark') && <SparkProduct state={state} dispatch={dispatch} />}
+        {hasDiscovery('spark-ultra') && <SparkUltraProduct state={state} dispatch={dispatch} />}
+        {hasDiscovery('advanced-model') && <AdvancedModelProduct state={state} dispatch={dispatch} />}
+        {hasDiscovery('mercury') && <MercuryProduct state={state} dispatch={dispatch} />}
+        {hasDiscovery('tokens') && (
+          <article
+            className={`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`}
+            aria-label="Token refill"
+          >
+            <span className="shop-product-icon" aria-hidden="true">◇</span>
+            <div className="shop-product-copy">
+              <h3>Token refill</h3>
+              <div className="shop-token-options">
+                <label className="shop-pack-size">
+                  Pack size
+                  <select
+                    value={state.tokenPacks}
+                    disabled={state.stage !== 'hired'}
+                    onChange={(event) => dispatch({ type: 'set-token-packs', packs: Number(event.currentTarget.value) as TokenPackCount })}
+                  >
+                    {TOKEN_PACK_COUNTS.map((packs) => {
+                      const amount = tokenPurchaseAmount(state.tokens, packs)
+                      const cost = tokenPurchaseCost(amount, state)
+                      const quantity = amount >= MAX_TOKENS - state.tokens ? 'Fill balance · 10M max' : `${amount.toLocaleString()} tokens`
+                      return <option key={packs} value={packs}>{quantity} · {moneyLabel(cost)}</option>
+                    })}
+                  </select>
+                </label>
+                <label className="shop-fast-mode-toggle shop-auto-buy-toggle">
+                  <span className="shop-auto-buy-name">Auto-buy</span>
+                  <span className="shop-fast-mode-toggle-label">{state.tokenAutoBuy ? 'On' : 'Off'}</span>
+                  <input
+                    type="checkbox"
+                    checked={state.tokenAutoBuy}
+                    disabled={state.stage !== 'hired'}
+                    onChange={(event) => dispatch({ type: 'set-token-auto-buy', enabled: event.currentTarget.checked })}
+                    aria-label="Automatically buy tokens when balance is low"
+                  />
+                  <span className="shop-toggle-track" aria-hidden="true"><span /></span>
+                </label>
+              </div>
+              <p>{refillAmount > 0 ? `${refillAmount.toLocaleString()} tokens received · partial packs prorated` : 'Inventory is at the 10M token limit.'}</p>
+              {monopolyActive && (
+                <p className="shop-token-rate">
+                  Monopoly rate {tokenMultiplier.toFixed(2)}× · +10% every 5s · next increase in {secondsToNextTokenIncrease}s.
+                </p>
+              )}
             </div>
-            <p>{refillAmount > 0 ? `${refillAmount.toLocaleString()} tokens received · partial packs prorated` : 'Inventory is at the 10M token limit.'}</p>
-            {monopolyActive && (
-              <p className="shop-token-rate">
-                Monopoly rate {tokenMultiplier.toFixed(2)}× · +10% every 5s · next increase in {secondsToNextTokenIncrease}s.
-              </p>
-            )}
-          </div>
-          <button className="shop-buy-button" type="button" onClick={buyTokens} disabled={!canBuyTokens}>
-            {state.stage !== 'hired' ? 'Unavailable' : state.tokens >= MAX_TOKENS ? 'Balance full' : canBuyTokens ? refillPrice : `Need ${refillPrice}`}
-          </button>
-        </article>
+            <button className="shop-buy-button" type="button" onClick={buyTokens} disabled={!canBuyTokens}>
+              {state.stage !== 'hired' ? 'Unavailable' : state.tokens >= MAX_TOKENS ? 'Balance full' : canBuyTokens ? refillPrice : `Need ${refillPrice}`}
+            </button>
+          </article>
+        )}
       </div>
     </div>
   )
