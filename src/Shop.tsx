@@ -183,7 +183,7 @@ function SparkUltraProduct({ state, dispatch }: ShopProps) {
     detail = `Sale opens in ${durationLabel((availableAt ?? state.elapsed) - state.elapsed)} · ${moneyLabel(SPARK_ULTRA_PRICE)}.`
     buttonLabel = `Opens ${durationLabel((availableAt ?? state.elapsed) - state.elapsed)}`
   } else if (delivered) {
-    detail = `Delivered · 2 fixed ${AGENT_MODELS.advanced.label} panes · intelligence 3 · no cloud task tokens.`
+    detail = `Delivered · 2 fixed ${AGENT_MODELS.advanced.label} panes · no cloud task tokens.`
     buttonLabel = 'Owned'
   } else if (purchased) {
     const deliveryAt = state.sparkUltraDeliveryAt
@@ -192,9 +192,9 @@ function SparkUltraProduct({ state, dispatch }: ShopProps) {
       : `Paid ${moneyLabel(SPARK_ULTRA_PRICE)} · delivery in ${durationLabel(deliveryAt - state.elapsed)}.`
     buttonLabel = deliveryAt === null ? 'Delivering' : `ETA ${durationLabel(deliveryAt - state.elapsed)}`
   } else if (state.stage !== 'hired') {
-    detail = `${moneyLabel(SPARK_ULTRA_PRICE)} · 2 fixed ${AGENT_MODELS.advanced.label} panes · intelligence 3 · no cloud task tokens.`
+    detail = `${moneyLabel(SPARK_ULTRA_PRICE)} · 2 fixed ${AGENT_MODELS.advanced.label} panes · no cloud task tokens.`
   } else {
-    detail = `${moneyLabel(SPARK_ULTRA_PRICE)} · 2 fixed ${AGENT_MODELS.advanced.label} panes · intelligence 3 · no cloud task tokens.`
+    detail = `${moneyLabel(SPARK_ULTRA_PRICE)} · 2 fixed ${AGENT_MODELS.advanced.label} panes · no cloud task tokens.`
     buttonLabel = state.money >= SPARK_ULTRA_PRICE ? `Buy · ${moneyLabel(SPARK_ULTRA_PRICE)}` : `Need ${moneyLabel(SPARK_ULTRA_PRICE)}`
   }
 
@@ -310,7 +310,7 @@ export function ShopContent({ state, dispatch }: ShopProps) {
   const canBuyTokens = state.stage === 'hired' && state.money >= refillCost && refillAmount > 0
   const tokenMultiplier = tokenPriceMultiplier(state)
   const monopolyActive = state.monopolyAnnouncedAt !== null
-  const secondsSinceMonopoly = monopolyActive ? Math.max(0, state.elapsed - state.monopolyAnnouncedAt) : 0
+  const secondsSinceMonopoly = state.monopolyAnnouncedAt === null ? 0 : Math.max(0, state.elapsed - state.monopolyAnnouncedAt)
   const secondsToNextTokenIncrease = monopolyActive
     ? Math.max(1, Math.ceil(5 - (secondsSinceMonopoly % 5)))
     : null
@@ -419,11 +419,11 @@ export function ShopContent({ state, dispatch }: ShopProps) {
               </label>
             </div>
             <p>{refillAmount > 0 ? `${refillAmount.toLocaleString()} tokens received · partial packs prorated` : 'Inventory is at the 10M token limit.'}</p>
-            <p className="shop-token-rate">
-              {monopolyActive
-                ? `Monopoly rate ${tokenMultiplier.toFixed(2)}× · +10% every 5s · next increase in ${secondsToNextTokenIncrease}s.`
-                : 'Token rate 1.00× · prices rise 10% every 5s after the frontier monopoly.'}
-            </p>
+            {monopolyActive && (
+              <p className="shop-token-rate">
+                Monopoly rate {tokenMultiplier.toFixed(2)}× · +10% every 5s · next increase in {secondsToNextTokenIncrease}s.
+              </p>
+            )}
           </div>
           <button className="shop-buy-button" type="button" onClick={buyTokens} disabled={!canBuyTokens}>
             {state.stage !== 'hired' ? 'Unavailable' : state.tokens >= MAX_TOKENS ? 'Balance full' : canBuyTokens ? refillPrice : `Need ${refillPrice}`}

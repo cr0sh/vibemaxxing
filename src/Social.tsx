@@ -39,11 +39,12 @@ const postAuthor = (post: SocialPost): string => {
     case 'advanced-model':
     case 'frontier-model':
       return 'Tiro Labs'
+    case 'spark-ultra':
+    case 'spark-ultra-delivered':
+      return 'Mapple'
     case 'market':
     case 'spark':
     case 'spark-delivered':
-    case 'spark-ultra':
-    case 'spark-ultra-delivered':
     case 'monopoly':
     case 'shorts':
     case 'mercury':
@@ -53,10 +54,11 @@ const postAuthor = (post: SocialPost): string => {
 }
 
 function ProfileAvatar({ post, state }: { post: SocialPost; state: GameState }) {
-  const laboratory = postAuthor(post) === 'Tiro Labs'
+  const author = postAuthor(post)
+  const laboratory = author === 'Tiro Labs'
   return (
     <span className={`social-avatar ${laboratory ? 'social-avatar-lab' : 'social-avatar-tiro'}`} aria-hidden="true">
-      {laboratory ? '🧪' : state.tiroAvatar}
+      {laboratory ? '🧪' : author === 'Mapple' ? 'M' : state.tiroAvatar}
     </span>
   )
 }
@@ -162,7 +164,7 @@ function PostBody({
   if (post.type === 'spark-ultra') {
     return (
       <p className="social-post-copy">
-        Mapple Spark Ultra is on the way: two local intelligence-3 agents with no cloud-token bill. Shop opens in 10 seconds for <strong>{moneyLabel(SPARK_ULTRA_PRICE)}</strong>.
+        Mapple Spark Ultra is on the way: two local ConvexLM Pro agents with no cloud-token bill. Shop opens in 10 seconds for <strong>{moneyLabel(SPARK_ULTRA_PRICE)}</strong>.
       </p>
     )
   }
@@ -170,7 +172,7 @@ function PostBody({
   if (post.type === 'spark-ultra-delivered') {
     return (
       <p className="social-post-copy">
-        Mapple Spark Ultra has arrived. Two fixed local intelligence-3 panes are ready for token-free work, with no Fast mode or cloud bill.
+        Mapple Spark Ultra has arrived. Two fixed local ConvexLM Pro panes are ready for token-free work, with no Fast mode or cloud bill.
       </p>
     )
   }

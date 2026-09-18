@@ -250,6 +250,10 @@ const UINT_RANGE = 4_294_967_296
 const MAX_TERMINAL_SLOTS = 4
 const MAX_CLOUD_TERMINALS = 2
 const TASK_QUEUE_SIZE = 3
+const SPLIT_PRICES: readonly number[] = [200, 400, 1_000]
+const YOLO_PRICE = 420
+const SECONDARY_PRICE_MULTIPLIER = 2
+const ADDITIONAL_TERMINAL_PRICE = 1_000
 const WATERCOOLER_THRESHOLD = MAX_TOKENS * 0.2
 export const TOKEN_AUTO_BUY_THRESHOLD = 1_000_000
 const SOCIAL_LOTTERY_DELAY = 5
@@ -305,7 +309,8 @@ export function tokenPriceMultiplier(state: Pick<GameState, 'elapsed' | 'monopol
 
 export function tokenPurchaseCost(amount: number, state: Pick<GameState, 'elapsed' | 'monopolyAnnouncedAt'>): number {
   const multiplier = tokenPriceMultiplier(state)
-  return Math.ceil(amount * TOKEN_PURCHASE_COST * 100 * multiplier / TOKEN_PURCHASE_AMOUNT) / 100
+  const cents = amount * TOKEN_PURCHASE_COST * 100 * multiplier / TOKEN_PURCHASE_AMOUNT
+  return Math.ceil(cents - Math.abs(cents) * Number.EPSILON * 2) / 100
 }
 function purchaseTokens(state: GameState, packs: TokenPackCount): GameState {
   if (!TOKEN_PACK_COUNTS.includes(packs) || state.stage !== 'hired') return state
@@ -699,7 +704,7 @@ function issueAvailableAssignments(state: GameState): GameState {
     startedAt: null,
     assignedAt: current.elapsed,
     baseReward: job.completedTasks >= 5
-      ? TASK_REWARD_PER_DIFFICULTY * descriptor.difficulty * (job.level === 5 ? 200 : job.level === 4 ? 100 : 1)
+      ? TASK_REWARD_PER_DIFFICULTY * descriptor.difficulty * (job.level === 5 ? 600 : job.level === 4 ? 100 : 1)
       : 0,
     model: null,
     fastMode: false,
@@ -785,6 +790,11 @@ function createHiredState(state: GameState): GameState {
   }
   const welcomed = appendMessage(hired, { id: 'welcome', type: 'welcome', jobId: 'primary', elapsed: hired.elapsed })
   return issueAvailableAssignments(welcomed)
+}
+
+function appendLotteryIfDue(state: GameState): GameState {
+  if (state.socialInstalledAt === null || state.socialPosts.some((post) => post.type === 'lottery') || state.elapsed < state.socialInstalledAt + SOCIAL_LOTTERY_DELAY) return state
+  return appendLotteryPost(state, state.socialInstalledAt + SOCIAL_LOTTERY_DELAY)
 }
 
 function appendFeatureAnnouncements(state: GameState): GameState {
@@ -982,6 +992,9 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
   const fastMode = local ? false : terminal.fastMode === true
   const model = terminalModel(state, terminalId)
   const cost = taskTokenCost(task, fastMode, model, local)
+  const preserveAssignedReservations = !automatic
+  if (!canFundTaskAttempt(state, task, fastMode, terminalId, preserveAssignedReservations) || !Number.isFinite(cost) || state.tokens < cost) return state
+  let nextRng = state.rng
   let nextApprovalAt = 0
   let nextApprovalPrompt: string | null = null
   if (!terminal.yolo) {
@@ -1129,21 +1142,20 @@ function deadlineFailure(state: GameState, task: WorkTask): string {
   return `You missed “${task.title}” at ${company ?? 'your company'}.`
 }
 function unlockShorts(state: GameState): GameState {
-  return state.stage === 'hired' && state.energy < 80 && !state.shortsUnlocked
-    ? appendSocialPost({ ...state, shortsUnlocked: true }, { id: 'shorts-unlocked', type: 'shorts', elapsed: state.elapsed, likes: 0 })
-    : state
+  if (state.stage !== 'hired' || state.energy >= 80 || state.shortsUnlocked) return state
+  const unlocked = { ...state, shortsUnlocked: true }
+  return state.socialInstalledAt === null ? unlocked :
+    appendSocialPost(unlocked, { id: 'shorts-unlocked', type: 'shorts', elapsed: state.elapsed, likes: 0 })
 }
 
 function humanInteraction(state: GameState): GameState {
   if (state.stage !== 'hired') return state
-  return {
-    ...unlockShorts({
-      ...state,
-      energy: Math.min(MAX_ENERGY, state.energy + 1),
-      inactivityElapsed: 0,
-      inactivityDecay: 1,
-    }),
-  }
+  return unlockShorts({
+    ...state,
+    energy: Math.min(MAX_ENERGY, state.energy + 1),
+    inactivityElapsed: 0,
+    inactivityDecay: 1,
+  })
 }
 
 function applyIdleTime(state: GameState, seconds: number): GameState {
@@ -1154,12 +1166,12 @@ function applyIdleTime(state: GameState, seconds: number): GameState {
   let remaining = seconds
   while (remaining > 0 && state.stage === 'hired') {
     const untilDecay = INACTIVITY_INTERVAL - inactivityElapsed
-    if (remaining < untilDecay) {
+    if (remaining + 1e-9 < untilDecay) {
       inactivityElapsed += remaining
       remaining = 0
       break
     }
-    remaining -= untilDecay
+    remaining = Math.max(0, remaining - untilDecay)
     inactivityElapsed = 0
     energy = Math.max(0, energy - inactivityDecay)
     inactivityDecay = Math.min(INACTIVITY_MAX_DECAY, inactivityDecay * 2)
@@ -1179,60 +1191,67 @@ function maybeWin(state: GameState): GameState {
 
 function tickHired(state: GameState, seconds: number): GameState {
   if (state.stage !== 'hired' || !Number.isFinite(seconds) || seconds <= 0) return state
-  const previousRemainder = Number.isFinite(state.tickRemainder) ? clamp(state.tickRemainder, 0, 0.999999999) : 0
-  const total = previousRemainder + seconds
-  const wholeSeconds = Math.floor(total + 1e-9)
-  let remainder = Math.max(0, total - wholeSeconds)
-  if (remainder >= 1 - 1e-9) remainder = 0
   let current = state
-  for (let second = 0; second < wholeSeconds; second += 1) {
-    const nextElapsed = current.elapsed + 1
+  let remaining = seconds
+  while (remaining > 1e-9) {
+    const fraction = Number.isFinite(current.tickRemainder) ? clamp(current.tickRemainder, 0, 0.999999999) : 0
+    const untilSecond = 1 - fraction
+    const untilMarket = current.market === null ? untilSecond : fraction < 0.5 - 1e-9 ? 0.5 - fraction : untilSecond
+    const untilDecay = Math.max(1e-9, INACTIVITY_INTERVAL - current.inactivityElapsed)
+    const step = Math.min(remaining, untilSecond, untilMarket, untilDecay)
+    const wholeSecond = fraction + step >= 1 - 1e-9
+    remaining = Math.max(0, remaining - step)
     current = {
       ...current,
-      elapsed: nextElapsed,
-      money: current.money + 1 + (current.secondJob === null ? 0 : 1),
-      tokens: nextElapsed % 100 === 0 ? MAX_TOKENS : current.tokens,
-      expectation: bossExpectationAt(nextElapsed),
+      elapsed: current.elapsed + Number(wholeSecond),
+      tickRemainder: wholeSecond ? 0 : fraction + step,
     }
-    if (current.secondJob !== null) current = withJob(current, 'secondary', (job) => ({ ...job, expectation: bossExpectationAt(nextElapsed) }))
-    current = autoBuyTokens(current)
-    current = updateSparkDelivery(current)
-    const overdue = current.tasks.find((task) => current.elapsed >= task.deadlineAt)
-    if (overdue !== undefined) return lose({ ...current, tickRemainder: remainder }, deadlineFailure(current, overdue), 'deadline', overdue.jobId)
-    current = applyIdleTime(current, 1)
-    if (current.stage !== 'hired') return { ...current, tickRemainder: remainder }
-    const previousTasks = current.tasks
-    let nextRng = current.rng
-    const advancedTasks: WorkTask[] = []
-    for (const task of previousTasks) {
-      const [advanced, taskRng] = advanceTask(task, current.elapsed, current.terminals, nextRng)
-      advancedTasks.push(advanced)
-      nextRng = taskRng
+    if (wholeSecond) {
+      current = {
+        ...current,
+        money: current.money + 1 + (current.secondJob === null ? 0 : 1),
+        tokens: current.elapsed % 100 === 0 ? MAX_TOKENS : current.tokens,
+        expectation: bossExpectationAt(current.elapsed),
+      }
+      if (current.secondJob !== null) current = withJob(current, 'secondary', (job) => ({ ...job, expectation: bossExpectationAt(current.elapsed) }))
+      current = autoBuyTokens(current)
+      current = updateSparkDelivery(current)
+      const overdue = current.tasks.find((task) => current.elapsed >= task.deadlineAt)
+      if (overdue !== undefined) return lose(current, deadlineFailure(current, overdue), 'deadline', overdue.jobId)
     }
-    current = { ...current, tasks: advancedTasks, rng: nextRng }
-    for (let index = 0; index < advancedTasks.length; index += 1) {
-      const before = previousTasks[index]
-      const after = advancedTasks[index]
-      if (before?.status !== 'artifact' && after?.status === 'artifact') current = updateAssignmentArtifact(current, after)
-      if (before?.status !== 'failed' && after?.status === 'failed') current = appendMessage(current, {
-        id: `attempt-failed-${after.id}-${after.attempt}`, type: 'attempt-failed', jobId: after.jobId, elapsed: current.elapsed, task: snapshotTask(after),
-      })
+    current = applyIdleTime(current, step)
+    if (current.stage !== 'hired') return current
+    if (wholeSecond) {
+      const previousTasks = current.tasks
+      let nextRng = current.rng
+      const advancedTasks: WorkTask[] = []
+      for (const task of previousTasks) {
+        const [advanced, taskRng] = advanceTask(task, current.elapsed, current.terminals, nextRng)
+        advancedTasks.push(advanced)
+        nextRng = taskRng
+      }
+      current = { ...current, tasks: advancedTasks, rng: nextRng }
+      for (let index = 0; index < advancedTasks.length; index += 1) {
+        const before = previousTasks[index]
+        const after = advancedTasks[index]
+        if (before?.status !== 'artifact' && after?.status === 'artifact') current = updateAssignmentArtifact(current, after)
+        if (before?.status !== 'failed' && after?.status === 'failed') current = appendMessage(current, {
+          id: `attempt-failed-${after.id}-${after.attempt}`, type: 'attempt-failed', jobId: after.jobId, elapsed: current.elapsed, task: snapshotTask(after),
+        })
+      }
+      current = appendLotteryIfDue(current)
+      current = maybeUnlockProgression(current)
+      current = issueAvailableAssignments(current)
+      current = processMercury(current)
     }
-    current = appendLotteryIfDue(current)
-    current = maybeUnlockProgression(current)
-    current = issueAvailableAssignments(current)
-    current = processMercury(current)
-    if (current.market !== null) current = { ...current, market: advanceMarket(current.market, current.elapsed) }
+    if (current.market !== null) {
+      const market = advanceMarket(current.market, current.elapsed + current.tickRemainder)
+      if (market !== current.market) current = { ...current, market }
+    }
     current = maybeWin(current)
-    if (current.stage !== 'hired') return { ...current, tickRemainder: remainder }
+    if (current.stage !== 'hired') return current
   }
-  if (current.stage !== 'hired') return current
-  current = { ...current, tickRemainder: remainder }
-  if (current.market !== null) current = { ...current, market: advanceMarket(current.market, current.elapsed + remainder) }
-  current = applyIdleTime(current, remainder)
-  if (current.stage !== 'hired') return { ...current, tickRemainder: remainder }
-  current = appendFeatureAnnouncements(current)
-  return maybeWin(current)
+  return current
 }
 
 export function upgradePrice(state: GameState, upgrade: TerminalUpgrade, terminalId: TerminalId): number | null {
@@ -1276,6 +1295,7 @@ function previewHired(state: GameState): GameState {
 }
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
+  if ((state.stage === 'lost' || state.stage === 'won') && action.type !== 'reset' && action.type !== 'dev-jump') return state
   switch (action.type) {
     case 'start':
       return state.stage === 'ready'
@@ -1352,6 +1372,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           ...preview,
           elapsed: 30,
           sparkPurchasedAt: 10,
+          sparkDeliveryAt: 25,
           terminals: [...preview.terminals, { id: 'spark', slots: 2, yolo: true, fastMode: false, model: 'reasoning' }],
           advancedModelAnnouncedAt: 30,
         }
@@ -1412,23 +1433,31 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           terminals: preview.terminals.map((terminal) => terminal.id === 'terminal' ? { ...terminal, model: 'frontier' } : terminal),
         }
         let frontierPreview = appendSocialPost(issueAvailableAssignments(preview), { id: 'frontier-model-unlocked', type: 'frontier-model', elapsed: 30, likes: 0 })
-        frontierPreview = { ...frontierPreview, nextTaskAt: Number.MAX_SAFE_INTEGER }
         if (action.stage === 'frontier') return frontierPreview
         frontierPreview = {
           ...frontierPreview,
           elapsed: 90,
           monopolyAnnouncedAt: 90,
+          money: 300_000,
+          tasks: [],
+          taskQueue: [],
+          nextTaskAt: 90,
+          secondJob: frontierPreview.secondJob === null ? null : { ...frontierPreview.secondJob, nextTaskAt: 90 },
         }
         frontierPreview = appendSocialPost(frontierPreview, { id: 'monopoly-announced', type: 'monopoly', elapsed: 90, likes: 0 })
-        if (action.stage === 'monopoly') return frontierPreview
+        if (action.stage === 'monopoly') return issueAvailableAssignments(frontierPreview)
         frontierPreview = {
           ...frontierPreview,
           elapsed: 150,
           sparkUltraAnnouncedAt: 150,
+          nextTaskAt: 150,
+          secondJob: frontierPreview.secondJob === null ? null : { ...frontierPreview.secondJob, nextTaskAt: 150 },
         }
         frontierPreview = appendSocialPost(frontierPreview, { id: 'spark-ultra-announced', type: 'spark-ultra', elapsed: 150, likes: 0 })
-        return frontierPreview
+        return issueAvailableAssignments(frontierPreview)
       }
+      const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? 'your company'
+      const failure = `The developer preview did not clear ${company}'s hiring bar.`
       return lose({ ...state, company }, failure, 'deadline')
     }
     case 'tick':

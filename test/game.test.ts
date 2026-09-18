@@ -6,7 +6,6 @@ import {
   gameNetWorth,
   gameReducer,
   initialGame,
-  isLocalTerminal,
   MAX_TOKENS,
   SOCIAL_LOTTERY_COPY,
   MERCURY_FORWARD_COST,
@@ -21,6 +20,7 @@ import {
   type WorkTask,
   upgradePrice,
 } from '../src/game'
+import { createMarket } from '../src/trading'
 function hire(seed = 12345): GameState {
   const started = gameReducer(initialGame, { type: 'start', seed })
   const offered = gameReducer(started, { type: 'submit', roll: 0, companyIndex: 0 })
@@ -353,8 +353,8 @@ describe('employment transitions', () => {
   })
   test('missing a task deadline preserves firing evidence and stops wages', () => {
     const hired = hire()
-    const task = taskWith(hired, 1)
-    const lost = gameReducer(hired, { type: 'tick', seconds: Math.ceil(task.deadlineAt) + 1 })
+    const task = { ...taskWith(hired, 1), deadlineAt: 5 }
+    const lost = gameReducer({ ...hired, tasks: [task] }, { type: 'tick', seconds: 6 })
     expect(lost.stage).toBe('lost')
     expect(lost.tasks).toContainEqual(task)
     expect(lost.messages.at(-1)?.type).toBe('firing')
@@ -672,7 +672,11 @@ describe('extended progression boundaries', () => {
     expect(activeMiss.socialPosts.filter((post) => post.type === 'lottery')).toHaveLength(2)
     expect(activeMiss.socialPosts.find((post) => post.id === refreshedLottery.id)?.likes).toBe(1)
 
-    const waiting = gameReducer({ ...won, tokens: 100 }, { type: 'tick', seconds: 94 })
+    let waiting = { ...won, tokens: 100, shortsUnlocked: true }
+    for (let elapsed = 0; elapsed < 94; elapsed += 2) {
+      waiting = gameReducer(waiting, { type: 'tick', seconds: 2 })
+      waiting = gameReducer(waiting, { type: 'scroll-short' })
+    }
     expect(waiting.tokens).toBe(100)
     const refilled = gameReducer(waiting, { type: 'tick', seconds: 1 })
     expect(refilled.tokens).toBe(MAX_TOKENS)
@@ -1381,6 +1385,7 @@ describe('extended engine contracts', () => {
     const task: WorkTask = { ...hire().tasks[0]!, difficulty: 1, deadlineAt: 100 }
     const purchased = gameReducer({
       ...base, tasks: [task], tokens: 1_000_000,
+      terminals: [{ id: 'terminal', slots: 1, model: 'frontier', fastMode: false, yolo: true }],
     }, { type: 'buy-upgrade', upgrade: 'terminal', terminalId: 'terminal', source: 'click' })
     const started = gameReducer(purchased, { type: 'start-task', id: task.id, terminalId: 'terminal-2', slot: 0 })
     expect(taskWith(started, task.id).model).toBe('advanced')
@@ -1438,20 +1443,23 @@ describe('extended engine contracts', () => {
     expect(state.energy).toBe(99)
   })
 
-  test('Spark Ultra is local advanced work with a separate terminal and no task tokens', () => {
+  test('Spark Ultra delivers on schedule and completes advanced local work without tokens', () => {
     let state = gameReducer(hire(), { type: 'dev-jump', stage: 'spark-ultra' })
-    expect(isLocalTerminal('spark')).toBe(true)
-    expect(isLocalTerminal('spark-ultra')).toBe(true)
-    expect(state.sparkUltraAnnouncedAt).not.toBeNull()
+    state = { ...state, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER, secondJob: null, mercuryEnabled: false }
+    expect(gameReducer(state, { type: 'buy-spark-ultra' })).toBe(state)
+    state = gameReducer(state, { type: 'tick', seconds: 10 })
     const moneyBefore = state.money
     state = gameReducer(state, { type: 'buy-spark-ultra' })
     expect(moneyBefore - state.money).toBe(SPARK_ULTRA_PRICE)
-    expect(state.sparkUltraPurchasedAt).not.toBeNull()
-    const tokens = state.tokens
-    state = gameReducer(state, { type: 'tick', seconds: 15 })
-    const ultra = state.terminals.find((terminal) => terminal.id === 'spark-ultra')
-    expect(ultra).toMatchObject({ slots: 2, model: 'advanced', fastMode: false })
-    expect(state.tokens).toBe(tokens)
+    state = gameReducer(state, { type: 'tick', seconds: 14.5 })
+    expect(state.terminals.some((terminal) => terminal.id === 'spark-ultra')).toBe(false)
+    state = gameReducer(state, { type: 'tick', seconds: 0.5 })
+    state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'spark-ultra', source: 'click' })
+    const task: WorkTask = { ...hire().tasks[0]!, difficulty: 1, complexity: 3, deadlineAt: 1_000 }
+    state = gameReducer({ ...state, tasks: [task], tokens: 0 }, { type: 'start-task', id: task.id, terminalId: 'spark-ultra', slot: 0 })
+    state = gameReducer(state, { type: 'tick', seconds: 2 })
+    expect(taskWith(state, task.id).status).toBe('artifact')
+    expect(state.tokens).toBe(0)
   })
 
   test('win accounting marks cash, trading USD, and BTC once and freezes gameplay', () => {
@@ -1469,5 +1477,61 @@ describe('extended engine contracts', () => {
     expect(won.stage).toBe('won')
     expect(won.lossReason).toBeNull()
     expect(gameReducer(won, { type: 'tick', seconds: 100 })).toEqual(won)
+  })
+
+  test('idle energy caps each penalty at sixteen and stops the run at zero', () => {
+    let state = { ...hire(), tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER } as GameState
+    state = gameReducer(state, { type: 'tick', seconds: 12 })
+    expect(state.energy).toBe(85)
+    expect(state.shortsUnlocked).toBe(false)
+    state = gameReducer(state, { type: 'tick', seconds: 15 })
+    expect(state.energy).toBe(5)
+    expect(state.shortsUnlocked).toBe(true)
+    state = gameReducer(state, { type: 'tick', seconds: 100 })
+    expect(state.stage).toBe('lost')
+    expect(state.lossReason).toBe('energy')
+    expect(state.energy).toBe(0)
+    expect(state.elapsed).toBe(30)
+    expect(gameReducer(state, { type: 'scroll-short' })).toBe(state)
+  })
+
+  test('a clicked Shop upgrade resets inactivity but an equivalent drag purchase does not', () => {
+    const state = { ...hire(), money: 1_000, energy: 80, inactivityElapsed: 2.5, inactivityDecay: 16 }
+    const clicked = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'click' })
+    const dragged = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'drag' })
+    expect(clicked.money).toBe(dragged.money)
+    expect(gameReducer(clicked, { type: 'tick', seconds: 0.5 }).energy).toBe(81)
+    expect(gameReducer(dragged, { type: 'tick', seconds: 0.5 }).energy).toBe(64)
+  })
+
+  test('a profitable BTC sale restores energy even when lifetime realized profit remains negative', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'market' })
+    const state = { ...base, energy: 80, market: { ...base.market!, btc: 1, btcCostBasis: 100, price: 120, realizedPnl: -100 } }
+    const sold = gameReducer(state, { type: 'market-trade', side: 'sell', amount: 0.5 })
+    expect(sold.market!.realizedPnl).toBe(-90)
+    expect(sold.energy).toBe(81)
+    const breakEven = gameReducer({ ...state, market: { ...state.market, price: 100 } }, { type: 'market-trade', side: 'sell', amount: 0.5 })
+    expect(breakEven.energy).toBe(80)
+  })
+
+  test('monopoly purchases compound on five second boundaries without an extra rounding cent', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'monopoly' })
+    for (const [seconds, price] of [[4, 100], [5, 110], [10, 121]] as const) {
+      const state = { ...base, elapsed: base.monopolyAnnouncedAt! + seconds, tokens: 0 }
+      const bought = gameReducer(state, { type: 'buy-tokens', packs: 1 })
+      expect(state.money - bought.money).toBe(price)
+      expect(bought.tokens).toBe(100_000)
+    }
+  })
+
+  test('a transient BTC valuation victory is retained across a later market crash in the same tick', () => {
+    const market = { ...createMarket(1, 0), btc: 42_000, btcCostBasis: 4_200_000 }
+    const state: GameState = { ...hire(), money: 0, market, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER }
+    expect(gameNetWorth(state)).toBe(4_200_000)
+    const won = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(won.stage).toBe('won')
+    expect(gameNetWorth(won)).toBeGreaterThanOrEqual(WIN_NET_WORTH)
+    expect(won.market!.history.at(-1)!.elapsed).toBe(0.5)
+    expect(gameReducer(won, { type: 'market-trade', side: 'sell', amount: 1 })).toBe(won)
   })
 })

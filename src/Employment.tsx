@@ -63,7 +63,7 @@ const employerLevel = (state: GameState, jobId: JobId): 3 | 4 | 5 => (
   jobId === 'secondary' ? state.secondJob?.level ?? 3 : state.level
 )
 const taskModel = (task: Pick<WorkTask, 'model' | 'local'>): AgentModelId => (
-  task.model ?? (task.local ? 'advanced' : 'basic')
+  task.model ?? (task.local ? 'reasoning' : 'basic')
 )
 
 const taskCost = (task: Pick<WorkTask, 'difficulty' | 'fastMode' | 'model' | 'local'>): number => (
@@ -189,7 +189,7 @@ function TaskAttachment({
         )}
         {isAssigned && !archived ? state.terminals.map((terminal) => {
           const local = isLocalTerminal(terminal.id)
-          const model = local ? 'advanced' : terminalModel(state, terminal.id)
+          const model = terminalModel(state, terminal.id)
           const label = local ? terminal.id === 'spark-ultra' ? 'Spark Ultra' : 'Spark' : terminal.id === 'terminal-2' ? 'Terminal 2' : 'Terminal'
           return (
             <div className="employment-attachment-meta employment-task-economy" key={terminal.id}>
@@ -559,7 +559,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
       const retryTerminal = state.terminals.find((terminal) => terminal.id === retryTerminalId)
       const retryFastMode = retryTerminal?.fastMode ?? false
       const retryCost = retryTerminal
-        ? taskTokenCost(currentTask.task, retryFastMode, terminalModel(state, retryTerminal.id), retryTerminal.id === 'spark')
+        ? taskTokenCost(currentTask.task, retryFastMode, terminalModel(state, retryTerminal.id), isLocalTerminal(retryTerminal.id))
         : taskCost(currentTask.task)
       const currentFailure = !currentTask.archived && currentTask.task.status === 'failed' && currentTask.task.attempt === message.task.attempt
       const canRetry = state.stage === 'hired' && currentFailure && retryTerminal !== undefined && canFundTaskAttempt(state, currentTask.task, retryFastMode, retryTerminalId)
@@ -742,7 +742,8 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
     if (state.stage !== 'hired' || !task || (task.status !== 'approval' && task.status !== 'blocked')) return
     dispatch({ type: 'approve-task', id: task.id, approved })
   }
-  const retryCost = task ? taskTokenCost(task, fastMode, isLocalTerminal(terminalId) ? 'advanced' : terminalModel(state, terminalId), isLocalTerminal(terminalId)) : 0
+  const progress = task ? Math.min(100, Math.max(0, (task.progress / Math.max(1, task.difficulty)) * 100)) : 0
+  const retryCost = task ? taskTokenCost(task, fastMode, terminalModel(state, terminalId), isLocalTerminal(terminalId)) : 0
   return (
     <section
       ref={laneRef}
@@ -825,7 +826,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
   const slots = isLocal ? 2 : terminal?.slots ?? 0
   const yolo = terminal?.yolo ?? false
   const fastMode = isLocal ? false : terminal?.fastMode ?? false
-  const model = isLocal ? 'advanced' : terminalModel(state, terminalId)
+  const model = terminalModel(state, terminalId)
   const refillIn = 100 - (state.elapsed % 100 || 0)
   const terminalRef = useRef<HTMLDivElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
@@ -906,6 +907,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
             <span>Model</span>
             <select
               value={model}
+              disabled={state.stage !== 'hired'}
               onChange={(event) => dispatch({ type: 'set-terminal-model', terminalId, model: event.target.value as AgentModelId })}
               aria-label={`${terminalId} model`}
             >

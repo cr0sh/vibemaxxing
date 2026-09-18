@@ -123,13 +123,15 @@ function App() {
               devOpenTarget === 'tiro' ? 'social' :
                 devOpenTarget === 'market' ? 'market' :
                   devOpenTarget === 'spark' ? 'spark' :
-                    devOpenTarget === 'spark-ultra' ? 'spark-ultra' :
+                    devOpenTarget === 'spark-ultra' ? 'shop' :
                       devOpenTarget === 'mercury' ? 'mercury' :
                         devOpenTarget === 'second-job' ? 'messenger' :
-                          devOpenTarget === 'monopoly' || devOpenTarget === 'frontier' ? 'terminal' :
-                            devOpenTarget === 'shorts' ? 'shorts' : null
+                          devOpenTarget === 'monopoly' ? 'social' :
+                            devOpenTarget === 'frontier' ? 'terminal' :
+                              devOpenTarget === 'shorts' ? 'shorts' : null
   return (
     <div className={`app-shell stage-${state.stage}`}>
+      <DesktopWidgets state={state} now={now} />
       <Desktop
         key={`${state.stage === 'hired' || state.stage === 'lost' || state.stage === 'won' ? 'employment' : state.stage}-${devRemount}`}
         state={state}
@@ -203,8 +205,7 @@ function Desktop({
   const lastSample = useRef<number | null>(null)
   const [previousRevisions, setPreviousRevisions] = useState<RevisionMap>({})
   const [previousMercuryOwned, setPreviousMercuryOwned] = useState(state.mercuryOwned)
-  const previousShortsUnlocked = useRef(state.shortsUnlocked)
-  const shortsAutoOpened = useRef(false)
+  const [previousShortsUnlocked, setPreviousShortsUnlocked] = useState(state.shortsUnlocked)
   const devWindowOpenedRef = useRef(false)
 
   const cancelAutofill = () => {
@@ -361,19 +362,14 @@ function Desktop({
     setFocusRequest((request) => request + 1)
     setActiveWindow(id)
   }
-  useEffect(() => {
-    if (previousMercuryOwned === state.mercuryOwned) return
+  if (previousMercuryOwned !== state.mercuryOwned) {
     setPreviousMercuryOwned(state.mercuryOwned)
     if (state.mercuryOwned) openWindow('mercury')
-  }, [state.mercuryOwned])
-  useEffect(() => {
-    const wasUnlocked = previousShortsUnlocked.current
-    previousShortsUnlocked.current = state.shortsUnlocked
-    if (!wasUnlocked && state.shortsUnlocked && state.stage === 'hired' && !shortsAutoOpened.current) {
-      shortsAutoOpened.current = true
-      openWindow('shorts')
-    }
-  }, [state.shortsUnlocked, state.stage])
+  }
+  if (previousShortsUnlocked !== state.shortsUnlocked) {
+    setPreviousShortsUnlocked(state.shortsUnlocked)
+    if (state.shortsUnlocked && state.stage === 'hired') openWindow('shorts')
+  }
   const focusDefeat = () => {
     acknowledgeDockWindow('defeat')
     setDefeatClaimed(true)
@@ -503,7 +499,7 @@ function Desktop({
   const applicationTitle = secondApplicationAvailable ? 'Second job application' : 'Job application'
   const offerCompany = secondOfferAvailable ? state.secondJobOffer : currentCompany
   const endingIsVictory = state.stage === 'won'
-  const endingIsEnergyLoss = state.lossReason === 'energy' || (state.stage === 'lost' && state.energy <= 0)
+  const endingIsEnergyLoss = state.lossReason === 'energy'
   const endingTitle = endingIsVictory ? 'You won' : endingIsEnergyLoss ? 'Energy depleted' : 'You are fired'
   const endingHeading = endingIsVictory
     ? 'You are now a multimillionaire'
@@ -511,9 +507,9 @@ function Desktop({
       ? 'Your energy ran out'
       : 'You are fired'
   const endingBody = endingIsVictory
-    ? `Your liquid net worth is $${Math.round(gameNetWorth(state)).toLocaleString('en-US')}, above the $${WIN_NET_WORTH.toLocaleString('en-US')} finish line. You do not need to work anymore.`
+    ? `Your liquid net worth is $${Math.round(gameNetWorth(state)).toLocaleString('en-US')}, meeting the $${WIN_NET_WORTH.toLocaleString('en-US')} finish line. You do not need to work anymore.`
     : endingIsEnergyLoss
-      ? 'The work never stopped, and your energy reached zero. Take a real break before trying again.'
+      ? 'Your energy reached zero and you fell into depression. This run is over. Take a real break before trying again.'
       : state.failure ?? 'The work ended before the artifact arrived. You can try again.'
   const endingIcon = endingIsVictory ? '🏆' : endingIsEnergyLoss ? '🫥' : '⚠️'
 

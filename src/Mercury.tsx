@@ -41,7 +41,7 @@ const employerName = (state: GameState, jobId: JobId): string => (
   jobId === 'secondary' ? state.secondJob?.company ?? 'Second employer' : state.company ?? 'Primary employer'
 )
 
-const taskSnapshotModel = (task: Pick<WorkTask, 'model' | 'local'>): AgentModelId => task.local ? 'advanced' : task.model ?? 'basic'
+const taskSnapshotModel = (task: Pick<WorkTask, 'model' | 'local'>): AgentModelId => task.model ?? (task.local ? 'reasoning' : 'basic')
 
 const isMercuryAutoTask = (task: WorkTask): boolean => (
   task.mercuryAuto === true
@@ -108,6 +108,7 @@ function FailedRetryNotice({ state, failedTasks, dispatch }: {
 
 function TaskCard({ state, task }: { state: GameState; task: WorkTask }) {
   const modelId = taskSnapshotModel(task)
+  const model = AGENT_MODELS[modelId]
   const location = isLocalTerminal(task.terminalId ?? 'terminal') ? task.terminalId === 'spark-ultra' ? 'Spark Ultra' : 'Spark' : task.terminalId === 'terminal-2' ? 'Terminal 2' : 'Terminal'
   const remaining = task.deadlineAt - state.elapsed
   const progress = task.status === 'artifact' ? 100 : taskProgress(task)
@@ -174,7 +175,7 @@ function TerminalCard({ state, terminalId }: { state: GameState; terminalId: Ter
   const terminal = state.terminals.find((candidate) => candidate.id === terminalId)
   if (terminal === undefined) return null
   const local = isLocalTerminal(terminalId)
-  const modelId = local ? 'advanced' : terminalModel(state, terminalId)
+  const modelId = terminalModel(state, terminalId)
   const model = AGENT_MODELS[modelId]
   const paneCount = local ? 2 : terminal.slots
   const activeTasks = state.tasks.filter((task) => task.terminalId === terminalId && task.slot !== null && task.status !== 'assigned')
