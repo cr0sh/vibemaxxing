@@ -64,7 +64,7 @@
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -153,13 +153,31 @@
   background: #0c0914;
 }
 
-.shorts-media-unloaded {
-  display: grid;
-  place-items: center;
-  padding: 1rem;
-  color: rgba(247, 243, 255, 0.55);
-  font-size: 0.78rem;
+.shorts-media-status {
+  position: absolute;
+  right: 0.7rem;
+  bottom: 2.05rem;
+  left: 0.7rem;
+  margin: 0;
+  padding: 0.42rem 0.55rem;
+  border-radius: 0.38rem;
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(12, 9, 20, 0.78);
+  font-size: 0.7rem;
+  line-height: 1.35;
   text-align: center;
+}
+
+.shorts-media-error {
+  color: #ffe0e5;
+  background: rgba(100, 20, 34, 0.92);
+}
+
+.shorts-media-status a {
+  color: #fff;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
 }
 
 .shorts-media-note {
