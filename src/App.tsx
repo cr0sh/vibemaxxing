@@ -3,8 +3,11 @@ import type { ChangeEvent, Dispatch, FormEvent } from 'react'
 import {
   completedTaskCount,
   companies,
+  gameNetWorth,
   gameReducer,
   initialGame,
+  isLocalTerminal,
+  WIN_NET_WORTH,
   type Application,
   type DevJumpTarget,
   type GameAction,
@@ -19,12 +22,14 @@ import { MessengerContent, TerminalContent } from './Employment'
 import { MarketContent } from './Market'
 import { ShopContent } from './Shop'
 import { SocialContent } from './Social'
+import { ShortsContent } from './Shorts'
 import { MercuryContent } from './Mercury'
 import { WindowFrame, WindowWorkspace } from './DesktopWindows'
 import { ResourceCounter } from './ResourceCounter'
 import './App.css'
 
-type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'spark' | 'shop' | 'social' | 'market' | 'mercury' | 'defeat'
+type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'spark' | 'spark-ultra' | 'shop' | 'social' | 'market' | 'mercury' | 'shorts' | 'defeat'
+
 type WindowState = Record<WindowId, boolean>
 type RevisionMap = Partial<Record<WindowId, string | GameState['messages'] | GameState['socialPosts'] | Set<string>>>
 
@@ -114,18 +119,19 @@ function App() {
       devOpenTarget === 'applying' ? 'apply' :
         devOpenTarget === 'offer' ? 'offer' :
           devOpenTarget === 'hired' ? 'messenger' :
-            devOpenTarget === 'lost' ? 'defeat' :
+            devOpenTarget === 'lost' || devOpenTarget === 'energy-loss' || devOpenTarget === 'won' ? 'defeat' :
               devOpenTarget === 'tiro' ? 'social' :
                 devOpenTarget === 'market' ? 'market' :
                   devOpenTarget === 'spark' ? 'spark' :
-                    devOpenTarget === 'mercury' ? 'mercury' :
-                      devOpenTarget === 'second-job' ? 'messenger' :
-                        devOpenTarget === 'frontier' ? 'terminal' : null
+                    devOpenTarget === 'spark-ultra' ? 'spark-ultra' :
+                      devOpenTarget === 'mercury' ? 'mercury' :
+                        devOpenTarget === 'second-job' ? 'messenger' :
+                          devOpenTarget === 'monopoly' || devOpenTarget === 'frontier' ? 'terminal' :
+                            devOpenTarget === 'shorts' ? 'shorts' : null
   return (
     <div className={`app-shell stage-${state.stage}`}>
-      <DesktopWidgets state={state} now={now} />
       <Desktop
-        key={`${state.stage === 'hired' || state.stage === 'lost' ? 'employment' : state.stage}-${devRemount}`}
+        key={`${state.stage === 'hired' || state.stage === 'lost' || state.stage === 'won' ? 'employment' : state.stage}-${devRemount}`}
         state={state}
         dispatch={dispatch}
         isDevPaused={isDevPaused}
@@ -155,9 +161,8 @@ function Desktop({
   onDevWindowOpened: () => void
 }) {
   const [application, setApplication] = useState<Application>(emptyApplication)
-  const hasEmployment =
-    state.stage === 'hired' ||
-    (state.stage === 'lost' && (state.tasks.length > 0 || completedTaskCount(state) > 0 || state.elapsed > 0))
+  const isEnding = state.stage === 'lost' || state.stage === 'won'
+  const hasEmployment = state.stage === 'hired' || isEnding
   const secondApplicationAvailable =
     state.stage === 'hired' && state.secondJobUnlocked && state.secondJob === null && state.secondJobOffer === null
   const secondOfferAvailable = state.stage === 'hired' && state.secondJobOffer !== null
@@ -170,18 +175,20 @@ function Desktop({
     terminal: state.stage === 'hired' || openWindowOnMount === 'terminal',
     'terminal-2': openWindowOnMount === 'terminal-2',
     spark: openWindowOnMount === 'spark',
+    'spark-ultra': openWindowOnMount === 'spark-ultra',
     shop: openWindowOnMount === 'shop',
     mercury: state.mercuryOwned || openWindowOnMount === 'mercury',
     social: openWindowOnMount === 'social',
     market: openWindowOnMount === 'market',
-    defeat: state.stage === 'lost',
+    shorts: openWindowOnMount === 'shorts',
+    defeat: isEnding,
   }))
   const [acknowledgedDockWindows, setAcknowledgedDockWindows] = useState<Set<WindowId>>(
     () => new Set((Object.keys(windows) as WindowId[]).filter((id) => windows[id])),
   )
   const [requestedActiveWindow, setActiveWindow] = useState<WindowId>(() => {
     if (openWindowOnMount) return openWindowOnMount
-    if (state.stage === 'lost') return 'defeat'
+    if (isEnding) return 'defeat'
     if (state.stage === 'hired') return 'messenger'
     if (state.stage === 'offer') return 'offer'
     return 'apply'
@@ -190,12 +197,14 @@ function Desktop({
   const [isAutofilling, setIsAutofilling] = useState(false)
   const [defeatDismissed, setDefeatDismissed] = useState(false)
   const [defeatClaimed, setDefeatClaimed] = useState(false)
-  const defeatAutoFront = state.stage === 'lost' && !defeatDismissed && !defeatClaimed
+  const defeatAutoFront = isEnding && !defeatDismissed && !defeatClaimed
   const fillTimer = useRef<number | null>(null)
   const fillRun = useRef(0)
   const lastSample = useRef<number | null>(null)
   const [previousRevisions, setPreviousRevisions] = useState<RevisionMap>({})
   const [previousMercuryOwned, setPreviousMercuryOwned] = useState(state.mercuryOwned)
+  const previousShortsUnlocked = useRef(state.shortsUnlocked)
+  const shortsAutoOpened = useRef(false)
   const devWindowOpenedRef = useRef(false)
 
   const cancelAutofill = () => {
@@ -229,9 +238,10 @@ function Desktop({
             ...(state.mercuryOwned ? ['mercury' as const] : []),
             ...(state.market !== null ? ['market' as const] : []),
             ...(state.socialInstalledAt !== null ? ['social' as const] : []),
-            ...(state.stage === 'lost' ? ['defeat' as const] : []),
+            ...(state.shortsUnlocked ? ['shorts' as const] : []),
+            ...(isEnding ? ['defeat' as const] : []),
           ]
-        : state.stage === 'lost' ? ['defeat'] : []
+        : isEnding ? ['defeat'] : []
   const activeWindow = stageWindows.includes(requestedActiveWindow)
     ? requestedActiveWindow
     : stageWindows.find((id) => windows[id]) ?? stageWindows[0] ?? requestedActiveWindow
@@ -239,7 +249,6 @@ function Desktop({
 
   const revisions: RevisionMap = {
     messenger: state.messages,
-    social: state.socialPosts,
     shop: [
       state.fastModeUnlocked,
       state.advancedModelAnnouncedAt !== null,
@@ -249,6 +258,10 @@ function Desktop({
       state.sparkAnnouncedAt !== null && state.elapsed >= state.sparkAnnouncedAt + 10,
       state.sparkPurchasedAt !== null,
       state.sparkDeliveryAt !== null,
+      state.sparkUltraAnnouncedAt !== null,
+      state.sparkUltraAnnouncedAt !== null && state.elapsed >= state.sparkUltraAnnouncedAt + 10,
+      state.sparkUltraPurchasedAt !== null,
+      state.sparkUltraDeliveryAt !== null,
       state.frontierModelUnlocked,
       state.secondJobUnlocked,
       state.terminals.map((terminal) => `${terminal.id}:${terminal.slots}:${terminal.yolo}`).join(','),
@@ -264,7 +277,7 @@ function Desktop({
   }
   for (const terminal of state.terminals) {
     const revision = new Set([
-      `setup:${terminal.slots}:${terminal.yolo}:${terminal.model}:${terminal.fastMode}:${terminal.id !== 'spark' && state.frontierModelUnlocked}`,
+      `setup:${terminal.slots}:${terminal.yolo}:${terminal.model}:${terminal.fastMode}:${!isLocalTerminal(terminal.id) && state.frontierModelUnlocked}`,
     ])
     for (const task of state.tasks) {
       if (task.terminalId === terminal.id && (task.status === 'approval' || task.status === 'failed' || task.status === 'artifact')) {
@@ -348,10 +361,19 @@ function Desktop({
     setFocusRequest((request) => request + 1)
     setActiveWindow(id)
   }
-  if (previousMercuryOwned !== state.mercuryOwned) {
+  useEffect(() => {
+    if (previousMercuryOwned === state.mercuryOwned) return
     setPreviousMercuryOwned(state.mercuryOwned)
     if (state.mercuryOwned) openWindow('mercury')
-  }
+  }, [state.mercuryOwned])
+  useEffect(() => {
+    const wasUnlocked = previousShortsUnlocked.current
+    previousShortsUnlocked.current = state.shortsUnlocked
+    if (!wasUnlocked && state.shortsUnlocked && state.stage === 'hired' && !shortsAutoOpened.current) {
+      shortsAutoOpened.current = true
+      openWindow('shorts')
+    }
+  }, [state.shortsUnlocked, state.stage])
   const focusDefeat = () => {
     acknowledgeDockWindow('defeat')
     setDefeatClaimed(true)
@@ -480,6 +502,20 @@ function Desktop({
   const applicationCount = secondApplicationAvailable ? state.secondJobApplications : state.submissions
   const applicationTitle = secondApplicationAvailable ? 'Second job application' : 'Job application'
   const offerCompany = secondOfferAvailable ? state.secondJobOffer : currentCompany
+  const endingIsVictory = state.stage === 'won'
+  const endingIsEnergyLoss = state.lossReason === 'energy' || (state.stage === 'lost' && state.energy <= 0)
+  const endingTitle = endingIsVictory ? 'You won' : endingIsEnergyLoss ? 'Energy depleted' : 'You are fired'
+  const endingHeading = endingIsVictory
+    ? 'You are now a multimillionaire'
+    : endingIsEnergyLoss
+      ? 'Your energy ran out'
+      : 'You are fired'
+  const endingBody = endingIsVictory
+    ? `Your liquid net worth is $${Math.round(gameNetWorth(state)).toLocaleString('en-US')}, above the $${WIN_NET_WORTH.toLocaleString('en-US')} finish line. You do not need to work anymore.`
+    : endingIsEnergyLoss
+      ? 'The work never stopped, and your energy reached zero. Take a real break before trying again.'
+      : state.failure ?? 'The work ended before the artifact arrived. You can try again.'
+  const endingIcon = endingIsVictory ? '🏆' : endingIsEnergyLoss ? '🫥' : '⚠️'
 
   return (
     <>
@@ -594,10 +630,14 @@ function Desktop({
 
                   {state.terminals.map((terminal) => (
                     <WindowFrame
-                      key={terminal.id}
                       id={terminal.id}
+                      key={terminal.id}
                       icon="🖥️"
-                      title={terminal.id === 'terminal' ? 'Terminal' : terminal.id === 'terminal-2' ? 'Terminal 2' : 'Mapple Spark'}
+                      title={
+                        isLocalTerminal(terminal.id)
+                          ? terminal.id === 'spark-ultra' ? 'Mapple Spark Ultra' : 'Mapple Spark'
+                          : terminal.id === 'terminal' ? 'Terminal' : 'Terminal 2'
+                      }
                       active={isWindowActive(terminal.id)}
                       className={`terminal-window-frame terminal-window-${terminal.id} ${terminal.yolo ? 'terminal-window-yolo' : ''}`}
                       contentLayout="fill"
@@ -667,23 +707,38 @@ function Desktop({
                       <SocialContent state={state} dispatch={dispatch} />
                     </WindowFrame>
                   )}
+                  {state.shortsUnlocked && (
+                    <WindowFrame
+                      id="shorts"
+                      icon="🎬"
+                      title="Shorts"
+                      active={state.stage === 'hired' && windows.shorts && isWindowActive('shorts')}
+                      className="shorts-window-frame"
+                      contentLayout="fill"
+                      hidden={!windows.shorts}
+                      onFocus={() => focusWindow('shorts')}
+                      onMinimize={() => minimizeWindow('shorts')}
+                    >
+                      <ShortsContent state={state} dispatch={dispatch} active={state.stage === 'hired' && windows.shorts && isWindowActive('shorts')} />
+                    </WindowFrame>
+                  )}
                 </>
               )}
-              {state.stage === 'lost' && (
+              {isEnding && (
                 <WindowFrame
                   id="defeat"
-                  icon="⚠️"
-                  title="You are fired"
+                  icon={endingIcon}
+                  title={endingTitle}
                   active={isWindowActive('defeat')}
-                  className="loss-window"
-                  hidden={state.stage !== 'lost' || defeatDismissed}
+                  className={`loss-window ${endingIsVictory ? 'victory-window' : endingIsEnergyLoss ? 'energy-loss-window' : ''}`}
+                  hidden={!isEnding || defeatDismissed}
                   onFocus={focusDefeat}
                   onMinimize={() => minimizeWindow('defeat')}
                 >
                   <div className="loss-card">
-                    <span className="loss-icon" aria-hidden="true">⌁</span>
-                    <h2>You are fired</h2>
-                    <p>{state.failure ?? 'The work ended before the artifact arrived. You can try again.'}</p>
+                    <span className="loss-icon" aria-hidden="true">{endingIcon}</span>
+                    <h2>{endingHeading}</h2>
+                    <p>{endingBody}</p>
                     <button className="primary-button" type="button" onClick={retryGame}>Try again</button>
                   </div>
                 </WindowFrame>
@@ -708,6 +763,11 @@ function Desktop({
               <button type="button" onClick={() => runDevJump('mercury')}>Mercury</button>
               <button type="button" onClick={() => runDevJump('second-job')}>Second job</button>
               <button type="button" onClick={() => runDevJump('frontier')}>Frontier</button>
+              <button type="button" onClick={() => runDevJump('monopoly')}>Monopoly</button>
+              <button type="button" onClick={() => runDevJump('spark-ultra')}>Spark Ultra</button>
+              <button type="button" onClick={() => runDevJump('shorts')}>Shorts</button>
+              <button type="button" onClick={() => runDevJump('energy-loss')}>Energy loss</button>
+              <button type="button" onClick={() => runDevJump('won')}>Won</button>
               <button type="button" onClick={retryGame}>Reset</button>
             </div>
           </details>
@@ -730,18 +790,22 @@ function Desktop({
                         ? { icon: '☿', label: 'Mercury' }
                         : id === 'market'
                           ? { icon: '📈', label: 'Market' }
-                        : id === 'social'
-                          ? { icon: 'Z', label: 'ZZZ' }
-                          : id === 'defeat'
-                            ? { icon: '⚠️', label: 'You are fired' }
-                            : id === 'spark'
-                              ? { icon: '🖥️', label: 'Mapple Spark' }
-                              : { icon: '🖥️', label: id === 'terminal' ? 'Terminal' : 'Terminal 2' }
+                          : id === 'social'
+                            ? { icon: 'Z', label: 'ZZZ' }
+                            : id === 'shorts'
+                              ? { icon: '🎬', label: 'Shorts' }
+                              : id === 'defeat'
+                                ? { icon: endingIcon, label: endingTitle }
+                                : id === 'spark-ultra'
+                                  ? { icon: '🖥️', label: 'Mapple Spark Ultra' }
+                                  : id === 'spark'
+                                    ? { icon: '🖥️', label: 'Mapple Spark' }
+                                    : { icon: '🖥️', label: id === 'terminal' ? 'Terminal' : 'Terminal 2' }
               const isOpen = id === 'defeat'
-                ? state.stage === 'lost' && !defeatDismissed
+                ? isEnding && !defeatDismissed
                 : windows[id] || (id === 'messenger' && defeatAutoFront)
               const isFrontmost = isOpen && isWindowActive(id)
-              const dockAcknowledged = acknowledgedDockWindows.has(id) || (state.stage === 'lost' && id === 'defeat')
+              const dockAcknowledged = acknowledgedDockWindows.has(id) || (isEnding && id === 'defeat')
               return (
                 <button
                   className={`dock-item dock-item-${id} ${isFrontmost ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''} ${!dockAcknowledged ? 'dock-item-attention' : ''}`}
@@ -769,7 +833,7 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
   const dateLabel = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
   const monthLabel = now.toLocaleDateString([], { month: 'short' }).toUpperCase()
   const weekdayLabel = now.toLocaleDateString([], { weekday: 'short' }).toUpperCase()
-  const showPaidResources = state.stage === 'hired' || (state.stage === 'lost' && state.company !== null)
+  const showPaidResources = state.stage === 'hired' || ((state.stage === 'lost' || state.stage === 'won') && state.company !== null)
   const tokenDeficit = hasTokenDeficit(state)
   const previousTokenDeficitRef = useRef(tokenDeficit)
   const [tokenDeficitAnnouncement, setTokenDeficitAnnouncement] = useState('')
