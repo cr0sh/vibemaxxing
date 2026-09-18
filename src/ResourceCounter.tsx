@@ -1,18 +1,13 @@
 import { memo, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
+import { useAnimatedNumber } from './useAnimatedNumber'
 import './ResourceCounter.css'
 
 const duration = 650
 const minimumParticles = 3
 const maximumParticles = 20
 
-type CounterFrame = {
-  value: number
-  active: boolean
-}
-
 type Particle = {
-  kind: 'direction' | 'sparkle'
   x: number
   y: number
   travelX: number
@@ -50,7 +45,6 @@ function noise(seed: number) {
 
 function createParticles(count: number, width: number, height: number, id: number) {
   const perimeter = 2 * (width + height)
-  const directionParticles = Math.max(1, Math.round(count * 0.25))
 
   return Array.from({ length: count }, (_, index): Particle => {
     const distance = ((index + 0.5) / count) * perimeter
@@ -78,11 +72,9 @@ function createParticles(count: number, width: number, height: number, id: numbe
     const variation = noise(id * 23 + index * 17)
     const tangent = (variation - 0.5) * 0.35
     const travel = 18 + variation * 19
-    const isDirection = index < directionParticles
-    const rotation = isDirection ? 0 : Math.round((variation - 0.5) * 40)
+    const rotation = Math.round((variation - 0.5) * 40)
 
     return {
-      kind: isDirection ? 'direction' : 'sparkle',
       x: (x / width) * 100,
       y: (y / height) * 100,
       travelX: Math.round((normalX + (normalY === 0 ? 0 : tangent)) * travel),
@@ -92,8 +84,8 @@ function createParticles(count: number, width: number, height: number, id: numbe
       delay: Math.round(variation * 90),
       duration: duration - Math.round(variation * 90),
       rotation,
-      endRotation: rotation + (isDirection ? Math.round((variation - 0.5) * 18) : Math.round((variation - 0.5) * 100)),
-      scale: isDirection ? 0.95 + variation * 0.25 : 0.72 + variation * 0.42,
+      endRotation: rotation + Math.round((variation - 0.5) * 100),
+      scale: 0.72 + variation * 0.42,
     }
   })
 }
@@ -125,8 +117,8 @@ function ResourceBurst({ burst, overlayRef }: { burst: Burst; overlayRef: RefObj
         } as CSSProperties
 
         return (
-          <span className={`resource-counter-particle resource-counter-particle-${particle.kind}`} style={style} key={index}>
-            {particle.kind === 'direction' ? (burst.direction === 'up' ? '🔺' : '🔻') : '✨'}
+          <span className="resource-counter-particle resource-counter-particle-sparkle" style={style} key={index}>
+            ✨
           </span>
         )
       })}
@@ -146,29 +138,26 @@ export function ResourceCounter({
   prefix?: string
   formatter?: Intl.NumberFormat
 }) {
-  const displayed = useRef(value)
+  const animated = useAnimatedNumber(value)
   const previousTarget = useRef(value)
   const sequence = useRef(0)
   const widgetRef = useRef<HTMLElement | null>(null)
   const burstRef = useRef<HTMLSpanElement | null>(null)
-  const [frame, setFrame] = useState<CounterFrame>({ value, active: false })
   const [burst, setBurst] = useState<Burst | null>(null)
 
   useEffect(() => {
-    const from = displayed.current
     const oldTarget = previousTarget.current
     const delta = Math.abs(value - oldTarget)
     const direction = value >= oldTarget ? 'up' : 'down'
     const animation = ++sequence.current
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
     let setupRequest = 0
-    let request = 0
     let followRequest = 0
     let burstTimer = 0
 
     previousTarget.current = value
 
-    const setupAnimation = () => {
+    const setupBurst = () => {
       if (sequence.current !== animation) return
 
       setBurst(null)
@@ -230,45 +219,29 @@ export function ResourceCounter({
           }, duration)
         }
       }
-
-      if (motion.matches || from === value) {
-        displayed.current = value
-        setFrame((current) => (current.value === value && !current.active ? current : { value, active: false }))
-        return
-      }
-
-      const startedAt = performance.now()
-      const advance = (now: number) => {
-        const progress = Math.min(1, (now - startedAt) / duration)
-        const eased = 1 - (1 - progress) ** 3
-        const nextValue = progress === 1 ? value : Math.round(from + (value - from) * eased)
-        const active = progress < 1
-        displayed.current = nextValue
-        setFrame((current) => {
-          if (sequence.current !== animation || (current.value === nextValue && current.active === active)) return current
-          return { value: nextValue, active }
-        })
-        if (active) request = window.requestAnimationFrame(advance)
-      }
-
-      request = window.requestAnimationFrame(advance)
     }
 
-    setupRequest = window.requestAnimationFrame(setupAnimation)
+    setupRequest = window.requestAnimationFrame(setupBurst)
     return () => {
       window.cancelAnimationFrame(setupRequest)
-      window.cancelAnimationFrame(request)
       window.cancelAnimationFrame(followRequest)
       window.clearTimeout(burstTimer)
     }
   }, [value])
 
+  const renderedValue = animated.value === undefined ? value :
+    animated.active ? Math.round(animated.value) : animated.value
+  const directionIcon = animated.active && animated.direction === 'up' ? '▲' :
+    animated.active && animated.direction === 'down' ? '▼' : ''
+
   return (
     <>
-      <strong ref={widgetRef} className={`resource-count ${frame.active ? 'resource-count-changing' : ''}`} aria-label={`${prefix}${value.toLocaleString()}`}>
-        <span aria-hidden="true">{prefix}{formatter ? formatter.format(frame.value) : frame.value.toLocaleString()}</span>
+      <strong ref={widgetRef} className={`resource-count ${animated.active ? 'resource-count-changing' : ''}`} aria-label={`${prefix}${value.toLocaleString()}`}>
+        <span aria-hidden="true">{prefix}{formatter ? formatter.format(renderedValue) : renderedValue.toLocaleString()}</span>
+        <span className="resource-count-direction" aria-hidden="true">{directionIcon}</span>
       </strong>
       {burst && <MemoizedResourceBurst burst={burst} overlayRef={burstRef} />}
     </>
   )
 }
+

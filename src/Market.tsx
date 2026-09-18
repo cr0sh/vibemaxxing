@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Dispatch, FormEvent } from 'react'
 import type { GameAction, GameState } from './game'
 import { executableBtcQuantity, type TradeMarker } from './trading'
+import { useAnimatedNumber } from './useAnimatedNumber'
 import './Market.css'
 
 const usdFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -54,10 +55,43 @@ const compactUsdFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2,
 })
 
+function formatCompactUsd(value: number | undefined): string {
+  return value !== undefined && Number.isFinite(value) ? `$${compactUsdFormatter.format(value)}` : '$—'
+}
+
+function formatQuantityNotional(value: number | undefined): string {
+  return value !== undefined && Number.isFinite(value) ? `(= ${compactUsdFormatter.format(value)} USD)` : ''
+}
+
 
 function pnlTone(value: number | undefined): 'positive' | 'negative' | 'neutral' {
   if (value === undefined || !Number.isFinite(value) || Math.abs(value) < 0.005) return 'neutral'
   return value > 0 ? 'positive' : 'negative'
+}
+
+type AnimatedMarketNumberProps = {
+  target: number | undefined
+  format: (value: number | undefined) => string
+  tag?: 'span' | 'strong'
+  className?: string
+  tone?: 'pnl'
+}
+
+function AnimatedMarketNumber({
+  target,
+  format,
+  tag = 'span',
+  className,
+  tone,
+}: AnimatedMarketNumberProps) {
+  const { value } = useAnimatedNumber(target)
+  const Tag = tag
+  const classes = `market-animated-number${className ? ` ${className}` : ''}${tone === 'pnl' ? ` market-pnl-${pnlTone(value)}` : ''}`
+  return (
+    <Tag className={classes} aria-label={format(target)}>
+      {format(value)}
+    </Tag>
+  )
 }
 
 function marketValue(
@@ -74,6 +108,17 @@ function marketValue(
     !Number.isFinite(price)
   ) return undefined
   const value = usd + btc * price
+  return Number.isFinite(value) ? value : undefined
+}
+
+function btcMarketValue(btc: number | undefined, price: number | undefined): number | undefined {
+  if (
+    btc === undefined ||
+    price === undefined ||
+    !Number.isFinite(btc) ||
+    !Number.isFinite(price)
+  ) return undefined
+  const value = btc * price
   return Number.isFinite(value) ? value : undefined
 }
 
@@ -164,6 +209,7 @@ export function MarketContent({ state, dispatch }: MarketProps) {
   const trades = market?.trades ?? EMPTY_TRADES
   const chart = useMemo(() => buildChart(history, trades), [history, trades])
   const portfolioValue = marketValue(market?.usd, market?.btc, market?.price)
+  const btcHoldingValue = btcMarketValue(market?.btc, market?.price)
   const realizedPnl = market !== null && Number.isFinite(market.realizedPnl) ? market.realizedPnl : undefined
   const unrealizedPnl = market !== null &&
     Number.isFinite(market.btc) &&
@@ -207,13 +253,17 @@ export function MarketContent({ state, dispatch }: MarketProps) {
         <h2>Market</h2>
         <div className="market-header-values">
           <div
-            className={`market-pnl market-pnl-${pnlTone(lifetimePnl)}`}
+            className="market-pnl"
             title={`Lifetime P&L ${formatSignedUsd(lifetimePnl)}; realized ${formatSignedUsd(realizedPnl)}; unrealized ${formatSignedUsd(unrealizedPnl)}`}
             aria-label={`Lifetime P&L ${formatSignedUsd(lifetimePnl)}; realized ${formatSignedUsd(realizedPnl)}; unrealized ${formatSignedUsd(unrealizedPnl)}`}
           >
             <span>Lifetime P&amp;L</span>
-            <strong>{formatSignedUsd(lifetimePnl)}</strong>
-            <small>Realized {formatSignedUsd(realizedPnl)} · Unrealized {formatSignedUsd(unrealizedPnl)}</small>
+            <AnimatedMarketNumber tag="strong" target={lifetimePnl} format={formatSignedUsd} tone="pnl" className="market-pnl-value" />
+            <small>
+              Realized <AnimatedMarketNumber target={realizedPnl} format={formatSignedUsd} />
+              {' · '}
+              Unrealized <AnimatedMarketNumber target={unrealizedPnl} format={formatSignedUsd} />
+            </small>
           </div>
           <div className="market-current-price" aria-label={`Current Bitcoin price ${formatUsd(market?.price)}`}>
             <span>BTC / USD</span>
@@ -231,15 +281,29 @@ export function MarketContent({ state, dispatch }: MarketProps) {
               aria-label={`Total portfolio value ${formatUsd(portfolioValue)}, excluding cash`}
             >
               <span>Total portfolio</span>
-              <strong>{formatUsd(portfolioValue)}</strong>
+              <AnimatedMarketNumber tag="strong" target={portfolioValue} format={formatUsd} />
             </div>
-            <div className="market-balance market-balance-usd">
+            <div
+              className="market-balance market-balance-usd"
+              aria-label={`Trading USD ${formatUsd(market?.usd)}`}
+            >
               <span>Trading USD</span>
-              <strong>{formatUsd(market?.usd)}</strong>
+              <AnimatedMarketNumber tag="strong" target={market?.usd} format={formatUsd} />
             </div>
-            <div className="market-balance market-balance-btc">
+            <div
+              className="market-balance market-balance-btc"
+              aria-label={`Trading BTC ${formatBtc(market?.btc)} BTC, worth ${formatUsd(btcHoldingValue)}`}
+            >
               <span>Trading BTC</span>
-              <strong>{formatBtc(market?.btc)} <small>BTC</small></strong>
+              <strong>
+                <AnimatedMarketNumber target={market?.btc} format={formatBtc} /> <small>BTC</small>
+              </strong>
+              <small
+                className="market-balance-secondary"
+                aria-label={`Current BTC value ${formatUsd(btcHoldingValue)}`}
+              >
+                ≈ <AnimatedMarketNumber target={btcHoldingValue} format={formatCompactUsd} />
+              </small>
             </div>
           </section>
       <figure className="market-chart">
@@ -302,7 +366,11 @@ export function MarketContent({ state, dispatch }: MarketProps) {
               />
               <button className="market-max-button" type="button" aria-pressed={transferMax} onClick={() => setTransferMax((enabled) => !enabled)} disabled={!canUseMarket}>MAX</button>
             </div>
-            <span id="market-transfer-help" className="market-form-help">Cash {formatUsd(state.money)} · wallet {formatUsd(market?.usd)}</span>
+            <span id="market-transfer-help" className="market-form-help">
+              Cash <AnimatedMarketNumber target={state.money} format={formatUsd} />
+              {' · '}
+              wallet <AnimatedMarketNumber target={market?.usd} format={formatUsd} />
+            </span>
             <div className="market-actions">
               <button type="submit" disabled={!canDeposit}>{transferMax ? 'Deposit MAX' : 'Deposit USD'}</button>
               <button type="button" disabled={!canWithdraw} onClick={() => {
@@ -329,10 +397,14 @@ export function MarketContent({ state, dispatch }: MarketProps) {
                 aria-describedby="market-btc-help market-btc-notional"
               />
               <span id="market-btc-notional" className="market-quantity-hint">
-                {btcNotional !== null ? `(= ${compactUsdFormatter.format(btcNotional)} USD)` : ''}
+                <AnimatedMarketNumber target={btcNotional ?? undefined} format={formatQuantityNotional} />
               </span>
             </div>
-            <span id="market-btc-help" className="market-form-help">USD wallet {formatUsd(market?.usd)} · BTC wallet {formatBtc(market?.btc)} BTC</span>
+            <span id="market-btc-help" className="market-form-help">
+              USD wallet <AnimatedMarketNumber target={market?.usd} format={formatUsd} />
+              {' · '}
+              BTC wallet <AnimatedMarketNumber target={market?.btc} format={formatBtc} /> BTC
+            </span>
             <div className="market-actions">
               <button type="submit" disabled={!canBuy}>Buy BTC</button>
               <button type="button" disabled={!canSell} onClick={() => executeTrade('sell')}>Sell BTC</button>
