@@ -109,10 +109,10 @@ export function useDragDropSource(source: DragDropSource, enabled: boolean) {
   const onFocus = useCallback(() => begin(), [begin])
   const onMouseEnter = useCallback(() => begin(), [begin])
   const onBlur = useCallback((event: FocusEvent<HTMLElement>) => {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) leave()
+    if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) leave()
   }, [leave])
   const onMouseLeave = useCallback((event: MouseEvent<HTMLElement>) => {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) leave()
+    if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) leave()
   }, [leave])
   const onDragStart = useCallback((_event: DragEvent<HTMLElement>) => {
     if (enabled) startDrag(stableSource)
