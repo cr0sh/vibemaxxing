@@ -55,7 +55,14 @@ describe('trading balances', () => {
 
     expect(bought.btc).toBe(0.01)
     expect(bought.usd).toBe(0)
+    expect(bought.btcCostBasis).toBe(1)
     expect(bought.trades.at(-1)).toMatchObject({ elapsed: 0, side: 'buy', price: 100, quantity: 0.01 })
+
+    const sold = tradeMarket(bought, 'sell', 0.010000000000000002)
+    expect(sold.btc).toBe(0)
+    expect(sold.btcCostBasis).toBe(0)
+    expect(sold.realizedPnl).toBe(0)
+    expect(sold.trades.at(-1)).toMatchObject({ elapsed: 0, side: 'sell', price: 100, quantity: 0.01 })
   })
 
   test('prunes only markers older than the retained history boundary during catch-up', () => {
@@ -92,6 +99,49 @@ describe('trading balances', () => {
     const sold = tradeMarket(partlySold, 'sell', 0.1)
     expect(sold.btc).toBe(0)
     expect(sold.usd).toBeCloseTo(100, 10)
+  })
+
+  test('tracks weighted-average basis across mixed-price buys and partial then full sales', () => {
+    const funded = transferMarket(createMarket(17, 0), 1_000, 'deposit', 600).market
+    const firstBuy = tradeMarket(funded, 'buy', 2)
+    const secondBuy = tradeMarket({ ...firstBuy, price: 200 }, 'buy', 1)
+
+    expect(secondBuy.btc).toBe(3)
+    expect(secondBuy.btcCostBasis).toBe(400)
+    expect(secondBuy.realizedPnl).toBe(0)
+
+    const partialSale = tradeMarket({ ...secondBuy, price: 300 }, 'sell', 1.5)
+    expect(partialSale.btc).toBe(1.5)
+    expect(partialSale.btcCostBasis).toBe(200)
+    expect(partialSale.realizedPnl).toBe(250)
+
+    const fullSale = tradeMarket({ ...partialSale, price: 50 }, 'sell', partialSale.btc)
+    expect(fullSale.btc).toBe(0)
+    expect(fullSale.btcCostBasis).toBe(0)
+    expect(fullSale.realizedPnl).toBe(125)
+  })
+
+  test('retains lifetime realized PnL through transfers and marker eviction', () => {
+    const deposited = transferMarket(createMarket(17, 0), 1_000, 'deposit', 250)
+    const bought = tradeMarket(deposited.market, 'buy', 1)
+    const sold = tradeMarket({ ...bought, price: 250 }, 'sell', 1)
+    const withdrawn = transferMarket(sold, deposited.money, 'withdraw', sold.usd)
+    const redeposited = transferMarket(withdrawn.market, withdrawn.money, 'deposit', 100)
+    const transferred = transferMarket(redeposited.market, redeposited.money, 'withdraw', 100)
+
+    expect(transferred.market.realizedPnl).toBe(150)
+    expect(transferred.market.btcCostBasis).toBe(0)
+    const caughtUp = advanceMarket(transferred.market, 120)
+    expect(caughtUp.trades).toEqual([])
+    expect(caughtUp.realizedPnl).toBe(150)
+    expect(caughtUp.btcCostBasis).toBe(0)
+  })
+
+  test('a large break-even sale preserves previously realized profit', () => {
+    const market = { ...createMarket(17, 0), btc: 1e14, btcCostBasis: 1e16, realizedPnl: 0.25 }
+    const sold = tradeMarket(market, 'sell', market.btc)
+    expect(sold.btc).toBe(0)
+    expect(sold.realizedPnl).toBe(0.25)
   })
 
   test('invalid trades and transfers cannot poison or overdraw either wallet', () => {

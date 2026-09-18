@@ -231,10 +231,16 @@ export function SocialContent({ state, dispatch }: SocialProps) {
 
       <div className="social-feed-toolbar">
         <p className="social-feed-title">Your timeline</p>
-        <UnreadIndicator count={unreadCount} onClick={scrollToLatest} />
       </div>
-      <div className="social-feed" ref={scrollRef} role="log" aria-label="Vibemaxxers' Social Network timeline" aria-live="polite">
-        {posts.map((post) => <SocialPostCard key={post.id} post={post} state={state} dispatch={dispatch} activeLotteryId={activeLotteryId} />)}
+      <div className="social-feed-shell">
+        <div className="social-feed" ref={scrollRef} role="log" aria-label="Vibemaxxers' Social Network timeline" aria-live="polite">
+          {posts.map((post) => <SocialPostCard key={post.id} post={post} state={state} dispatch={dispatch} activeLotteryId={activeLotteryId} />)}
+        </div>
+        <UnreadIndicator
+          count={unreadCount}
+          onClick={scrollToLatest}
+          label={{ singular: 'update', plural: 'updates' }}
+        />
       </div>
     </section>
   )

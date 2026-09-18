@@ -611,13 +611,13 @@
   margin-top: 0.72rem;
 }
 .window.terminal-window-yolo {
-  border: 1px solid #ff267f;
+  border: 0.5px solid #ff267f;
   box-shadow:
-    0 0 0 3px #ff267f,
-    0 0 0 5px rgba(255, 38, 127, 0.54),
+    0 0 0 1.5px #ff267f,
+    0 0 0 2.5px rgba(255, 38, 127, 0.54),
     0 0 1.6rem rgba(255, 38, 127, 0.9),
     0 0 3.6rem rgba(255, 38, 127, 0.58),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.62);
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.62);
   animation-name: employment-terminal-rainbow;
   animation-duration: 3.2s;
   animation-timing-function: linear;
@@ -628,51 +628,51 @@
   0% {
     border-color: #ff267f;
     box-shadow:
-      0 0 0 3px #ff267f,
-      0 0 0 5px rgba(255, 38, 127, 0.58),
+      0 0 0 1.5px #ff267f,
+      0 0 0 2.5px rgba(255, 38, 127, 0.58),
       0 0 1.6rem rgba(255, 38, 127, 0.94),
       0 0 3.6rem rgba(255, 38, 127, 0.62),
-      inset 0 0 0 1px rgba(255, 255, 255, 0.66);
+      inset 0 0 0 0.5px rgba(255, 255, 255, 0.66);
   }
 
   25% {
     border-color: #ff8a1f;
     box-shadow:
-      0 0 0 3px #ff8a1f,
-      0 0 0 5px rgba(255, 138, 31, 0.58),
+      0 0 0 1.5px #ff8a1f,
+      0 0 0 2.5px rgba(255, 138, 31, 0.58),
       0 0 1.6rem rgba(255, 138, 31, 0.94),
       0 0 3.6rem rgba(255, 138, 31, 0.62),
-      inset 0 0 0 1px rgba(255, 255, 255, 0.66);
+      inset 0 0 0 0.5px rgba(255, 255, 255, 0.66);
   }
 
   50% {
     border-color: #c72dff;
     box-shadow:
-      0 0 0 3px #c72dff,
-      0 0 0 5px rgba(199, 45, 255, 0.58),
+      0 0 0 1.5px #c72dff,
+      0 0 0 2.5px rgba(199, 45, 255, 0.58),
       0 0 1.6rem rgba(199, 45, 255, 0.94),
       0 0 3.6rem rgba(199, 45, 255, 0.62),
-      inset 0 0 0 1px rgba(255, 255, 255, 0.66);
+      inset 0 0 0 0.5px rgba(255, 255, 255, 0.66);
   }
 
   75% {
     border-color: #2cf5ff;
     box-shadow:
-      0 0 0 3px #2cf5ff,
-      0 0 0 5px rgba(44, 245, 255, 0.58),
+      0 0 0 1.5px #2cf5ff,
+      0 0 0 2.5px rgba(44, 245, 255, 0.58),
       0 0 1.6rem rgba(44, 245, 255, 0.94),
       0 0 3.6rem rgba(44, 245, 255, 0.62),
-      inset 0 0 0 1px rgba(255, 255, 255, 0.66);
+      inset 0 0 0 0.5px rgba(255, 255, 255, 0.66);
   }
 
   100% {
     border-color: #ff267f;
     box-shadow:
-      0 0 0 3px #ff267f,
-      0 0 0 5px rgba(255, 38, 127, 0.58),
+      0 0 0 1.5px #ff267f,
+      0 0 0 2.5px rgba(255, 38, 127, 0.58),
       0 0 1.6rem rgba(255, 38, 127, 0.94),
       0 0 3.6rem rgba(255, 38, 127, 0.62),
-      inset 0 0 0 1px rgba(255, 255, 255, 0.66);
+      inset 0 0 0 0.5px rgba(255, 255, 255, 0.66);
   }
 }
 
@@ -748,8 +748,8 @@
   .window.terminal-window-yolo {
     border-color: #ff76b8 !important;
     box-shadow:
-      0 0 0 3px #ff267f,
-      0 0 0 6px rgba(255, 38, 127, 0.72),
+      0 0 0 1.5px #ff267f,
+      0 0 0 3px rgba(255, 38, 127, 0.72),
       0 0 1.9rem rgba(255, 38, 127, 0.92),
       var(--shadow-window) !important;
   }

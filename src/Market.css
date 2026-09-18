@@ -14,7 +14,7 @@
   display: grid;
   min-width: 0;
   min-height: 0;
-  grid-template-columns: minmax(0, 1.25fr) minmax(15.5rem, 0.85fr);
+  grid-template-columns: minmax(0, 1.7fr) minmax(12.5rem, 0.65fr);
   gap: 0.8rem;
 }
 
@@ -53,7 +53,7 @@
   gap: 1rem;
 }
 
-.market-portfolio,
+.market-pnl,
 .market-current-price {
   display: grid;
   min-width: 0;
@@ -65,7 +65,8 @@
   letter-spacing: 0.06em;
 }
 
-.market-portfolio strong {
+.market-pnl strong,
+.market-current-price strong {
   overflow: hidden;
   color: #f7e6a5;
   font-size: 0.95rem;
@@ -74,13 +75,31 @@
   white-space: nowrap;
 }
 
-.market-current-price strong {
-  overflow: hidden;
-  color: #69dbb5;
-  font-size: 0.95rem;
+.market-pnl small {
+  max-width: min(24rem, 42vw);
+  color: #8aa5aa;
+  font-size: 0.66rem;
+  line-height: 1.35;
   letter-spacing: normal;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: right;
+  text-transform: none;
+  white-space: normal;
+}
+
+.market-pnl-positive strong {
+  color: #69dbb5;
+}
+
+.market-pnl-negative strong {
+  color: #ff9c93;
+}
+
+.market-pnl-neutral strong {
+  color: #f7e6a5;
+}
+
+.market-current-price strong {
+  color: #69dbb5;
 }
 
 .market-balances {
@@ -124,7 +143,7 @@
   font-weight: 600;
 }
 
-.market-balance-cash strong {
+.market-balance-portfolio strong {
   color: #f7e6a5;
 }
 
@@ -208,6 +227,7 @@
   display: grid;
   min-width: 0;
   min-height: 0;
+  align-content: start;
   grid-template-rows: auto auto;
   gap: 0.65rem;
 }
@@ -269,11 +289,60 @@
 .market-input-control input {
   min-width: 0;
 }
+.market-quantity-control {
+  display: grid;
+  min-width: 0;
+  min-height: 1.9rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border: 1px solid #517078;
+  border-radius: 0.42rem;
+  background: #0d181d;
+}
+
+.market-quantity-control-empty {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.market-quantity-control input {
+  min-width: 0;
+  width: 100%;
+  min-height: 1.9rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+
+.market-quantity-control:focus-within {
+  border-color: #69dbb5;
+  outline: 2px solid rgba(105, 219, 181, 0.3);
+  outline-offset: 1px;
+}
+
+.market-quantity-hint {
+  max-width: 8rem;
+  overflow: hidden;
+  padding: 0 0.5rem 0 0.25rem;
+  color: #8aa5aa;
+  font-size: 0.62rem;
+  line-height: 1;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
 
 .market-form input:focus-visible {
   border-color: #69dbb5;
   outline: 2px solid rgba(105, 219, 181, 0.3);
   outline-offset: 1px;
+}
+
+.market-quantity-control input:focus-visible {
+  border: 0;
+  outline: none;
 }
 
 .market-form-help {
@@ -283,7 +352,7 @@
 
 .market-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.35rem;
 }
 
@@ -349,7 +418,7 @@
     gap: 0.6rem;
   }
 
-  .market-portfolio,
+  .market-pnl,
   .market-current-price {
     flex: 1 1 0;
   }

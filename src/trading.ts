@@ -10,6 +10,8 @@ export type MarketState = {
   usd: number
   btc: number
   price: number
+  realizedPnl: number
+  btcCostBasis: number
   history: { elapsed: number; price: number }[]
   trades: TradeMarker[]
   nextTradeId: number
@@ -56,6 +58,8 @@ export function createMarket(seed: number, elapsed: number): MarketState {
     usd: 0,
     btc: 0,
     price,
+    realizedPnl: 0,
+    btcCostBasis: 0,
     history: [{ elapsed: at, price }],
     trades: [],
     nextTradeId: 1,
@@ -107,6 +111,8 @@ function validMarket(market: MarketState): boolean {
   return Number.isFinite(market.usd) && market.usd >= 0 &&
     Number.isFinite(market.btc) && market.btc >= 0 &&
     Number.isFinite(market.price) && market.price >= MIN_PRICE && market.price <= MAX_PRICE &&
+    Number.isFinite(market.realizedPnl) &&
+    Number.isFinite(market.btcCostBasis) && market.btcCostBasis >= 0 &&
     Array.isArray(market.history) &&
     Array.isArray(market.trades) &&
     Number.isInteger(market.nextTradeId) && market.nextTradeId >= 1 &&
@@ -135,6 +141,17 @@ export function tradeMarket(market: MarketState, side: 'buy' | 'sell', amount: n
   const latest = market.history.at(-1)
   if (latest === undefined || !Number.isFinite(latest.elapsed)) return market
   const value = quantity * market.price
+  const soldCostBasis = side === 'sell'
+    ? quantity === market.btc ? market.btcCostBasis : market.btcCostBasis * (quantity / market.btc)
+    : 0
+  const nextUsd = side === 'buy' ? Math.max(0, market.usd - value) : market.usd + value
+  const nextBtc = side === 'buy' ? market.btc + quantity : market.btc - quantity
+  const nextRealizedPnl = side === 'sell' ? market.realizedPnl + (value - soldCostBasis) : market.realizedPnl
+  const nextBtcCostBasis = side === 'buy'
+    ? market.btcCostBasis + value
+    : quantity === market.btc ? 0 : market.btcCostBasis - soldCostBasis
+  if (!Number.isFinite(nextUsd) || !Number.isFinite(nextBtc) ||
+    !Number.isFinite(nextRealizedPnl) || !Number.isFinite(nextBtcCostBasis) || nextBtcCostBasis < 0) return market
   const marker: TradeMarker = {
     id: market.nextTradeId,
     elapsed: latest.elapsed,
@@ -143,9 +160,15 @@ export function tradeMarket(market: MarketState, side: 'buy' | 'sell', amount: n
     quantity,
   }
   const trades = [...market.trades, marker]
-  return side === 'buy'
-    ? { ...market, usd: Math.max(0, market.usd - value), btc: market.btc + quantity, trades, nextTradeId: market.nextTradeId + 1 }
-    : { ...market, usd: market.usd + value, btc: market.btc - quantity, trades, nextTradeId: market.nextTradeId + 1 }
+  return {
+    ...market,
+    usd: nextUsd,
+    btc: nextBtc,
+    realizedPnl: nextRealizedPnl,
+    btcCostBasis: nextBtcCostBasis,
+    trades,
+    nextTradeId: market.nextTradeId + 1,
+  }
 }
 
 export function transferMarket(
