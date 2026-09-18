@@ -1,0 +1,32 @@
+.language-picker {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.language-picker-globe {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.language-picker-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.language-picker select {
+  max-width: 8.5rem;
+  min-height: 2rem;
+}
+
+@media (max-width: 520px) {
+  .language-picker select {
+    max-width: 7rem;
+  }
+}

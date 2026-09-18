@@ -5,6 +5,8 @@ import {
   transferMarket,
   type MarketState,
 } from './trading'
+import type { MessageKey } from './i18n/catalog'
+
 
 export type Application = {
   name: string
@@ -55,19 +57,17 @@ export type EmploymentJob = {
   expectation: number
   welcomeReacted: boolean
   startedAt: number
-}
-
 export type TaskDescriptor = {
   id: number
   jobId: JobId
   title: string
+  titleKey?: MessageKey
   description: string
+  descriptionKey?: MessageKey
   difficulty: number
   artifactName: string
   kind: 'standard' | 'architecture'
   complexity: number
-}
-
 export type WorkTask = TaskDescriptor & {
   deadlineAt: number
   startedAt: number | null
@@ -87,12 +87,11 @@ export type WorkTask = TaskDescriptor & {
   status: TaskStatus
   progress: number
   nextApprovalAt: number
-  terminalId: TerminalId | null
-  slot: number | null
   approvalPrompt: string | null
+  approvalPromptKey?: MessageKey
 }
 export type EmploymentTaskSnapshot = Pick<WorkTask,
-  | 'id' | 'jobId' | 'title' | 'description' | 'difficulty' | 'artifactName' | 'kind' | 'complexity'
+  | 'id' | 'jobId' | 'title' | 'titleKey' | 'description' | 'descriptionKey' | 'difficulty' | 'artifactName' | 'kind' | 'complexity'
   | 'deadlineAt' | 'startedAt' | 'assignedAt' | 'baseReward' | 'model' | 'fastMode' | 'local'
   | 'attempt' | 'status' | 'progress' | 'failedAt'
 >
@@ -106,15 +105,12 @@ export type EmploymentMessage =
   | ({ id: string; type: 'incentives'; elapsed: number } & JobMessage)
   | ({ id: string; type: 'promotion'; elapsed: number; level: 4 | 5 } & JobMessage)
   | ({ id: string; type: 'attempt-failed'; elapsed: number; task: EmploymentTaskSnapshot } & JobMessage)
-  | ({ id: string; type: 'firing'; elapsed: number; failure: string } & JobMessage)
+  | ({ id: string; type: 'firing'; elapsed: number; failure: string; failureKey?: MessageKey; failureParams?: Readonly<Record<string, string>> } & JobMessage)
 
 type SocialPostType = 'campaign' | 'lottery' | 'reset' | 'model' | 'fast-mode' | 'market' | 'spark' | 'spark-delivered' |
   'advanced-model' | 'mercury' | 'second-job' | 'frontier-model' | 'monopoly' | 'spark-ultra' | 'spark-ultra-delivered' | 'shorts'
 type SocialPostBase = {
   id: string
-  elapsed: number
-  likes: number
-}
 export type SocialPost =
   | (SocialPostBase & { type: 'lottery'; lotteryVariant: number })
   | (SocialPostBase & { type: Exclude<SocialPostType, 'lottery'> })
@@ -160,6 +156,8 @@ export type GameState = {
   welcomeReacted: boolean
   messages: EmploymentMessage[]
   failure: string | null
+  failureKey?: MessageKey
+  failureParams?: Readonly<Record<string, string>>
   expectation: number
   rng: number
   socialRng: number
@@ -388,6 +386,11 @@ const APPROVAL_PROMPTS: readonly string[] = [
   'Run the migration?', 'Remove unused files?', 'Retry the failed command?', 'Run the formatter?',
   'Update the configuration?', 'Commit the changes?',
 ]
+const APPROVAL_PROMPT_KEYS: readonly MessageKey[] = [
+  'task.approval.applyPatch', 'task.approval.testSuite', 'task.approval.build', 'task.approval.lockfile',
+  'task.approval.migration', 'task.approval.removeFiles', 'task.approval.retryCommand', 'task.approval.formatter',
+  'task.approval.configuration', 'task.approval.commit',
+]
 
 function normalizeSeed(seed: number): number {
   return Number.isFinite(seed) ? Math.trunc(seed) >>> 0 : 1
@@ -477,10 +480,15 @@ function openingGraceAt(elapsed: number): number {
   const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
   return 1 - clamp(safeElapsed / OPENING_GRACE_SECONDS, 0, 1)
 }
-function drawApprovalCheckpoint(rng: number): readonly [number, number, string] {
+function drawApprovalCheckpoint(rng: number): readonly [number, number, string, MessageKey] {
   const [delayRng, approvalDelay] = drawInteger(rng, APPROVAL_DELAY_MIN_SECONDS, APPROVAL_DELAY_MAX_SECONDS)
   const [nextRng, promptIndex] = drawInteger(delayRng, 0, APPROVAL_PROMPTS.length - 1)
-  return [nextRng, approvalDelay, APPROVAL_PROMPTS[promptIndex] ?? APPROVAL_PROMPTS[0] ?? '']
+  return [
+    nextRng,
+    approvalDelay,
+    APPROVAL_PROMPTS[promptIndex] ?? APPROVAL_PROMPTS[0] ?? '',
+    APPROVAL_PROMPT_KEYS[promptIndex] ?? APPROVAL_PROMPT_KEYS[0]!,
+  ]
 }
 function projectedGrossAt(elapsed: number): number {
   const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
@@ -543,6 +551,10 @@ function withJob(state: GameState, jobId: JobId, update: (job: EmploymentJob) =>
   }
 }
 
+function taskMessageKey(kind: TaskDescriptor['kind'], index: number, field: 'title' | 'description'): MessageKey {
+  return `task.${kind}.${index}.${field}` as MessageKey
+}
+
 function createDescriptor(
   state: Pick<GameState, 'rng' | 'nextTaskId' | 'secondJobUnlocked' | 'taskBags' | 'lastTaskBlueprint'>,
   jobId: JobId,
@@ -579,7 +591,9 @@ function createDescriptor(
     id: state.nextTaskId,
     jobId,
     title: blueprint.title,
+    titleKey: taskMessageKey(kind, blueprintIndex, 'title'),
     description: blueprint.description,
+    descriptionKey: taskMessageKey(kind, blueprintIndex, 'description'),
     difficulty,
     artifactName: blueprint.artifactName,
     kind,
@@ -622,7 +636,9 @@ function snapshotTask(task: WorkTask): EmploymentTaskSnapshot {
     id: task.id,
     jobId: task.jobId,
     title: task.title,
+    titleKey: task.titleKey,
     description: task.description,
+    descriptionKey: task.descriptionKey,
     difficulty: task.difficulty,
     artifactName: task.artifactName,
     kind: task.kind,
@@ -954,10 +970,17 @@ function maybeUnlockProgression(state: GameState): GameState {
   return discoverShopProducts(appendFeatureAnnouncements(current))
 }
 
-function lose(state: GameState, failure: string, reason: 'deadline' | 'energy', jobId: JobId = 'primary'): GameState {
-  const lost = { ...state, stage: 'lost' as const, failure, lossReason: reason }
+function lose(
+  state: GameState,
+  failure: string,
+  reason: 'deadline' | 'energy',
+  jobId: JobId = 'primary',
+  failureKey?: MessageKey,
+  failureParams?: Readonly<Record<string, string>>,
+): GameState {
+  const lost = { ...state, stage: 'lost' as const, failure, failureKey, failureParams, lossReason: reason }
   return reason === 'deadline'
-    ? appendMessage(lost, { id: 'firing', type: 'firing', jobId, elapsed: state.elapsed, failure })
+    ? appendMessage(lost, { id: 'firing', type: 'firing', jobId, elapsed: state.elapsed, failure, failureKey, failureParams })
     : lost
 }
 
@@ -1106,11 +1129,13 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
   let nextRng = state.rng
   let nextApprovalAt = 0
   let nextApprovalPrompt: string | null = null
+  let nextApprovalPromptKey: MessageKey | undefined
   if (!terminal.yolo) {
     const drawn = drawApprovalCheckpoint(state.rng)
     nextRng = drawn[0]
     nextApprovalAt = state.elapsed + drawn[1]
     nextApprovalPrompt = drawn[2]
+    nextApprovalPromptKey = drawn[3]
   }
   const nextTokens = state.tokens - cost
   return {
@@ -1132,6 +1157,7 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
       progress: candidate.status === 'failed' ? 0 : candidate.progress,
       nextApprovalAt,
       approvalPrompt: nextApprovalPrompt,
+      approvalPromptKey: nextApprovalPromptKey,
     } : candidate),
     rng: nextRng,
   }
@@ -1302,7 +1328,7 @@ function applyIdleTime(
     }
   }
   const next: GameState = { ...state, energy, inactivityElapsed, inactivityDecay }
-  return energy <= 0 ? lose(next, 'You ran out of energy and got to depression.', 'energy') : next
+  return energy <= 0 ? lose(next, 'You ran out of energy and got to depression.', 'energy', 'primary', 'ending.energy.body') : next
 }
 
 function maybeWin(state: GameState): GameState {
@@ -1347,7 +1373,13 @@ function tickHired(state: GameState, seconds: number): GameState {
       current = autoBuyTokens(current)
       current = updateSparkDelivery(current)
       const overdue = current.tasks.find((task) => current.elapsed >= task.deadlineAt)
-      if (overdue !== undefined) return lose(current, deadlineFailure(current, overdue), 'deadline', overdue.jobId)
+      if (overdue !== undefined) {
+        const company = overdue.jobId === 'secondary' ? current.secondJob?.company : current.company
+        return lose(current, deadlineFailure(current, overdue), 'deadline', overdue.jobId, 'ending.deadlineFailure', {
+          title: overdue.title,
+          company: company ?? 'your company',
+        })
+      }
     }
     current = applyIdleTime(current, step, currentElapsed)
     if (current.stage !== 'hired') return current
@@ -1674,7 +1706,7 @@ function reduceGame(state: GameState, action: GameAction): GameState {
       }
       const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? 'your company'
       const failure = `The developer preview did not clear ${company}'s hiring bar.`
-      return lose({ ...state, company }, failure, 'deadline')
+      return lose({ ...state, company }, failure, 'deadline', 'primary', 'ending.previewFailure', { company })
     }
     case 'tick':
       return tickHired(state, action.seconds)
@@ -1698,13 +1730,13 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         return { ...state, tasks: state.tasks.map((candidate, index) => index === taskIndex ? { ...candidate, status: 'blocked' } : candidate) }
       }
       if (task.terminalId !== null && state.terminals.some((terminal) => terminal.id === task.terminalId && terminal.yolo)) {
-        return { ...state, tasks: state.tasks.map((candidate, index) => index === taskIndex ? { ...candidate, status: 'working', nextApprovalAt: 0, approvalPrompt: null } : candidate) }
+        return { ...state, tasks: state.tasks.map((candidate, index) => index === taskIndex ? { ...candidate, status: 'working', nextApprovalAt: 0, approvalPrompt: null, approvalPromptKey: undefined } : candidate) }
       }
-      const [nextRng, approvalDelay, approvalPrompt] = drawApprovalCheckpoint(state.rng)
+      const [nextRng, approvalDelay, approvalPrompt, approvalPromptKey] = drawApprovalCheckpoint(state.rng)
       return {
         ...state,
         tasks: state.tasks.map((candidate, index) => index === taskIndex
-          ? { ...candidate, status: 'working', nextApprovalAt: state.elapsed + approvalDelay, approvalPrompt }
+          ? { ...candidate, status: 'working', nextApprovalAt: state.elapsed + approvalDelay, approvalPrompt, approvalPromptKey }
           : candidate),
         rng: nextRng,
       }
@@ -1842,13 +1874,13 @@ function reduceGame(state: GameState, action: GameAction): GameState {
       return state.stage === 'hired' && state.mercuryOwned && typeof action.enabled === 'boolean' && state.mercuryEnabled !== action.enabled ? { ...state, mercuryEnabled: action.enabled } : state
     case 'submit-second-job': {
       if (state.stage !== 'hired' || !state.secondJobUnlocked || state.secondJob !== null || state.secondJobOffer !== null || state.energy < 3) return state
-      const company = Number.isInteger(action.companyIndex) && action.companyIndex >= 0 && action.companyIndex < companies.length ? companies[action.companyIndex] ?? null : null
+      const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null
       if (company === null) return state
       const attempt = state.secondJobApplications + 1
       const chance = attempt >= 15 ? 1 : Math.min(1, 0.02 * 2 ** Math.max(0, attempt - 9))
       const offered = Number.isFinite(action.roll) && action.roll < chance
       const next = { ...state, secondJobApplications: attempt, secondJobOffer: offered ? company : null, energy: state.energy - 3 }
-      return next.energy <= 0 ? lose(next, 'You ran out of energy and got to depression.', 'energy') : next
+      return next.energy <= 0 ? lose(next, 'You ran out of energy and got to depression.', 'energy', 'primary', 'ending.energy.body') : next
     }
     case 'accept-second-job': {
       if (state.stage !== 'hired' || !state.secondJobUnlocked || state.secondJob !== null) return state

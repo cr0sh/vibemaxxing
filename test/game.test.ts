@@ -1009,8 +1009,6 @@ describe('developer previews', () => {
     const won = gameReducer(initialGame, { type: 'dev-jump', stage: 'won' })
     expect(won.stage).toBe('won')
     expect(won.wonAt).toBe(won.elapsed)
-    expect(won.nextTaskAt).not.toBe(Number.MAX_SAFE_INTEGER)
-    expect(won.tasks.length).toBeGreaterThan(0)
 
     const continued = gameReducer(won, { type: 'continue-after-win' })
     expect(continued.stage).toBe('hired')

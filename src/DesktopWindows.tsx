@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
 import { DragDropHintsProvider } from './DragDropHints'
+import { useI18n } from './i18n'
 import './DesktopWindows.css'
 
 type Point = { x: number; y: number }
@@ -174,10 +175,10 @@ function resizeWindow(current: Resize, pointer: Point, bounds: Bounds, minimum: 
 
   return { size: { width, height }, position }
 }
-
 export function WindowFrame({ id, icon, title, active, className = '', contentLayout = 'padded', onFocus, onMinimize, children, hidden = false }: WindowFrameProps) {
+  const { t } = useI18n()
   const workspace = useContext(WorkspaceContext)
-  if (!workspace) throw new Error('WindowFrame requires a WindowWorkspace')
+  if (!workspace) throw new Error(t('window.requiresWorkspace'))
   const { size: workspaceSize, bounds, order, focusRequest, register, unregister, raise } = workspace
   const defaults = windowDefaults[id] ?? defaultWindow
   const minimumSize = minimumWindowSizes[id] ?? minimumWindowSize
@@ -332,7 +333,7 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
           id={`window-heading-${id}`}
           role="button"
           tabIndex={0}
-          aria-label={`${title} window title bar`}
+          aria-label={t('window.aria.titleBar', { title })}
           aria-describedby={`window-instructions-${id}`}
           aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
           onKeyDown={moveWithKeys}
@@ -345,13 +346,13 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
           <span aria-hidden="true">{icon}</span>
           <span>{title}</span>
           <span id={`window-instructions-${id}`} className="window-drag-instructions">
-            Drag to move. Use arrow keys to move this window; hold Shift for larger steps.
+            {t('window.instructions.move')}
           </span>
         </div>
         <button
           className="window-minimize"
           type="button"
-          aria-label={`Minimize ${title} window`}
+          aria-label={t('window.aria.minimize', { title })}
           onClick={(event) => { event.stopPropagation(); setEntering(true); onMinimize() }}
         >
           <span aria-hidden="true">−</span>
@@ -367,7 +368,7 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
             type="button"
             tabIndex={keyboardAccessible ? 0 : -1}
             aria-hidden={keyboardAccessible ? undefined : true}
-            aria-label={keyboardAccessible ? `Resize ${title} window` : undefined}
+            aria-label={keyboardAccessible ? t('window.aria.resize', { title }) : undefined}
             aria-describedby={keyboardAccessible ? `window-resize-instructions-${id}` : undefined}
             aria-keyshortcuts={keyboardAccessible ? 'ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined}
             data-direction={direction}
@@ -383,7 +384,7 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
         )
       })}
       <span id={`window-resize-instructions-${id}`} className="window-drag-instructions">
-        Drag any window edge or corner to resize. Use arrow keys on the lower-right corner to resize this window; hold Shift for larger steps.
+        {t('window.instructions.resize')}
       </span>
     </section>
   )

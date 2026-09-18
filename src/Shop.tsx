@@ -21,6 +21,7 @@ import {
   upgradePrice,
 } from './game'
 import { useDragDropSource } from './DragDropHintsContext'
+import { useI18n, type Translate } from './i18n'
 import './Shop.css'
 
 type ShopProps = {
@@ -147,18 +148,17 @@ function useShopHighlights(state: GameState, active: boolean): ReadonlySet<ShopI
   return highlighted
 }
 
-
 type UpgradeProduct = {
   upgrade: TerminalUpgrade
   icon: string
-  title: string
-  detail: string
+  titleKey: 'shop.split.title' | 'shop.yolo.title' | 'shop.terminal.title'
+  detailKey: 'shop.split.detail' | 'shop.yolo.detail' | 'shop.terminal.detail'
 }
 
 const upgradeProducts: readonly UpgradeProduct[] = [
-  { upgrade: 'split', icon: '◫', title: 'Split window', detail: 'Run another agent in parallel.' },
-  { upgrade: 'yolo', icon: '⚡', title: 'YOLO mode', detail: 'Skip command approval pauses.' },
-  { upgrade: 'terminal', icon: '🖥️', title: 'Additional terminal', detail: 'Open a second terminal window.' },
+  { upgrade: 'split', icon: '◫', titleKey: 'shop.split.title', detailKey: 'shop.split.detail' },
+  { upgrade: 'yolo', icon: '⚡', titleKey: 'shop.yolo.title', detailKey: 'shop.yolo.detail' },
+  { upgrade: 'terminal', icon: '🖥️', titleKey: 'shop.terminal.title', detailKey: 'shop.terminal.detail' },
 ]
 
 const terminalLabel = (terminalId: TerminalId): string => {
@@ -168,9 +168,13 @@ const terminalLabel = (terminalId: TerminalId): string => {
   return 'Terminal'
 }
 
-const moneyLabel = (amount: number): string => `$${amount.toLocaleString()}`
+const moneyLabel = (amount: number, locale: string): string => new Intl.NumberFormat(locale, {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 2,
+}).format(Math.max(0, amount))
 
-const durationLabel = (seconds: number): string => {
+const durationLabel = (seconds: number, locale: string): string => {
   const safeSeconds = Math.max(0, Math.ceil(seconds))
   const minutes = Math.floor(safeSeconds / 60)
   const remainder = safeSeconds % 60
@@ -184,7 +188,8 @@ function UpgradeProductCard({
   targetTerminal,
   highlighted,
 }: ShopProps & { product: UpgradeProduct; targetTerminal: TerminalId } & ShopHighlightProps) {
-  const { upgrade, icon, title, detail } = product
+  const { t, locale } = useI18n()
+  const { upgrade, icon, titleKey, detailKey } = product
   const target = upgrade === 'terminal' ? 'terminal' : targetTerminal
   const localTarget = isLocalTerminal(target)
   const price = localTarget && upgrade === 'split' ? null : upgradePrice(state, upgrade, target)
@@ -194,15 +199,15 @@ function UpgradeProductCard({
     if (!canInstall || price === null) return
     dispatch({ type: 'buy-upgrade', upgrade, terminalId: target, source: 'click' })
   }
-  let buttonLabel = moneyLabel(price ?? 0)
-  if (state.stage !== 'hired') buttonLabel = 'Unavailable'
+  let buttonLabel = moneyLabel(price ?? 0, locale)
+  if (state.stage !== 'hired') buttonLabel = t('common.unavailable')
   else if (price === null) {
-    if (localTarget && upgrade === 'split') buttonLabel = 'Fixed panes'
-    else if (upgrade === 'split') buttonLabel = 'Maximum panes'
-    else if (upgrade === 'yolo') buttonLabel = 'Installed'
-    else buttonLabel = 'Two terminals max'
+    if (localTarget && upgrade === 'split') buttonLabel = t('shop.fixedPanes')
+    else if (upgrade === 'split') buttonLabel = t('shop.maximumPanes')
+    else if (upgrade === 'yolo') buttonLabel = t('common.installed')
+    else buttonLabel = t('shop.twoTerminalsMax')
   } else if (state.money < price) {
-    buttonLabel = `Need ${moneyLabel(price)}`
+    buttonLabel = t('shop.need', { price: moneyLabel(price, locale) })
   }
 
   return (
@@ -226,12 +231,12 @@ function UpgradeProductCard({
       onPointerDown={dragSource.onPointerDown}
       onPointerCancel={dragSource.onPointerCancel}
       onLostPointerCapture={dragSource.onLostPointerCapture}
-      aria-label={`${title} upgrade`}
+      aria-label={`${t(titleKey)} upgrade`}
     >
       <span className="shop-product-icon" aria-hidden="true">{icon}</span>
       <div className="shop-product-copy">
-        <h3>{title}</h3>
-        <p>{detail}</p>
+        <h3>{t(titleKey)}</h3>
+        <p>{t(detailKey)}</p>
       </div>
       <button className="shop-buy-button" type="button" onClick={installUpgrade} disabled={!canInstall}>
         {buttonLabel}
@@ -241,6 +246,7 @@ function UpgradeProductCard({
 }
 
 function SparkProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
+  const { t, locale } = useI18n()
   const announcedAt = state.sparkAnnouncedAt
   const purchased = state.sparkPurchasedAt !== null
   const delivered = state.terminals.some((terminal) => terminal.id === 'spark')
@@ -251,25 +257,25 @@ function SparkProduct({ state, dispatch, highlighted }: ShopProps & ShopHighligh
     if (canBuy) dispatch({ type: 'buy-spark' })
   }
 
-  let detail = 'Not announced yet.'
-  let buttonLabel = 'Unavailable'
+  let detail = t('shop.notAnnounced')
+  let buttonLabel = t('common.unavailable')
   if (announcedAt !== null && !available) {
-    detail = `Shop opens in ${durationLabel((availableAt ?? state.elapsed) - state.elapsed)} · ${moneyLabel(SPARK_PRICE)}.`
-    buttonLabel = `Opens ${durationLabel((availableAt ?? state.elapsed) - state.elapsed)}`
+    detail = t('shop.shopOpens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, locale), price: moneyLabel(SPARK_PRICE, locale) })
+    buttonLabel = t('shop.opens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, locale) })
   } else if (delivered) {
-    detail = `Delivered · 2 fixed ${AGENT_MODELS.reasoning.label} panes · no cloud task tokens.`
-    buttonLabel = 'Owned'
+    detail = t('shop.deliveredSpark', { model: AGENT_MODELS.reasoning.label })
+    buttonLabel = t('common.owned')
   } else if (purchased) {
     const deliveryAt = state.sparkDeliveryAt
     detail = deliveryAt === null
-      ? 'Paid · delivery pending.'
-      : `Paid ${moneyLabel(SPARK_PRICE)} · delivery in ${durationLabel(deliveryAt - state.elapsed)}.`
-    buttonLabel = deliveryAt === null ? 'Delivering' : `ETA ${durationLabel(deliveryAt - state.elapsed)}`
-  } else if (state.stage !== 'hired') {
-    detail = `${moneyLabel(SPARK_PRICE)} · 2 ${AGENT_MODELS.reasoning.label} panes · no cloud task tokens.`
+      ? t('shop.paidDeliveryPending')
+      : t('shop.paidDelivery', { price: moneyLabel(SPARK_PRICE, locale), time: durationLabel(deliveryAt - state.elapsed, locale) })
+    buttonLabel = deliveryAt === null ? t('shop.delivering') : t('common.eta', { time: durationLabel(deliveryAt - state.elapsed, locale) })
   } else {
-    detail = `${moneyLabel(SPARK_PRICE)} · 2 ${AGENT_MODELS.reasoning.label} panes · no cloud task tokens.`
-    buttonLabel = state.money >= SPARK_PRICE ? `Buy · ${moneyLabel(SPARK_PRICE)}` : `Need ${moneyLabel(SPARK_PRICE)}`
+    detail = t('shop.modelNoCloudTokens', { price: moneyLabel(SPARK_PRICE, locale), model: AGENT_MODELS.reasoning.label })
+    if (state.stage === 'hired') buttonLabel = state.money >= SPARK_PRICE
+      ? t('shop.buy', { price: moneyLabel(SPARK_PRICE, locale) })
+      : t('shop.need', { price: moneyLabel(SPARK_PRICE, locale) })
   }
 
   return (
@@ -279,14 +285,12 @@ function SparkProduct({ state, dispatch, highlighted }: ShopProps & ShopHighligh
         <h3>Mapple Spark</h3>
         <p>{detail}</p>
       </div>
-      <button className="shop-buy-button" type="button" onClick={buySpark} disabled={!canBuy}>
-        {buttonLabel}
-      </button>
+      <button className="shop-buy-button" type="button" onClick={buySpark} disabled={!canBuy}>{buttonLabel}</button>
     </article>
   )
 }
-
 function SparkUltraProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
+  const { t, locale } = useI18n()
   const announcedAt = state.sparkUltraAnnouncedAt
   const purchased = state.sparkUltraPurchasedAt !== null
   const delivered = state.terminals.some((terminal) => terminal.id === 'spark-ultra')
@@ -296,28 +300,26 @@ function SparkUltraProduct({ state, dispatch, highlighted }: ShopProps & ShopHig
   const buySparkUltra = () => {
     if (canBuy) dispatch({ type: 'buy-spark-ultra' })
   }
-
-  let detail = 'Not announced yet.'
-  let buttonLabel = 'Unavailable'
+  let detail = t('shop.notAnnounced')
+  let buttonLabel = t('common.unavailable')
   if (announcedAt !== null && !available) {
-    detail = `Sale opens in ${durationLabel((availableAt ?? state.elapsed) - state.elapsed)} · ${moneyLabel(SPARK_ULTRA_PRICE)}.`
-    buttonLabel = `Opens ${durationLabel((availableAt ?? state.elapsed) - state.elapsed)}`
+    detail = t('shop.saleOpens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, locale), price: moneyLabel(SPARK_ULTRA_PRICE, locale) })
+    buttonLabel = t('shop.opens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, locale) })
   } else if (delivered) {
-    detail = `Delivered · 2 fixed ${AGENT_MODELS.advanced.label} panes · no cloud task tokens.`
-    buttonLabel = 'Owned'
+    detail = t('shop.deliveredSpark', { model: AGENT_MODELS.advanced.label })
+    buttonLabel = t('common.owned')
   } else if (purchased) {
     const deliveryAt = state.sparkUltraDeliveryAt
     detail = deliveryAt === null
-      ? 'Paid · delivery pending.'
-      : `Paid ${moneyLabel(SPARK_ULTRA_PRICE)} · delivery in ${durationLabel(deliveryAt - state.elapsed)}.`
-    buttonLabel = deliveryAt === null ? 'Delivering' : `ETA ${durationLabel(deliveryAt - state.elapsed)}`
-  } else if (state.stage !== 'hired') {
-    detail = `${moneyLabel(SPARK_ULTRA_PRICE)} · 2 fixed ${AGENT_MODELS.advanced.label} panes · no cloud task tokens.`
+      ? t('shop.paidDeliveryPending')
+      : t('shop.paidDelivery', { price: moneyLabel(SPARK_ULTRA_PRICE, locale), time: durationLabel(deliveryAt - state.elapsed, locale) })
+    buttonLabel = deliveryAt === null ? t('shop.delivering') : t('common.eta', { time: durationLabel(deliveryAt - state.elapsed, locale) })
   } else {
-    detail = `${moneyLabel(SPARK_ULTRA_PRICE)} · 2 fixed ${AGENT_MODELS.advanced.label} panes · no cloud task tokens.`
-    buttonLabel = state.money >= SPARK_ULTRA_PRICE ? `Buy · ${moneyLabel(SPARK_ULTRA_PRICE)}` : `Need ${moneyLabel(SPARK_ULTRA_PRICE)}`
+    detail = t('shop.modelNoCloudTokens', { price: moneyLabel(SPARK_ULTRA_PRICE, locale), model: AGENT_MODELS.advanced.label })
+    if (state.stage === 'hired') buttonLabel = state.money >= SPARK_ULTRA_PRICE
+      ? t('shop.buy', { price: moneyLabel(SPARK_ULTRA_PRICE, locale) })
+      : t('shop.need', { price: moneyLabel(SPARK_ULTRA_PRICE, locale) })
   }
-
   return (
     <article className={productClassName(`shop-product shop-spark-ultra-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label="Mapple Spark Ultra">
       <span className="shop-product-icon" aria-hidden="true">▣</span>
@@ -325,14 +327,12 @@ function SparkUltraProduct({ state, dispatch, highlighted }: ShopProps & ShopHig
         <h3>Mapple Spark Ultra</h3>
         <p>{detail}</p>
       </div>
-      <button className="shop-buy-button" type="button" onClick={buySparkUltra} disabled={!canBuy}>
-        {buttonLabel}
-      </button>
+      <button className="shop-buy-button" type="button" onClick={buySparkUltra} disabled={!canBuy}>{buttonLabel}</button>
     </article>
   )
 }
-
 function AdvancedModelProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
+  const { t, locale } = useI18n()
   const canBuy = state.stage === 'hired' &&
     state.advancedModelAnnouncedAt !== null &&
     !state.advancedModelUnlocked &&
@@ -340,18 +340,16 @@ function AdvancedModelProduct({ state, dispatch, highlighted }: ShopProps & Shop
   const buyModel = () => {
     if (canBuy) dispatch({ type: 'buy-model', model: 'advanced' })
   }
-
-  let detail = `${moneyLabel(ADVANCED_MODEL_PRICE)} · handles harder tasks at ${AGENT_MODELS.reasoning.label} speed.`
-  let buttonLabel = 'Unavailable'
+  let detail = t('shop.advancedDetail', { price: moneyLabel(ADVANCED_MODEL_PRICE, locale), model: AGENT_MODELS.reasoning.label })
+  let buttonLabel = t('common.unavailable')
   if (state.advancedModelUnlocked) {
-    detail = `Handles harder tasks at ${AGENT_MODELS.reasoning.label} speed.`
-    buttonLabel = 'Owned'
+    detail = t('shop.handlesHarder', { model: AGENT_MODELS.reasoning.label })
+    buttonLabel = t('common.owned')
   } else if (state.stage === 'hired' && state.advancedModelAnnouncedAt !== null) {
     buttonLabel = state.money >= ADVANCED_MODEL_PRICE
-      ? `Buy · ${moneyLabel(ADVANCED_MODEL_PRICE)}`
-      : `Need ${moneyLabel(ADVANCED_MODEL_PRICE)}`
+      ? t('shop.buy', { price: moneyLabel(ADVANCED_MODEL_PRICE, locale) })
+      : t('shop.need', { price: moneyLabel(ADVANCED_MODEL_PRICE, locale) })
   }
-
   return (
     <article className={productClassName(`shop-product shop-model-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label="ConvexLM Pro model">
       <span className="shop-product-icon" aria-hidden="true">✦</span>
@@ -359,14 +357,12 @@ function AdvancedModelProduct({ state, dispatch, highlighted }: ShopProps & Shop
         <h3>ConvexLM Pro</h3>
         <p>{detail}</p>
       </div>
-      <button className="shop-buy-button" type="button" onClick={buyModel} disabled={!canBuy}>
-        {buttonLabel}
-      </button>
+      <button className="shop-buy-button" type="button" onClick={buyModel} disabled={!canBuy}>{buttonLabel}</button>
     </article>
   )
 }
-
 function MercuryProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
+  const { t, locale } = useI18n()
   const canBuy = state.stage === 'hired' && state.advancedModelUnlocked && !state.mercuryOwned && state.money >= MERCURY_PRICE
   const buyMercury = () => {
     if (canBuy) dispatch({ type: 'buy-mercury' })
@@ -374,34 +370,31 @@ function MercuryProduct({ state, dispatch, highlighted }: ShopProps & ShopHighli
   const setMercury = (enabled: boolean) => {
     if (state.stage === 'hired' && state.mercuryOwned) dispatch({ type: 'set-mercury', enabled })
   }
-
   return (
-    <article className={productClassName(`shop-product shop-mercury-product ${canBuy || state.mercuryOwned ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label="Mercury automatic handoffs">
+    <article className={productClassName(`shop-product shop-mercury-product ${canBuy || state.mercuryOwned ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label={t('shop.mercuryAria')}>
       <span className="shop-product-icon" aria-hidden="true">↔</span>
       <div className="shop-product-copy">
         <h3>Mercury</h3>
-        <p>Your most intelligent AI agent.</p>
-        <p>
-          {state.mercuryOwned
-            ? 'Owned · 300K per handoff. Auto-retry after 10s; approvals stay manual.'
-            : `${moneyLabel(MERCURY_PRICE)} · 300K each way, including a reserved return fee.`}
-        </p>
+        <p>{t('shop.mercuryDetail')}</p>
+        <p>{state.mercuryOwned
+          ? t('shop.mercuryOwnedDetail')
+          : t('shop.mercuryPriceDetail', { price: moneyLabel(MERCURY_PRICE, locale) })}</p>
       </div>
       {state.mercuryOwned ? (
         <label className="shop-fast-mode-toggle shop-mercury-toggle">
-          <span className="shop-fast-mode-toggle-label">{state.mercuryEnabled ? 'On' : 'Off'}</span>
+          <span className="shop-fast-mode-toggle-label">{state.mercuryEnabled ? t('common.on') : t('common.off')}</span>
           <input
             type="checkbox"
             checked={state.mercuryEnabled}
             disabled={state.stage !== 'hired'}
             onChange={(event) => setMercury(event.currentTarget.checked)}
-            aria-label="Enable Mercury automatic handoffs"
+            aria-label={t('shop.mercuryToggleAria')}
           />
           <span className="shop-toggle-track" aria-hidden="true"><span /></span>
         </label>
       ) : (
         <button className="shop-buy-button" type="button" onClick={buyMercury} disabled={!canBuy}>
-          {state.stage !== 'hired' ? 'Unavailable' : state.money >= MERCURY_PRICE ? `Buy · ${moneyLabel(MERCURY_PRICE)}` : `Need ${moneyLabel(MERCURY_PRICE)}`}
+          {state.stage !== 'hired' ? t('common.unavailable') : state.money >= MERCURY_PRICE ? t('shop.buy', { price: moneyLabel(MERCURY_PRICE, locale) }) : t('shop.need', { price: moneyLabel(MERCURY_PRICE, locale) })}
         </button>
       )}
     </article>
@@ -410,6 +403,7 @@ function MercuryProduct({ state, dispatch, highlighted }: ShopProps & ShopHighli
 
 
 export function ShopContent({ state, dispatch, active }: ShopContentProps) {
+  const { t, locale, formatNumber } = useI18n()
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
   const highlighted = useShopHighlights(state, active)
   const hasDiscovery = (id: ShopItemId): boolean => state.shopDiscoveries.includes(id)
@@ -424,8 +418,7 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
     selectedTerminal !== undefined &&
     !isLocalTerminal(selectedTerminal.id)
   const refillAmount = tokenPurchaseAmount(state.tokens, state.tokenPacks)
-  const refillCost = tokenPurchaseCost(refillAmount, state)
-  const refillPrice = moneyLabel(refillCost)
+  const refillPrice = moneyLabel(refillCost, locale)
   const canBuyTokens = state.stage === 'hired' && state.money >= refillCost && refillAmount > 0
   const tokenMultiplier = tokenPriceMultiplier(state)
   const monopolyActive = state.monopolyAnnouncedAt !== null
@@ -442,17 +435,16 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
     if (!fastModeAvailable) return
     dispatch({ type: 'set-fast-mode', terminalId: selectedTargetTerminal, enabled })
   }
-
   const fastModeLabel = state.stage !== 'hired'
-    ? 'Unavailable'
+    ? t('common.unavailable')
     : selectedTerminal !== undefined && isLocalTerminal(selectedTerminal.id)
-      ? 'Local fixed'
-      : selectedTerminal?.fastMode ? 'On' : 'Off'
+      ? t('shop.localFixed')
+      : selectedTerminal?.fastMode ? t('common.on') : t('common.off')
 
   return (
     <div className="shop-app">
       <div className="shop-target-row">
-        <label htmlFor="shop-target-terminal">Install on</label>
+        <label htmlFor="shop-target-terminal">{t('shop.installOn')}</label>
         <select
           id="shop-target-terminal"
           value={selectedTargetTerminal}
@@ -478,12 +470,12 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
         {hasDiscovery('fast-mode') && (
           <article
             className={productClassName(`shop-product shop-fast-mode-product ${fastModeAvailable ? '' : 'shop-product-unavailable'}`, highlighted.has('fast-mode'))}
-            aria-label="Fast mode"
+            aria-label={t('shop.fastModeAria')}
           >
             <span className="shop-product-icon shop-fast-mode-icon" aria-hidden="true">»</span>
             <div className="shop-product-copy">
-              <h3>Fast mode</h3>
-              <p>2× speed · 2× tokens. Applies to new attempts while enabled.</p>
+              <h3>{t('shop.fastModeAria')}</h3>
+              <p>{t('shop.fastModeDetail')}</p>
             </div>
             <label className="shop-fast-mode-toggle">
               <span className="shop-fast-mode-toggle-label">{fastModeLabel}</span>
@@ -492,7 +484,7 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
                 checked={selectedTerminal?.fastMode ?? false}
                 disabled={!fastModeAvailable}
                 onChange={(event) => setFastMode(event.currentTarget.checked)}
-                aria-label={`Use fast mode for ${terminalLabel(selectedTargetTerminal)} on new attempts`}
+                aria-label={t('shop.fastModeFor', { terminal: terminalLabel(selectedTargetTerminal) })}
               />
               <span className="shop-toggle-track" aria-hidden="true"><span /></span>
             </label>
@@ -504,14 +496,14 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
         {hasDiscovery('mercury') && <MercuryProduct state={state} dispatch={dispatch} highlighted={highlighted.has('mercury')} />}
         <article
           className={`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`}
-          aria-label="Token refill"
+          aria-label={t('shop.tokenRefillAria')}
         >
           <span className="shop-product-icon" aria-hidden="true">◇</span>
           <div className="shop-product-copy">
-            <h3>Token refill</h3>
+            <h3>{t('shop.tokenRefill')}</h3>
             <div className="shop-token-options">
               <label className="shop-pack-size">
-                Pack size
+                {t('shop.packSize')}
                 <select
                   value={state.tokenPacks}
                   disabled={state.stage !== 'hired'}
@@ -520,33 +512,41 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
                   {TOKEN_PACK_COUNTS.map((packs) => {
                     const amount = tokenPurchaseAmount(state.tokens, packs)
                     const cost = tokenPurchaseCost(amount, state)
-                    const quantity = amount >= MAX_TOKENS - state.tokens ? 'Fill balance · 10M max' : `${amount.toLocaleString()} tokens`
-                    return <option key={packs} value={packs}>{quantity} · {moneyLabel(cost)}</option>
+                    const quantity = amount >= MAX_TOKENS - state.tokens
+                      ? t('shop.fillBalance')
+                      : t('common.tokens', { amount: formatNumber(amount) })
+                    return <option key={packs} value={packs}>{quantity} · {moneyLabel(cost, locale)}</option>
                   })}
                 </select>
               </label>
               <label className="shop-fast-mode-toggle shop-auto-buy-toggle">
-                <span className="shop-auto-buy-name">Auto-buy</span>
-                <span className="shop-fast-mode-toggle-label">{state.tokenAutoBuy ? 'On' : 'Off'}</span>
+                <span className="shop-auto-buy-name">{t('shop.autoBuy')}</span>
+                <span className="shop-fast-mode-toggle-label">{state.tokenAutoBuy ? t('common.on') : t('common.off')}</span>
                 <input
                   type="checkbox"
                   checked={state.tokenAutoBuy}
                   disabled={state.stage !== 'hired'}
                   onChange={(event) => dispatch({ type: 'set-token-auto-buy', enabled: event.currentTarget.checked })}
-                  aria-label="Automatically buy tokens when balance is low"
+                  aria-label={t('shop.autoBuyAria')}
                 />
                 <span className="shop-toggle-track" aria-hidden="true"><span /></span>
               </label>
             </div>
-            <p>{refillAmount > 0 ? `${refillAmount.toLocaleString()} tokens received · partial packs prorated` : 'Inventory is at the 10M token limit.'}</p>
+            <p>{refillAmount > 0
+              ? t('shop.tokensReceived', { amount: formatNumber(refillAmount) })
+              : t('shop.inventoryFull')}</p>
             {monopolyActive && (
               <p className="shop-token-rate">
-                Monopoly rate {tokenMultiplier.toFixed(2)}× · +10% every 5s · next increase in {secondsToNextTokenIncrease}s.
+                {t('shop.monopolyRate', { multiplier: tokenMultiplier.toFixed(2), seconds: secondsToNextTokenIncrease })}
               </p>
             )}
           </div>
           <button className="shop-buy-button" type="button" onClick={buyTokens} disabled={!canBuyTokens}>
-            {state.stage !== 'hired' ? 'Unavailable' : state.tokens >= MAX_TOKENS ? 'Balance full' : canBuyTokens ? refillPrice : `Need ${refillPrice}`}
+            {state.stage !== 'hired'
+              ? t('common.unavailable')
+              : state.tokens >= MAX_TOKENS
+                ? t('shop.balanceFull')
+                : canBuyTokens ? refillPrice : t('shop.need', { price: refillPrice })}
           </button>
         </article>
       </div>
