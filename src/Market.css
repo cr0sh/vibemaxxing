@@ -86,15 +86,15 @@
   white-space: normal;
 }
 
-.market-pnl-positive strong {
+.market-pnl strong.market-pnl-positive {
   color: #69dbb5;
 }
 
-.market-pnl-negative strong {
+.market-pnl strong.market-pnl-negative {
   color: #ff9c93;
 }
 
-.market-pnl-neutral strong {
+.market-pnl strong.market-pnl-neutral {
   color: #f7e6a5;
 }
 
@@ -118,7 +118,7 @@
   background: #18282f;
 }
 
-.market-balance span {
+.market-balance > span {
   overflow: hidden;
   color: #a8c0c4;
   font-size: 0.65rem;
@@ -141,6 +141,14 @@
   color: #a8c0c4;
   font-size: 0.6rem;
   font-weight: 600;
+}
+
+.market-balance-secondary {
+  display: block;
+  color: #a8c0c4;
+  font-size: 0.6rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .market-balance-portfolio strong {
