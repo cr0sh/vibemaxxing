@@ -43,6 +43,12 @@ The flow of the game is:
 - The terminal can be "upgraded" with several features. Features are purchased
   by drag-and-dropping the item icon from the shop UI to the terminal.
   Mouse, touch, and stylus drops install the upgrade on the target terminal.
+  Shop products appear the first time their prerequisites and purchase price
+  are met, then remain visible after spending. Discovery is per product, not
+  per split tier or target terminal. Token packs use the smallest positive
+  refill price, or one nominal pack when inventory is full.
+  Newly discovered products notify the Shop dock icon; balance fluctuations
+  and already-discovered upgrades do not. Viewing Shop acknowledges its updates.
   - Split window(\$200, $400, $1000): The window can be split at max 4. Agents
     can run simultaneously.
   - Yolo mode($420): By default, the terminal asks for command approval(yes/no) for

@@ -815,7 +815,8 @@ function Desktop({
                 ? isEnding && !defeatDismissed
                 : windows[id] || (id === 'messenger' && defeatAutoFront)
               const isFrontmost = isOpen && isWindowActive(id)
-              const dockAcknowledged = isFrontmost || acknowledgedDockWindows.has(id) || (isEnding && id === 'defeat')
+              const dockAcknowledged = isFrontmost || acknowledgedDockWindows.has(id) ||
+                (id === 'shop' && state.shopDiscoveries.length === 0) || (isEnding && id === 'defeat')
               return (
                 <button
                   className={`dock-item dock-item-${id} ${isFrontmost ? 'dock-item-active' : ''} ${!isOpen ? 'dock-item-minimized' : ''} ${!dockAcknowledged ? 'dock-item-attention' : ''}`}

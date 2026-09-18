@@ -296,8 +296,7 @@ function MercuryProduct({ state, dispatch }: ShopProps) {
 export function ShopContent({ state, dispatch }: ShopProps) {
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
   const hasDiscovery = (id: ShopItemId): boolean => state.shopDiscoveries.includes(id)
-  const hasVisibleProduct = (['split', 'yolo', 'terminal', 'tokens', 'fast-mode', 'spark', 'spark-ultra', 'advanced-model', 'mercury'] as const)
-    .some((id) => hasDiscovery(id))
+  const hasVisibleProduct = state.shopDiscoveries.length > 0
 
   const selectedTargetTerminal = state.terminals.some((terminal) => terminal.id === targetTerminal)
     ? targetTerminal
