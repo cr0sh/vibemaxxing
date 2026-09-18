@@ -18,18 +18,19 @@ type WorkspaceState = {
 
 const WorkspaceContext = createContext<WorkspaceState | null>(null)
 const windowDefaults: Record<string, Size & Point> = {
-  apply: { width: 650, height: 540, x: 0.5, y: 0.17 },
-  offer: { width: 620, height: 440, x: 0.5, y: 0.22 },
-  messenger: { width: 570, height: 560, x: 0.12, y: 0.1 },
-  terminal: { width: 470, height: 500, x: 0.72, y: 0.3 },
-  'terminal-2': { width: 470, height: 500, x: 0.26, y: 0.28 },
-  spark: { width: 470, height: 500, x: 0.8, y: 0.18 },
-  market: { width: 640, height: 600, x: 0.5, y: 0.1 },
-  shop: { width: 520, height: 528, x: 0.5, y: 0.14 },
-  social: { width: 520, height: 600, x: 0.76, y: 0.12 },
-  defeat: { width: 430, height: 330, x: 0.5, y: 0.28 },
+  apply: { width: 975, height: 540, x: 0.5, y: 0.17 },
+  offer: { width: 930, height: 440, x: 0.5, y: 0.22 },
+  messenger: { width: 855, height: 560, x: 0.12, y: 0.1 },
+  terminal: { width: 705, height: 500, x: 0.72, y: 0.3 },
+  'terminal-2': { width: 705, height: 500, x: 0.26, y: 0.28 },
+  spark: { width: 705, height: 500, x: 0.8, y: 0.18 },
+  market: { width: 960, height: 600, x: 0.5, y: 0.1 },
+  shop: { width: 780, height: 528, x: 0.5, y: 0.14 },
+  social: { width: 780, height: 600, x: 0.76, y: 0.12 },
+  mercury: { width: 960, height: 600, x: 0.5, y: 0.12 },
+  defeat: { width: 645, height: 330, x: 0.5, y: 0.28 },
 }
-const defaultWindow = { width: 520, height: 380, x: 0.5, y: 0.16 }
+const defaultWindow = { width: 780, height: 380, x: 0.5, y: 0.16 }
 const arrowDirections: Record<string, Point> = {
   ArrowUp: { x: 0, y: -1 },
   ArrowDown: { x: 0, y: 1 },

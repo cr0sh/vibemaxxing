@@ -31,7 +31,7 @@ const postHeading = (post: SocialPost): string => {
     case 'market': return 'BTC market is open'
     case 'spark': return 'Mapple Spark announced'
     case 'spark-delivered': return 'Mapple Spark delivered'
-    case 'advanced-model': return 'Tiro Pro available'
+    case 'advanced-model': return 'ConvexLM Pro available'
     case 'mercury': return 'Mercury available'
     case 'second-job': return 'Second job open'
     case 'frontier-model': return 'Tiro Max unlocked'
@@ -165,7 +165,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'advanced-model') {
     return (
       <p className="social-post-copy">
-        Tiro Pro is in Shop for <strong>$5,000</strong>. Buy it to use Pro for new cloud attempts.
+        ConvexLM Pro is in Shop for <strong>$5,000</strong>. Buy it to use Pro for new cloud attempts.
       </p>
     )
   }

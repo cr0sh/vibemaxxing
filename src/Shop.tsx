@@ -183,10 +183,10 @@ function AdvancedModelProduct({ state, dispatch }: ShopProps) {
   }
 
   return (
-    <article className={`shop-product shop-model-product ${canBuy ? '' : 'shop-product-unavailable'}`} aria-label="Tiro Pro model">
+    <article className={`shop-product shop-model-product ${canBuy ? '' : 'shop-product-unavailable'}`} aria-label="ConvexLM Pro model">
       <span className="shop-product-icon" aria-hidden="true">✦</span>
       <div className="shop-product-copy">
-        <h3>Tiro Pro</h3>
+        <h3>ConvexLM Pro</h3>
         <p>{detail}</p>
       </div>
       <button className="shop-buy-button" type="button" onClick={buyModel} disabled={!canBuy}>
@@ -213,6 +213,7 @@ function MercuryProduct({ state, dispatch }: ShopProps) {
       <span className="shop-product-icon" aria-hidden="true">↔</span>
       <div className="shop-product-copy">
         <h3>Mercury</h3>
+        <p>Your most intelligent AI agent.</p>
         <p>
           {state.mercuryOwned
             ? 'Owned · 300K tokens per automatic handoff, both directions. Mercury does not approve or retry tasks.'
