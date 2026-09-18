@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DragEvent, Dispatch } from 'react'
 import {
   AGENT_MODELS,
@@ -22,6 +22,7 @@ import {
 } from './game'
 import { DragDropHint } from './DragDropHints'
 import { useDragDropHints, useDragDropSource, useDragDropTarget } from './DragDropHintsContext'
+import type { DragDropSource } from './DragDropHintsContext'
 import { UnreadIndicator } from './UnreadIndicator'
 import { useUnreadMessages } from './useUnreadMessages'
 import './Employment.css'
@@ -170,6 +171,108 @@ function findIdleTerminalSlot(tasks: readonly WorkTask[], terminalId: TerminalId
   }
   return null
 }
+type DropErrorState = {
+  error: string | null
+  showError: (reason: string) => void
+  clearError: () => void
+}
+
+function useDropError(): DropErrorState {
+  const [error, setError] = useState<string | null>(null)
+  const timeoutRef = useRef<number | undefined>(undefined)
+  const clearError = useCallback(() => {
+    clearTimeout(timeoutRef.current)
+    timeoutRef.current = undefined
+    setError(null)
+  }, [])
+  const showError = useCallback((reason: string) => {
+    clearTimeout(timeoutRef.current)
+    setError(reason)
+    timeoutRef.current = window.setTimeout(() => {
+      timeoutRef.current = undefined
+      setError(null)
+    }, 4000)
+  }, [])
+  useEffect(() => () => {
+    clearTimeout(timeoutRef.current)
+  }, [])
+  return { error, showError, clearError }
+}
+function nativeDragSource(event: DragEvent<HTMLElement>): DragDropSource | null {
+  const types = event.dataTransfer.types
+  if (types.includes('application/x-vibemaxxer-task')) {
+    return { kind: 'task', id: event.dataTransfer.getData('application/x-vibemaxxer-task') }
+  }
+  if (types.includes('application/x-vibemaxxer-artifact')) {
+    return { kind: 'artifact', id: event.dataTransfer.getData('application/x-vibemaxxer-artifact') }
+  }
+  if (types.includes('application/x-vibemaxxer-upgrade')) {
+    return { kind: 'upgrade', id: event.dataTransfer.getData('application/x-vibemaxxer-upgrade') }
+  }
+  return null
+}
+
+function occupiedPaneReason(task: WorkTask): string {
+  switch (task.status) {
+    case 'working':
+      return 'This pane is already running another task.'
+    case 'approval':
+      return 'This pane is waiting for approval.'
+    case 'blocked':
+      return 'This pane is blocked pending approval.'
+    case 'failed':
+      return 'This pane contains a failed attempt.'
+    case 'artifact':
+      return 'This pane already has an undelivered artifact.'
+    case 'assigned':
+      return 'This pane is already reserved for another task.'
+  }
+}
+
+function taskForwardingReason(
+  state: GameState,
+  source: DragDropSource,
+  terminalId: TerminalId,
+  fastMode: boolean,
+  targetTask?: WorkTask,
+  targetHasIdleSlot = true,
+): string | null {
+  if (source.kind !== 'task') return null
+  if (state.stage !== 'hired') return 'This run has ended; tasks can no longer be forwarded.'
+  const taskId = Number(source.id)
+  const task = Number.isInteger(taskId) ? state.tasks.find((candidate) => candidate.id === taskId) : undefined
+  if (!task) return 'This task is no longer available to forward.'
+  if (task.status !== 'assigned' || task.terminalId !== null || task.slot !== null) {
+    return 'This task was already forwarded or is no longer available.'
+  }
+  if (targetTask !== undefined) return occupiedPaneReason(targetTask)
+  if (!targetHasIdleSlot) return 'All terminal panes are occupied. Drop onto an empty pane.'
+  if (!canFundTaskAttempt(state, task, fastMode, terminalId)) return 'Not enough tokens to start this task here.'
+  return null
+}
+
+function artifactForwardingReason(state: GameState, source: DragDropSource): string | null {
+  if (source.kind !== 'artifact') return null
+  if (state.stage !== 'hired') return 'This run has ended; artifacts can no longer be forwarded.'
+  const taskId = Number(source.id)
+  const task = Number.isInteger(taskId) ? state.tasks.find((candidate) => candidate.id === taskId) : undefined
+  if (!task || task.status !== 'artifact') return 'This artifact is no longer available.'
+  return 'Artifacts can only be delivered in Messenger, not a terminal.'
+}
+
+function terminalDropReason(
+  state: GameState,
+  source: DragDropSource,
+  terminalId: TerminalId,
+  fastMode: boolean,
+  targetTask?: WorkTask,
+  targetHasIdleSlot = true,
+): string | null {
+  return source.kind === 'task'
+    ? taskForwardingReason(state, source, terminalId, fastMode, targetTask, targetHasIdleSlot)
+    : artifactForwardingReason(state, source)
+}
+
 
 function focusDropWindow(element: HTMLElement | null) {
   element?.closest<HTMLElement>('.window')?.focus({ preventScroll: true })
@@ -822,42 +925,55 @@ type TerminalLaneProps = {
 function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode }: TerminalLaneProps) {
   const laneRef = useRef<HTMLElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
+  const { error, showError, clearError } = useDropError()
   const taskDropVisible = state.stage === 'hired' && !task && isSourceActive('task')
 
   useDragDropTarget(laneRef, {
     id: `terminal-lane-${terminalId}-${slot}`,
     priority: 3,
-    accepts: (source) => source.kind === 'task' && state.stage === 'hired' && task === undefined && state.tasks.some((candidate) => String(candidate.id) === source.id && candidate.status === 'assigned' && candidate.terminalId === null && candidate.slot === null && canFundTaskAttempt(state, candidate, fastMode, terminalId)),
+    accepts: (source) => terminalDropReason(state, source, terminalId, fastMode, task) === null && source.kind === 'task' && task === undefined,
+    rejectionReason: (source) => terminalDropReason(state, source, terminalId, fastMode, task),
+    onReject: showError,
     onDrop: (source) => {
+      if (source.kind !== 'task') return
       const id = Number(source.id)
       const dropped = state.tasks.find((candidate) => candidate.id === id)
-      if (source.kind === 'task' && Number.isInteger(id) && !task && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null && canFundTaskAttempt(state, dropped, fastMode, terminalId)) {
+      if (terminalDropReason(state, source, terminalId, fastMode, task) === null && Number.isInteger(id) && !task && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null) {
         dispatch({ type: 'start-task', id, terminalId, slot })
+        clearError()
       }
     },
     onHover: () => focusDropWindow(laneRef.current),
   })
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
-    if (state.stage !== 'hired') return
-    const upgrade = event.dataTransfer.getData('application/x-vibemaxxer-upgrade')
-    if (upgrade === 'split' || upgrade === 'yolo' || upgrade === 'terminal') {
+    const source = nativeDragSource(event)
+    if (!source) return
+    if (source.kind === 'upgrade') {
+      if (state.stage !== 'hired') return
+      const upgrade = source.id
+      if (upgrade !== 'split' && upgrade !== 'yolo' && upgrade !== 'terminal') return
       const terminalTarget = upgrade === 'terminal' ? 'terminal' : terminalId
       if (upgradePrice(state, upgrade, terminalTarget) === null) return
       event.preventDefault()
       event.stopPropagation()
       dispatch({ type: 'buy-upgrade', upgrade, terminalId: terminalTarget, source: 'drag' })
+      clearError()
       return
     }
-    const kind = event.dataTransfer.getData('application/x-vibemaxxer-task')
-    const id = Number(kind)
-    if (kind && Number.isInteger(id) && !task) {
-      const dropped = state.tasks.find((candidate) => candidate.id === id)
-      if (dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null && canFundTaskAttempt(state, dropped, fastMode, terminalId)) {
-        event.preventDefault()
-        event.stopPropagation()
-        dispatch({ type: 'start-task', id, terminalId, slot })
-        clear()
-      }
+    const reason = terminalDropReason(state, source, terminalId, fastMode, task)
+    event.preventDefault()
+    event.stopPropagation()
+    if (reason !== null) {
+      showError(reason)
+      return
+    }
+    if (source.kind !== 'task') return
+    const id = Number(source.id)
+    const dropped = state.tasks.find((candidate) => candidate.id === id)
+    if (Number.isInteger(id) && !task && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null) {
+      dispatch({ type: 'start-task', id, terminalId, slot })
+      clear()
+      clearError()
     }
   }
 
@@ -873,17 +989,22 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
       className={`employment-terminal-lane ${taskDropVisible ? 'employment-drop-active' : ''} ${task?.status === 'failed' ? 'employment-lane-failed' : ''}`}
       aria-label={`Terminal agent pane ${slot + 1}`}
       onDragOver={(event) => {
-        const hasTask = event.dataTransfer.types.includes('application/x-vibemaxxer-task')
-        const hasUpgrade = event.dataTransfer.types.includes('application/x-vibemaxxer-upgrade')
-        const upgrade = hasUpgrade ? event.dataTransfer.getData('application/x-vibemaxxer-upgrade') : ''
-        const taskId = hasTask ? Number(event.dataTransfer.getData('application/x-vibemaxxer-task')) : NaN
-        const droppedTask = state.tasks.find((candidate) => candidate.id === taskId || isSourceActive('task', String(candidate.id)))
-        const terminalTarget = upgrade === 'terminal' ? 'terminal' : terminalId
-        const canDropTask = hasTask && !task && droppedTask?.status === 'assigned' && droppedTask.terminalId === null && droppedTask.slot === null && canFundTaskAttempt(state, droppedTask, fastMode, terminalId)
-        if (canDropTask || (hasUpgrade && (upgrade === 'split' || upgrade === 'yolo' || upgrade === 'terminal') && upgradePrice(state, upgrade, terminalTarget) !== null)) {
-          event.preventDefault()
-          event.dataTransfer.dropEffect = 'move'
+        const source = nativeDragSource(event)
+        if (!source) return
+        if (source.kind === 'upgrade') {
+          const upgrade = source.id
+          const terminalTarget = upgrade === 'terminal' ? 'terminal' : terminalId
+          if (state.stage === 'hired' && (upgrade === 'split' || upgrade === 'yolo' || upgrade === 'terminal') && upgradePrice(state, upgrade, terminalTarget) !== null) {
+            event.preventDefault()
+            event.stopPropagation()
+            event.dataTransfer.dropEffect = 'move'
+          }
+          return
         }
+        const reason = terminalDropReason(state, source, terminalId, fastMode, task)
+        event.preventDefault()
+        event.stopPropagation()
+        event.dataTransfer.dropEffect = reason === null ? 'move' : 'none'
       }}
       onDrop={handleDrop}
     >
@@ -939,6 +1060,9 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
           )}
         </div>
       )}
+      {error !== null && (
+        <p className="employment-drop-error" role="status" aria-live="polite">{error}</p>
+      )}
     </section>
   )
 }
@@ -953,66 +1077,94 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
   const refillIn = 100 - (state.elapsed % 100 || 0)
   const terminalRef = useRef<HTMLDivElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
+  const { error, showError, clearError } = useDropError()
   const idleSlot = findIdleTerminalSlot(state.tasks, terminalId, slots)
   const taskDropVisible = state.stage === 'hired' && idleSlot !== null && isSourceActive('task')
   const upgradeDropVisible = state.stage === 'hired' && (['split', 'yolo', 'terminal'] as const).some((upgrade) => (
     isSourceActive('upgrade', upgrade) && upgradePrice(state, upgrade, upgrade === 'terminal' ? 'terminal' : terminalId) !== null
   ))
-
   useDragDropTarget(terminalRef, {
     id: `terminal-${terminalId}`,
     priority: 1,
     accepts: (source) => {
-      if (state.stage !== 'hired') return false
-      if (source.kind === 'task') return idleSlot !== null && state.tasks.some((candidate) => String(candidate.id) === source.id && candidate.status === 'assigned' && candidate.terminalId === null && candidate.slot === null && canFundTaskAttempt(state, candidate, terminal?.fastMode ?? false, terminalId))
-      return source.kind === 'upgrade' &&
+      if (source.kind === 'task') return terminalDropReason(state, source, terminalId, fastMode, undefined, idleSlot !== null) === null
+      return state.stage === 'hired' &&
+        source.kind === 'upgrade' &&
         (source.id === 'split' || source.id === 'yolo' || source.id === 'terminal') &&
         upgradePrice(state, source.id, source.id === 'terminal' ? 'terminal' : terminalId) !== null
     },
+    rejectionReason: (source) => terminalDropReason(state, source, terminalId, fastMode, undefined, idleSlot !== null),
+    onReject: showError,
     onDrop: (source) => {
-      if (state.stage !== 'hired') return
-      if (source.kind === 'upgrade' && (source.id === 'split' || source.id === 'yolo' || source.id === 'terminal')) {
+      if (source.kind === 'upgrade') {
+        if (state.stage !== 'hired' || (source.id !== 'split' && source.id !== 'yolo' && source.id !== 'terminal')) return
         const target = source.id === 'terminal' ? 'terminal' : terminalId
-        if (upgradePrice(state, source.id, target) !== null) dispatch({ type: 'buy-upgrade', upgrade: source.id, terminalId: target, source: 'drag' })
+        if (upgradePrice(state, source.id, target) !== null) {
+          dispatch({ type: 'buy-upgrade', upgrade: source.id, terminalId: target, source: 'drag' })
+          clearError()
+        }
+        return
       }
-      if (source.kind === 'task' && idleSlot !== null) {
-        const id = Number(source.id)
-        const dropped = state.tasks.find((candidate) => candidate.id === id)
-        if (Number.isInteger(id) && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null && canFundTaskAttempt(state, dropped, terminal?.fastMode ?? false, terminalId)) dispatch({ type: 'start-task', id, terminalId, slot: idleSlot })
+      const reason = terminalDropReason(state, source, terminalId, fastMode, undefined, idleSlot !== null)
+      if (reason !== null || source.kind !== 'task' || idleSlot === null) return
+      const id = Number(source.id)
+      const dropped = state.tasks.find((candidate) => candidate.id === id)
+      if (Number.isInteger(id) && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null) {
+        dispatch({ type: 'start-task', id, terminalId, slot: idleSlot })
+        clearError()
       }
     },
     onHover: () => focusDropWindow(terminalRef.current),
   })
   const handleTerminalDrop = (event: DragEvent<HTMLDivElement>) => {
-    if (state.stage !== 'hired') return
-    const upgrade = event.dataTransfer.getData('application/x-vibemaxxer-upgrade')
-    if (upgrade === 'split' || upgrade === 'yolo' || upgrade === 'terminal') {
+    const source = nativeDragSource(event)
+    if (!source) return
+    if (source.kind === 'upgrade') {
+      if (state.stage !== 'hired') return
+      const upgrade = source.id
+      if (upgrade !== 'split' && upgrade !== 'yolo' && upgrade !== 'terminal') return
       const terminalTarget = upgrade === 'terminal' ? 'terminal' : terminalId
       if (upgradePrice(state, upgrade, terminalTarget) === null) return
       event.preventDefault()
+      event.stopPropagation()
       dispatch({ type: 'buy-upgrade', upgrade, terminalId: terminalTarget, source: 'drag' })
+      clearError()
       return
     }
-    const kind = event.dataTransfer.getData('application/x-vibemaxxer-task')
-    const id = Number(kind)
+    const reason = terminalDropReason(state, source, terminalId, fastMode, undefined, idleSlot !== null)
+    event.preventDefault()
+    event.stopPropagation()
+    if (reason !== null) {
+      showError(reason)
+      return
+    }
+    if (source.kind !== 'task' || idleSlot === null) return
+    const id = Number(source.id)
     const dropped = state.tasks.find((candidate) => candidate.id === id)
-    if (idleSlot !== null && kind && Number.isInteger(id) && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null && canFundTaskAttempt(state, dropped, terminal?.fastMode ?? false, terminalId)) {
-      event.preventDefault()
+    if (Number.isInteger(id) && dropped?.status === 'assigned' && dropped.terminalId === null && dropped.slot === null) {
       dispatch({ type: 'start-task', id, terminalId, slot: idleSlot })
       clear()
+      clearError()
     }
   }
 
   const handleTerminalDragOver = (event: DragEvent<HTMLDivElement>) => {
-    const hasTask = event.dataTransfer.types.includes('application/x-vibemaxxer-task')
-    const hasUpgrade = event.dataTransfer.types.includes('application/x-vibemaxxer-upgrade')
-    const taskId = hasTask ? Number(event.dataTransfer.getData('application/x-vibemaxxer-task')) : NaN
-    const droppedTask = state.tasks.find((candidate) => candidate.id === taskId || isSourceActive('task', String(candidate.id)))
-    const canDropTask = hasTask && idleSlot !== null && droppedTask?.status === 'assigned' && droppedTask.terminalId === null && droppedTask.slot === null && canFundTaskAttempt(state, droppedTask, terminal?.fastMode ?? false, terminalId)
-    if (state.stage === 'hired' && (canDropTask || (hasUpgrade && (['split', 'yolo', 'terminal'] as const).some((upgrade) => upgradePrice(state, upgrade, upgrade === 'terminal' ? 'terminal' : terminalId) !== null)))) {
-      event.preventDefault()
-      event.dataTransfer.dropEffect = 'move'
+    const source = nativeDragSource(event)
+    if (!source) return
+    if (source.kind === 'upgrade') {
+      const upgrade = source.id
+      const target = upgrade === 'terminal' ? 'terminal' : terminalId
+      if (state.stage === 'hired' && (upgrade === 'split' || upgrade === 'yolo' || upgrade === 'terminal') && upgradePrice(state, upgrade, target) !== null) {
+        event.preventDefault()
+        event.stopPropagation()
+        event.dataTransfer.dropEffect = 'move'
+      }
+      return
     }
+    const reason = terminalDropReason(state, source, terminalId, fastMode, undefined, idleSlot !== null)
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = reason === null ? 'move' : 'none'
   }
 
   const terminalLabel = isLocal ? terminalId === 'spark-ultra' ? 'Mapple Spark Ultra' : 'Mapple Spark' : terminalId === 'terminal-2' ? 'Terminal 2' : 'Terminal'
@@ -1063,6 +1215,9 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
             {isLocal ? `${AGENT_MODELS[model].label} model` : state.tokens >= MAX_TOKENS ? 'Balance full' : `Refill in ${formatSeconds(refillIn)}`}
           </span>
         </div>
+        {error !== null && (
+          <p className="employment-drop-error" role="status" aria-live="polite">{error}</p>
+        )}
       </div>
       <DragDropHint visible={taskDropVisible || upgradeDropVisible}>
         {taskDropVisible ? 'Drop task here' : 'Drop upgrade here'}
