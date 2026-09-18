@@ -5,6 +5,7 @@ import {
   transferMarket,
   type MarketState,
 } from './trading'
+import type { MessageKey, MessageReference } from './i18n/catalog'
 
 export type Application = {
   name: string
@@ -56,12 +57,11 @@ export type EmploymentJob = {
   welcomeReacted: boolean
   startedAt: number
 }
-
 export type TaskDescriptor = {
   id: number
   jobId: JobId
-  title: string
-  description: string
+  titleKey: MessageKey
+  descriptionKey: MessageKey
   difficulty: number
   artifactName: string
   kind: 'standard' | 'architecture'
@@ -89,10 +89,10 @@ export type WorkTask = TaskDescriptor & {
   nextApprovalAt: number
   terminalId: TerminalId | null
   slot: number | null
-  approvalPrompt: string | null
+  approvalPromptKey: MessageKey | null
 }
 export type EmploymentTaskSnapshot = Pick<WorkTask,
-  | 'id' | 'jobId' | 'title' | 'description' | 'difficulty' | 'artifactName' | 'kind' | 'complexity'
+  | 'id' | 'jobId' | 'titleKey' | 'descriptionKey' | 'difficulty' | 'artifactName' | 'kind' | 'complexity'
   | 'deadlineAt' | 'startedAt' | 'assignedAt' | 'baseReward' | 'model' | 'fastMode' | 'local'
   | 'attempt' | 'status' | 'progress' | 'failedAt'
 >
@@ -106,7 +106,7 @@ export type EmploymentMessage =
   | ({ id: string; type: 'incentives'; elapsed: number } & JobMessage)
   | ({ id: string; type: 'promotion'; elapsed: number; level: 4 | 5 } & JobMessage)
   | ({ id: string; type: 'attempt-failed'; elapsed: number; task: EmploymentTaskSnapshot } & JobMessage)
-  | ({ id: string; type: 'firing'; elapsed: number; failure: string } & JobMessage)
+  | ({ id: string; type: 'firing'; elapsed: number; failure: MessageReference } & JobMessage)
 
 type SocialPostType = 'campaign' | 'lottery' | 'reset' | 'model' | 'fast-mode' | 'market' | 'spark' | 'spark-delivered' |
   'advanced-model' | 'mercury' | 'second-job' | 'frontier-model' | 'monopoly' | 'spark-ultra' | 'spark-ultra-delivered' | 'shorts'
@@ -119,16 +119,16 @@ export type SocialPost =
   | (SocialPostBase & { type: 'lottery'; lotteryVariant: number })
   | (SocialPostBase & { type: Exclude<SocialPostType, 'lottery'> })
 
-export const SOCIAL_LOTTERY_COPY: readonly string[] = [
-  'Feeling generous today. Drop a Like and I might top your tokens back up to 10M. No luck? Try me again.',
-  'Quick favor: leave a Like and I’ll roll the dice on a 10M-token top-up.',
-  'You look like someone who could use another 10M tokens. Hit Like and let’s test your luck.',
-  'One Like, one lottery ticket, maybe 10M tokens. I make no promises, but I’m feeling optimistic.',
-  'The token fairy is online. Like this post and I might send 10M tokens your way.',
-  'No pitch, just vibes: Like this post and I’ll try to refill your tokens to 10M.',
-  'I found a spare 10M tokens in the couch. Like this post and I’ll see if they land in your account.',
-  'I’m handing out a fresh 10M-token refill today. Like this post and maybe I’ll pick you.',
-] as const
+export const SOCIAL_LOTTERY_KEYS = [
+  'social.lottery.0',
+  'social.lottery.1',
+  'social.lottery.2',
+  'social.lottery.3',
+  'social.lottery.4',
+  'social.lottery.5',
+  'social.lottery.6',
+  'social.lottery.7',
+] as const satisfies readonly MessageKey[]
 
 export type GameState = {
   stage: Stage
@@ -159,7 +159,7 @@ export type GameState = {
   nextTaskAt: number
   welcomeReacted: boolean
   messages: EmploymentMessage[]
-  failure: string | null
+  failure: MessageReference | null
   expectation: number
   rng: number
   socialRng: number
@@ -196,7 +196,6 @@ export type GameState = {
   }
   lossReason: 'deadline' | 'energy' | null
 }
-
 export type GameAction =
   | { type: 'start'; seed: number }
   | { type: 'submit'; roll: number; companyIndex: number }
@@ -352,42 +351,42 @@ function purchaseTokens(state: GameState, packs: TokenPackCount): GameState {
   })
 }
 
-const taskBlueprints: readonly Pick<TaskDescriptor, 'title' | 'description' | 'artifactName'>[] = [
-  { title: 'Tame the onboarding flow', description: 'Make the first-run checklist feel calm, clear, and impossible to miss.', artifactName: 'onboarding-checklist.patch' },
-  { title: 'Patch the midnight timeout', description: 'Trace the flaky timeout and make the retry path safe for sleepy users.', artifactName: 'timeout-fix.diff' },
-  { title: 'Polish the activity feed', description: 'Turn noisy event records into a useful stream with readable timestamps.', artifactName: 'activity-feed-preview.png' },
-  { title: 'Document the quiet endpoint', description: 'Give the team a short, accurate guide for the endpoint nobody remembers.', artifactName: 'endpoint-notes.md' },
-  { title: 'Harden the import job', description: 'Handle malformed rows without losing the rest of a customer import.', artifactName: 'import-guard.test.ts' },
-  { title: 'Tune the search signal', description: 'Make the most useful matches rise to the top without hiding exact hits.', artifactName: 'search-ranking.json' },
-  { title: 'Rescue the empty state', description: 'Write a friendly next step for the screen that currently says nothing.', artifactName: 'empty-state-copy.txt' },
-  { title: 'Compress the release notes', description: 'Shape the scattered changes into a release note people will actually read.', artifactName: 'release-notes.md' },
-  { title: 'Stabilize the webhook retry', description: 'Make duplicate deliveries harmless while keeping failed events visible.', artifactName: 'webhook-retry.spec.ts' },
-  { title: 'Refresh the billing summary', description: 'Present the current period totals without losing refunds or adjustments.', artifactName: 'billing-summary.sql' },
-  { title: 'Guard the upload boundary', description: 'Reject unsafe files early and explain the accepted formats clearly.', artifactName: 'upload-policy.ts' },
-  { title: 'Repair the notification digest', description: 'Group noisy alerts into a digest that still surfaces urgent changes.', artifactName: 'notification-digest.json' },
-  { title: 'Trace the stale cache', description: 'Find the invalidation gap and make fresh data win reliably.', artifactName: 'cache-invalidation.diff' },
-  { title: 'Clarify the permission prompt', description: 'Turn a confusing access denial into a useful path forward.', artifactName: 'permission-prompt.copy' },
-  { title: 'Measure the queue backlog', description: 'Expose enough queue health to spot delayed work before users do.', artifactName: 'queue-health.dashboard' },
-  { title: 'Trim the startup path', description: 'Remove avoidable work from startup without hiding real failures.', artifactName: 'startup-profile.txt' },
+const taskBlueprints: readonly Pick<TaskDescriptor, 'titleKey' | 'descriptionKey' | 'artifactName'>[] = [
+  { titleKey: 'task.standard.0.title', descriptionKey: 'task.standard.0.description', artifactName: 'onboarding-checklist.patch' },
+  { titleKey: 'task.standard.1.title', descriptionKey: 'task.standard.1.description', artifactName: 'timeout-fix.diff' },
+  { titleKey: 'task.standard.2.title', descriptionKey: 'task.standard.2.description', artifactName: 'activity-feed-preview.png' },
+  { titleKey: 'task.standard.3.title', descriptionKey: 'task.standard.3.description', artifactName: 'endpoint-notes.md' },
+  { titleKey: 'task.standard.4.title', descriptionKey: 'task.standard.4.description', artifactName: 'import-guard.test.ts' },
+  { titleKey: 'task.standard.5.title', descriptionKey: 'task.standard.5.description', artifactName: 'search-ranking.json' },
+  { titleKey: 'task.standard.6.title', descriptionKey: 'task.standard.6.description', artifactName: 'empty-state-copy.txt' },
+  { titleKey: 'task.standard.7.title', descriptionKey: 'task.standard.7.description', artifactName: 'release-notes.md' },
+  { titleKey: 'task.standard.8.title', descriptionKey: 'task.standard.8.description', artifactName: 'webhook-retry.spec.ts' },
+  { titleKey: 'task.standard.9.title', descriptionKey: 'task.standard.9.description', artifactName: 'billing-summary.sql' },
+  { titleKey: 'task.standard.10.title', descriptionKey: 'task.standard.10.description', artifactName: 'upload-policy.ts' },
+  { titleKey: 'task.standard.11.title', descriptionKey: 'task.standard.11.description', artifactName: 'notification-digest.json' },
+  { titleKey: 'task.standard.12.title', descriptionKey: 'task.standard.12.description', artifactName: 'cache-invalidation.diff' },
+  { titleKey: 'task.standard.13.title', descriptionKey: 'task.standard.13.description', artifactName: 'permission-prompt.copy' },
+  { titleKey: 'task.standard.14.title', descriptionKey: 'task.standard.14.description', artifactName: 'queue-health.dashboard' },
+  { titleKey: 'task.standard.15.title', descriptionKey: 'task.standard.15.description', artifactName: 'startup-profile.txt' },
 ]
 
-const architectureBlueprints: readonly Pick<TaskDescriptor, 'title' | 'description' | 'artifactName'>[] = [
-  { title: 'Design multi-region failover', description: 'Plan how traffic and data recover when an entire region disappears.', artifactName: 'failover-architecture.md' },
-  { title: 'Design the event backbone', description: 'Define durable event delivery, ordering, and recovery across services.', artifactName: 'event-backbone.md' },
-  { title: 'Partition the tenant datastore', description: 'Design tenant isolation and a migration path without downtime.', artifactName: 'tenant-partition-plan.md' },
-  { title: 'Untangle the service boundary', description: 'Split a critical service while preserving its contracts and rollout safety.', artifactName: 'service-boundaries.md' },
-  { title: 'Map the regional data plane', description: 'Choose ownership and replication rules that keep regional reads predictable.', artifactName: 'regional-data-plane.md' },
-  { title: 'Shape the deployment strategy', description: 'Stage releases across environments with safe rollback and clear gates.', artifactName: 'deployment-strategy.md' },
-  { title: 'Model the identity perimeter', description: 'Define trust boundaries, session lifetimes, and recovery for every client.', artifactName: 'identity-perimeter.md' },
-  { title: 'Plan the observability contract', description: 'Standardize signals and escalation paths so incidents become diagnosable.', artifactName: 'observability-contract.md' },
+const architectureBlueprints: readonly Pick<TaskDescriptor, 'titleKey' | 'descriptionKey' | 'artifactName'>[] = [
+  { titleKey: 'task.architecture.0.title', descriptionKey: 'task.architecture.0.description', artifactName: 'failover-architecture.md' },
+  { titleKey: 'task.architecture.1.title', descriptionKey: 'task.architecture.1.description', artifactName: 'event-backbone.md' },
+  { titleKey: 'task.architecture.2.title', descriptionKey: 'task.architecture.2.description', artifactName: 'tenant-partition-plan.md' },
+  { titleKey: 'task.architecture.3.title', descriptionKey: 'task.architecture.3.description', artifactName: 'service-boundaries.md' },
+  { titleKey: 'task.architecture.4.title', descriptionKey: 'task.architecture.4.description', artifactName: 'regional-data-plane.md' },
+  { titleKey: 'task.architecture.5.title', descriptionKey: 'task.architecture.5.description', artifactName: 'deployment-strategy.md' },
+  { titleKey: 'task.architecture.6.title', descriptionKey: 'task.architecture.6.description', artifactName: 'identity-perimeter.md' },
+  { titleKey: 'task.architecture.7.title', descriptionKey: 'task.architecture.7.description', artifactName: 'observability-contract.md' },
 ]
 
-
-const APPROVAL_PROMPTS: readonly string[] = [
-  'Apply the generated patch?', 'Run the test suite?', 'Execute the build?', 'Update the lockfile?',
-  'Run the migration?', 'Remove unused files?', 'Retry the failed command?', 'Run the formatter?',
-  'Update the configuration?', 'Commit the changes?',
+const APPROVAL_PROMPTS: readonly MessageKey[] = [
+  'task.approval.applyPatch', 'task.approval.testSuite', 'task.approval.build', 'task.approval.lockfile',
+  'task.approval.migration', 'task.approval.removeFiles', 'task.approval.retryCommand', 'task.approval.formatter',
+  'task.approval.configuration', 'task.approval.commit',
 ]
+
 
 function normalizeSeed(seed: number): number {
   return Number.isFinite(seed) ? Math.trunc(seed) >>> 0 : 1
@@ -440,9 +439,9 @@ function drawBlueprintIndex(
   return [nextRng, bag, pickedIndex]
 }
 function drawLotteryVariant(rng: number, previousVariant: number | undefined): readonly [number, number] {
-  const [candidateRng, candidate] = drawInteger(rng, 0, SOCIAL_LOTTERY_COPY.length - 1)
+  const [candidateRng, candidate] = drawInteger(rng, 0, SOCIAL_LOTTERY_KEYS.length - 1)
   if (previousVariant === undefined || candidate !== previousVariant) return [candidateRng, candidate]
-  const [nextRng, alternative] = drawInteger(candidateRng, 0, SOCIAL_LOTTERY_COPY.length - 2)
+  const [nextRng, alternative] = drawInteger(candidateRng, 0, SOCIAL_LOTTERY_KEYS.length - 2)
   return [nextRng, alternative >= previousVariant ? alternative + 1 : alternative]
 }
 
@@ -477,10 +476,10 @@ function openingGraceAt(elapsed: number): number {
   const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
   return 1 - clamp(safeElapsed / OPENING_GRACE_SECONDS, 0, 1)
 }
-function drawApprovalCheckpoint(rng: number): readonly [number, number, string] {
+function drawApprovalCheckpoint(rng: number): readonly [number, number, MessageKey] {
   const [delayRng, approvalDelay] = drawInteger(rng, APPROVAL_DELAY_MIN_SECONDS, APPROVAL_DELAY_MAX_SECONDS)
   const [nextRng, promptIndex] = drawInteger(delayRng, 0, APPROVAL_PROMPTS.length - 1)
-  return [nextRng, approvalDelay, APPROVAL_PROMPTS[promptIndex] ?? APPROVAL_PROMPTS[0] ?? '']
+  return [nextRng, approvalDelay, APPROVAL_PROMPTS[promptIndex] ?? APPROVAL_PROMPTS[0]!]
 }
 function projectedGrossAt(elapsed: number): number {
   const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
@@ -578,8 +577,8 @@ function createDescriptor(
   return [{
     id: state.nextTaskId,
     jobId,
-    title: blueprint.title,
-    description: blueprint.description,
+    titleKey: blueprint.titleKey,
+    descriptionKey: blueprint.descriptionKey,
     difficulty,
     artifactName: blueprint.artifactName,
     kind,
@@ -621,8 +620,8 @@ function snapshotTask(task: WorkTask): EmploymentTaskSnapshot {
   return {
     id: task.id,
     jobId: task.jobId,
-    title: task.title,
-    description: task.description,
+    titleKey: task.titleKey,
+    descriptionKey: task.descriptionKey,
     difficulty: task.difficulty,
     artifactName: task.artifactName,
     kind: task.kind,
@@ -820,7 +819,7 @@ function issueAvailableAssignments(state: GameState): GameState {
     nextApprovalAt: 0,
     terminalId: null,
     slot: null,
-    approvalPrompt: null,
+    approvalPromptKey: null,
   }
   const next = withJob({
     ...current,
@@ -954,7 +953,7 @@ function maybeUnlockProgression(state: GameState): GameState {
   return discoverShopProducts(appendFeatureAnnouncements(current))
 }
 
-function lose(state: GameState, failure: string, reason: 'deadline' | 'energy', jobId: JobId = 'primary'): GameState {
+function lose(state: GameState, failure: MessageReference, reason: 'deadline' | 'energy', jobId: JobId = 'primary'): GameState {
   const lost = { ...state, stage: 'lost' as const, failure, lossReason: reason }
   return reason === 'deadline'
     ? appendMessage(lost, { id: 'firing', type: 'firing', jobId, elapsed: state.elapsed, failure })
@@ -1006,7 +1005,7 @@ function advanceTask(task: WorkTask, elapsed: number, terminals: readonly Termin
   const speed = AGENT_MODELS[model].speed * (task.fastMode ? 2 : 1) / TASK_PACING_MULTIPLIER
   const progress = Math.min(task.difficulty, roundedProgress(task.progress + speed))
   if (progress >= task.difficulty - 0.000001) {
-    const completed = { ...task, progress: task.difficulty, nextApprovalAt: 0, approvalPrompt: null }
+    const completed = { ...task, progress: task.difficulty, nextApprovalAt: 0, approvalPromptKey: null }
     const successChance = taskSuccessChance(task, model)
     if (successChance === 1) return [{ ...completed, status: 'artifact', failedAt: null }, rng]
     const [nextRng, successRoll] = nextRandom(rng)
@@ -1105,12 +1104,12 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
   if (!canFundTaskAttempt(state, task, fastMode, terminalId, preserveAssignedReservations) || !Number.isFinite(cost) || state.tokens < cost) return state
   let nextRng = state.rng
   let nextApprovalAt = 0
-  let nextApprovalPrompt: string | null = null
+  let nextApprovalPromptKey: MessageKey | null = null
   if (!terminal.yolo) {
     const drawn = drawApprovalCheckpoint(state.rng)
     nextRng = drawn[0]
     nextApprovalAt = state.elapsed + drawn[1]
-    nextApprovalPrompt = drawn[2]
+    nextApprovalPromptKey = drawn[2]
   }
   const nextTokens = state.tokens - cost
   return {
@@ -1131,7 +1130,7 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
       status: 'working',
       progress: candidate.status === 'failed' ? 0 : candidate.progress,
       nextApprovalAt,
-      approvalPrompt: nextApprovalPrompt,
+      approvalPromptKey: nextApprovalPromptKey,
     } : candidate),
     rng: nextRng,
   }
@@ -1248,9 +1247,15 @@ function autoBuyTokens(state: GameState): GameState {
     : state
 }
 
-function deadlineFailure(state: GameState, task: WorkTask): string {
+function deadlineFailure(state: GameState, task: WorkTask): MessageReference {
   const company = task.jobId === 'secondary' ? state.secondJob?.company : state.company
-  return `You missed “${task.title}” at ${company ?? 'your company'}.`
+  return {
+    key: 'ending.deadlineFailure',
+    params: {
+      title: { key: task.titleKey },
+      company: company ?? { key: 'app.yourCompany' },
+    },
+  }
 }
 function unlockShorts(state: GameState): GameState {
   if (state.stage !== 'hired' || !state.mercuryOwned || state.shortsUnlocked) return state
@@ -1302,7 +1307,7 @@ function applyIdleTime(
     }
   }
   const next: GameState = { ...state, energy, inactivityElapsed, inactivityDecay }
-  return energy <= 0 ? lose(next, 'You ran out of energy and got to depression.', 'energy') : next
+  return energy <= 0 ? lose(next, { key: 'ending.energy.body' }, 'energy') : next
 }
 
 function maybeWin(state: GameState): GameState {
@@ -1552,7 +1557,7 @@ function reduceGame(state: GameState, action: GameAction): GameState {
       }
       if (action.stage === 'energy-loss') {
         const preview = previewHired(state)
-        return { ...preview, stage: 'lost', energy: 0, shortsUnlocked: true, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER, failure: 'You ran out of energy and got to depression.', lossReason: 'energy' }
+        return { ...preview, stage: 'lost', energy: 0, shortsUnlocked: true, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER, failure: { key: 'ending.energy.body' }, lossReason: 'energy' }
       }
       if (action.stage === 'won') {
         const preview = previewHired(state)
@@ -1672,9 +1677,8 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         frontierPreview = appendSocialPost(frontierPreview, { id: 'spark-ultra-announced', type: 'spark-ultra', elapsed: 150, likes: 0 })
         return issueAvailableAssignments(frontierPreview)
       }
-      const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? 'your company'
-      const failure = `The developer preview did not clear ${company}'s hiring bar.`
-      return lose({ ...state, company }, failure, 'deadline')
+      const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0]
+      return lose({ ...state, company }, { key: 'ending.previewFailure', params: { company } }, 'deadline')
     }
     case 'tick':
       return tickHired(state, action.seconds)
@@ -1698,13 +1702,13 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         return { ...state, tasks: state.tasks.map((candidate, index) => index === taskIndex ? { ...candidate, status: 'blocked' } : candidate) }
       }
       if (task.terminalId !== null && state.terminals.some((terminal) => terminal.id === task.terminalId && terminal.yolo)) {
-        return { ...state, tasks: state.tasks.map((candidate, index) => index === taskIndex ? { ...candidate, status: 'working', nextApprovalAt: 0, approvalPrompt: null } : candidate) }
+        return { ...state, tasks: state.tasks.map((candidate, index) => index === taskIndex ? { ...candidate, status: 'working', nextApprovalAt: 0, approvalPromptKey: null } : candidate) }
       }
-      const [nextRng, approvalDelay, approvalPrompt] = drawApprovalCheckpoint(state.rng)
+      const [nextRng, approvalDelay, approvalPromptKey] = drawApprovalCheckpoint(state.rng)
       return {
         ...state,
         tasks: state.tasks.map((candidate, index) => index === taskIndex
-          ? { ...candidate, status: 'working', nextApprovalAt: state.elapsed + approvalDelay, approvalPrompt }
+          ? { ...candidate, status: 'working', nextApprovalAt: state.elapsed + approvalDelay, approvalPromptKey }
           : candidate),
         rng: nextRng,
       }
@@ -1806,7 +1810,7 @@ function reduceGame(state: GameState, action: GameAction): GameState {
           money: state.money - price,
           terminals: state.terminals.map((terminal) => terminal.id === action.terminalId ? { ...terminal, yolo: true } : terminal),
           tasks: state.tasks.map((task) => task.terminalId === action.terminalId
-            ? { ...task, status: task.status === 'approval' || task.status === 'blocked' ? 'working' : task.status, nextApprovalAt: 0, approvalPrompt: null }
+            ? { ...task, status: task.status === 'approval' || task.status === 'blocked' ? 'working' : task.status, nextApprovalAt: 0, approvalPromptKey: null }
             : task),
         }
       }
@@ -1848,7 +1852,7 @@ function reduceGame(state: GameState, action: GameAction): GameState {
       const chance = attempt >= 15 ? 1 : Math.min(1, 0.02 * 2 ** Math.max(0, attempt - 9))
       const offered = Number.isFinite(action.roll) && action.roll < chance
       const next = { ...state, secondJobApplications: attempt, secondJobOffer: offered ? company : null, energy: state.energy - 3 }
-      return next.energy <= 0 ? lose(next, 'You ran out of energy and got to depression.', 'energy') : next
+      return next.energy <= 0 ? lose(next, { key: 'ending.energy.body' }, 'energy') : next
     }
     case 'accept-second-job': {
       if (state.stage !== 'hired' || !state.secondJobUnlocked || state.secondJob !== null) return state

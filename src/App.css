@@ -120,7 +120,8 @@ button {
 .resource-widget,
 .clock-widget,
 .date-widget,
-.sound-toggle {
+.sound-toggle,
+.language-picker {
   border: 1px solid rgba(92, 64, 153, 0.19);
   background: rgba(255, 253, 247, 0.62);
   box-shadow: 0 8px 22px rgba(65, 40, 117, 0.08), inset 0 1px rgba(255, 255, 255, 0.78);
@@ -132,6 +133,19 @@ button {
   align-items: center;
   gap: 0.62rem;
   border-radius: 0.85rem;
+}
+
+.resource-widget.token-price-widget {
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+  color: #8b1824;
+  white-space: nowrap;
+}
+
+.token-price-widget strong {
+  font-size: 0.85rem;
+  font-weight: 900;
 }
 
 .resource-widget-icon {

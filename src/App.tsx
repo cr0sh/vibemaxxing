@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { ChangeEvent, Dispatch, FormEvent } from 'react'
 import {
   completedTaskCount,
@@ -7,6 +7,7 @@ import {
   gameReducer,
   initialGame,
   isLocalTerminal,
+  tokenPriceMultiplier,
   WIN_NET_WORTH,
   type Application,
   type DevJumpTarget,
@@ -26,6 +27,7 @@ import { ShortsContent } from './Shorts'
 import { MercuryContent } from './Mercury'
 import { WindowFrame, WindowWorkspace } from './DesktopWindows'
 import { ResourceCounter } from './ResourceCounter'
+import { LanguagePicker, useI18n, type MessageKey } from './i18n'
 import './App.css'
 
 type WindowId = 'apply' | 'offer' | 'messenger' | 'terminal' | 'terminal-2' | 'spark' | 'spark-ultra' | 'shop' | 'social' | 'market' | 'mercury' | 'shorts' | 'defeat'
@@ -53,7 +55,6 @@ const fillCharacterIntervals = {
 } as const
 
 const fillFrameDelay = 16
-const tokenFormatter = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 })
 
 function App() {
   const [state, dispatch] = useReducer(gameReducer, initialGame)
@@ -184,6 +185,7 @@ function Desktop({
   onDevJump: (target: DevJumpTarget) => void
   onDevWindowOpened: () => void
 }) {
+  const { t, formatCurrency, formatNumber } = useI18n()
   const [application, setApplication] = useState<Application>(emptyApplication)
   const isEnding = state.stage === 'lost' || state.stage === 'won'
   const hasEmployment = state.stage === 'hired' || isEnding
@@ -420,6 +422,11 @@ function Desktop({
     dispatch({ type: 'reset' })
   }
 
+  const continueAfterWin = () => {
+    dispatch({ type: 'continue-after-win' })
+    openWindow('terminal')
+  }
+
   const submitApplication = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!event.currentTarget.checkValidity()) {
@@ -462,7 +469,7 @@ function Desktop({
     if (lastSample.current !== null && index >= lastSample.current) index += 1
     const picked = { sample: applicationSamples[index], index }
     lastSample.current = picked.index
-    const sample = picked.sample
+    const sample: Application = { name: picked.sample.name, email: picked.sample.email, pitch: t(picked.sample.pitchKey) }
     const run = fillRun.current
     const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
@@ -510,21 +517,17 @@ function Desktop({
   }
 
   const applicationCount = secondApplicationAvailable ? state.secondJobApplications : state.submissions
-  const applicationTitle = secondApplicationAvailable ? 'Second job application' : 'Job application'
+  const applicationTitle = t(secondApplicationAvailable ? 'app.secondJobApplication' : 'app.jobApplication')
   const offerCompany = secondOfferAvailable ? state.secondJobOffer : currentCompany
   const endingIsVictory = state.stage === 'won'
   const endingIsEnergyLoss = state.lossReason === 'energy'
-  const endingTitle = endingIsVictory ? 'You won' : endingIsEnergyLoss ? 'Energy depleted' : 'You are fired'
-  const endingHeading = endingIsVictory
-    ? 'You are now a multimillionaire'
-    : endingIsEnergyLoss
-      ? 'Your energy ran out'
-      : 'You are fired'
+  const endingTitle = t(endingIsVictory ? 'ending.victory.title' : endingIsEnergyLoss ? 'ending.energy.title' : 'ending.fired.title')
+  const endingHeading = t(endingIsVictory ? 'ending.victory.heading' : endingIsEnergyLoss ? 'ending.energy.heading' : 'ending.fired.heading')
   const endingBody = endingIsVictory
-    ? `Your liquid net worth is $${Math.round(gameNetWorth(state)).toLocaleString('en-US')}, meeting the $${WIN_NET_WORTH.toLocaleString('en-US')} finish line. You do not need to work anymore.`
+    ? t('ending.victory.body', { worth: formatCurrency(gameNetWorth(state)), target: formatCurrency(WIN_NET_WORTH) })
     : endingIsEnergyLoss
-      ? 'Your energy reached zero and you fell into depression. This run is over. Take a real break before trying again.'
-      : state.failure ?? 'The work ended before the artifact arrived. You can try again.'
+      ? t('ending.energy.body')
+      : state.failure ? t(state.failure) : t('ending.fired.body')
   const endingIcon = endingIsVictory ? '🏆' : endingIsEnergyLoss ? '🫥' : '⚠️'
 
   return (
@@ -535,8 +538,8 @@ function Desktop({
         <div className="desktop-grid" aria-hidden="true" />
 
         {state.stage === 'ready' ? (
-          <section className="ready-screen" aria-label="Start game">
-            <button className="new-game-button ready-start" type="button" onClick={beginGame}>New game</button>
+          <section className="ready-screen" aria-label={t('app.startGame')}>
+            <button className="new-game-button ready-start" type="button" onClick={beginGame}>{t('app.startGame')}</button>
           </section>
         ) : (
           <div className="workspace-area">
@@ -545,7 +548,7 @@ function Desktop({
                 <WindowFrame
                   id="apply"
                   icon="📨"
-                  title="Applications"
+                  title={t('app.applications')}
                   active={isWindowActive('apply')}
                   className="application-window"
                   hidden={!windows.apply}
@@ -554,40 +557,40 @@ function Desktop({
                 >
                   <div className="window-heading-row">
                     <div><h2>{applicationTitle}</h2></div>
-                    <div className="submission-stamp" aria-label={`${applicationCount} submissions`}>
-                      <strong>{String(applicationCount).padStart(2, '0')}</strong>
-                      <span>sent</span>
+                    <div className="submission-stamp" aria-label={t('app.submissionCount', { count: formatNumber(applicationCount) })}>
+                      <strong>{formatNumber(applicationCount, { minimumIntegerDigits: 2, useGrouping: false })}</strong>
+                      <span>{t('app.sent')}</span>
                     </div>
                   </div>
                   <form className="application-form" onSubmit={submitApplication}>
                     <div className="field-grid">
                       <label className="field-label">
-                        <span>Your name</span>
-                        <input name="name" value={application.name} onChange={updateApplication} required autoComplete="name" placeholder="Your name" />
+                        <span>{t('app.field.name')}</span>
+                        <input name="name" value={application.name} onChange={updateApplication} required autoComplete="name" placeholder={t('app.field.name')} />
                       </label>
                       <label className="field-label">
-                        <span>Email address</span>
+                        <span>{t('app.field.email')}</span>
                         <input name="email" type="email" value={application.email} onChange={updateApplication} required autoComplete="email" placeholder="you@example.com" />
                       </label>
                     </div>
                     <label className="field-label">
-                      <span>One-paragraph pitch</span>
-                      <textarea name="pitch" value={application.pitch} onChange={updateApplication} required rows={4} placeholder="A short description of your work" />
+                      <span>{t('app.field.pitch')}</span>
+                      <textarea name="pitch" value={application.pitch} onChange={updateApplication} required rows={4} placeholder={t('app.field.pitchPlaceholder')} />
                     </label>
                     <div className="form-actions">
                       <button className="primary-button" type="submit" disabled={state.energy < 3 || isAutofilling}>
-                        Submit application <span aria-hidden="true">↗</span>
+                        {t('app.submitApplication')} <span aria-hidden="true">↗</span>
                       </button>
                       {(secondApplicationAvailable || state.submissions >= 3) && (
                         <button className="secondary-button" type="button" onClick={fillSample} disabled={isAutofilling}>
-                          <span aria-hidden="true">✦</span> Auto-fill application
+                          <span aria-hidden="true">✦</span> {t('app.autoFill')}
                         </button>
                       )}
                     </div>
                   </form>
                   {state.lastResult === 'rejected' && (
                     <p className="feedback feedback-rejected" role="status" aria-live="polite" key={`${state.submissions}-${state.secondJobApplications}`}>
-                      <span aria-hidden="true">⊘</span> Application not selected. Try again.
+                      <span aria-hidden="true">⊘</span> {t('app.applicationRejected')}
                     </p>
                   )}
                 </WindowFrame>
@@ -597,7 +600,7 @@ function Desktop({
                 <WindowFrame
                   id="offer"
                   icon="📬"
-                  title={secondOfferAvailable ? 'Second job offer' : 'Incoming offer'}
+                  title={t(secondOfferAvailable ? 'app.secondJobOffer' : 'app.incomingOffer')}
                   active={isWindowActive('offer')}
                   className="offer-window"
                   hidden={!windows.offer}
@@ -606,18 +609,18 @@ function Desktop({
                 >
                   <div className="offer-hero">
                     <span className="offer-spark" aria-hidden="true">✦</span>
-                    <div><h2>{secondOfferAvailable ? 'Second job offer' : 'Offer received'}</h2></div>
+                    <div><h2>{t(secondOfferAvailable ? 'app.secondJobOffer' : 'app.offerReceived')}</h2></div>
                   </div>
                   <div className="company-card">
                     <div className="company-icon" aria-hidden="true">🏢</div>
                     <div>
-                      <p className="company-label">Company</p>
+                      <p className="company-label">{t('app.company')}</p>
                       <h3>{offerCompany}</h3>
-                      <p>Role: Vibe Engineer · Remote</p>
+                      <p>{t('app.offerRole')}</p>
                     </div>
                   </div>
                   <button className="primary-button offer-accept" type="button" onClick={() => dispatch(secondOfferAvailable ? { type: 'accept-second-job' } : { type: 'accept' })}>
-                    {secondOfferAvailable ? 'Accept second job' : 'Accept offer'} <span aria-hidden="true">→</span>
+                    {t(secondOfferAvailable ? 'app.acceptSecondJob' : 'app.acceptOffer')} <span aria-hidden="true">→</span>
                   </button>
                 </WindowFrame>
               )}
@@ -627,7 +630,7 @@ function Desktop({
                   <WindowFrame
                     id="messenger"
                     icon="💬"
-                    title="Messenger"
+                    title={t('app.messenger')}
                     active={isWindowActive('messenger')}
                     className="messenger-window-frame"
                     contentLayout="fill"
@@ -646,7 +649,7 @@ function Desktop({
                       title={
                         isLocalTerminal(terminal.id)
                           ? terminal.id === 'spark-ultra' ? 'Mapple Spark Ultra' : 'Mapple Spark'
-                          : terminal.id === 'terminal' ? 'Terminal' : 'Terminal 2'
+                          : terminal.id === 'terminal' ? t('app.terminal') : t('app.terminalNumber', { number: 2 })
                       }
                       active={isWindowActive(terminal.id)}
                       className={`terminal-window-frame terminal-window-${terminal.id} ${terminal.yolo ? 'terminal-window-yolo' : ''}`}
@@ -662,7 +665,7 @@ function Desktop({
                   <WindowFrame
                     id="shop"
                     icon="🛍️"
-                    title="Shop"
+                    title={t('app.shop')}
                     active={isWindowActive('shop')}
                     className="shop-window-frame"
                     contentLayout="fill"
@@ -691,7 +694,7 @@ function Desktop({
                     <WindowFrame
                       id="market"
                       icon="📈"
-                      title="Market"
+                      title={t('app.market')}
                       active={isWindowActive('market')}
                       className="market-window-frame"
                       contentLayout="fill"
@@ -749,7 +752,9 @@ function Desktop({
                     <span className="loss-icon" aria-hidden="true">{endingIcon}</span>
                     <h2>{endingHeading}</h2>
                     <p>{endingBody}</p>
-                    <button className="primary-button" type="button" onClick={retryGame}>Try again</button>
+                    <button className="primary-button" type="button" onClick={endingIsVictory ? continueAfterWin : retryGame}>
+                      {t(endingIsVictory ? 'ending.keepPlaying' : 'ending.tryAgain')}
+                    </button>
                   </div>
                 </WindowFrame>
               )}
@@ -759,26 +764,26 @@ function Desktop({
 
         {import.meta.env.DEV && state.stage !== 'ready' && (
           <details className="dev-tools">
-            <summary>Dev</summary>
+            <summary>{t('app.dev')}</summary>
             <div className="dev-controls">
               <button type="button" aria-pressed={isDevPaused} onClick={() => onDevPauseChange(!isDevPaused)}>
-                {isDevPaused ? 'Resume timer' : 'Pause timer'}
+                {t(isDevPaused ? 'app.resumeTimer' : 'app.pauseTimer')}
               </button>
-              <button type="button" onClick={() => dispatch({ type: 'tick', seconds: 10 })}>Advance 10s</button>
-              <button type="button" onClick={() => runDevJump('offer')}>Offer</button>
+              <button type="button" onClick={() => dispatch({ type: 'tick', seconds: 10 })}>{t('app.advanceTen')}</button>
+              <button type="button" onClick={() => runDevJump('offer')}>{t('app.offer')}</button>
               <button type="button" onClick={() => runDevJump('tiro')}>Tiro</button>
-              <button type="button" onClick={() => runDevJump('hired')}>Hired</button>
-              <button type="button" onClick={() => runDevJump('market')}>Market</button>
+              <button type="button" onClick={() => runDevJump('hired')}>{t('app.dev.hired')}</button>
+              <button type="button" onClick={() => runDevJump('market')}>{t('app.market')}</button>
               <button type="button" onClick={() => runDevJump('spark')}>Spark</button>
               <button type="button" onClick={() => runDevJump('mercury')}>Mercury</button>
-              <button type="button" onClick={() => runDevJump('second-job')}>Second job</button>
-              <button type="button" onClick={() => runDevJump('frontier')}>Frontier</button>
-              <button type="button" onClick={() => runDevJump('monopoly')}>Monopoly</button>
+              <button type="button" onClick={() => runDevJump('second-job')}>{t('app.dev.secondJob')}</button>
+              <button type="button" onClick={() => runDevJump('frontier')}>{t('app.dev.frontier')}</button>
+              <button type="button" onClick={() => runDevJump('monopoly')}>{t('app.dev.monopoly')}</button>
               <button type="button" onClick={() => runDevJump('spark-ultra')}>Spark Ultra</button>
               <button type="button" onClick={() => runDevJump('shorts')}>Shorts</button>
-              <button type="button" onClick={() => runDevJump('energy-loss')}>Energy loss</button>
-              <button type="button" onClick={() => runDevJump('won')}>Won</button>
-              <button type="button" onClick={retryGame}>Reset</button>
+              <button type="button" onClick={() => runDevJump('energy-loss')}>{t('app.dev.energyLoss')}</button>
+              <button type="button" onClick={() => runDevJump('won')}>{t('app.dev.won')}</button>
+              <button type="button" onClick={retryGame}>{t('app.dev.reset')}</button>
             </div>
           </details>
         )}
@@ -786,20 +791,20 @@ function Desktop({
 
       {state.stage !== 'ready' && (
         <footer className="dock-area">
-          <nav className="dock" aria-label="Desktop windows">
+          <nav className="dock" aria-label={t('app.desktopWindows')}>
             {stageWindows.map((id) => {
               const item = id === 'apply'
-                ? { icon: '📨', label: 'Applications' }
+                ? { icon: '📨', label: t('app.applications') }
                 : id === 'offer'
-                  ? { icon: '📬', label: 'Offer' }
+                  ? { icon: '📬', label: t('app.offer') }
                   : id === 'messenger'
-                    ? { icon: '💬', label: 'Messenger' }
+                    ? { icon: '💬', label: t('app.messenger') }
                     : id === 'shop'
-                      ? { icon: '🛍️', label: 'Shop' }
+                      ? { icon: '🛍️', label: t('app.shop') }
                       : id === 'mercury'
                         ? { icon: '☿', label: 'Mercury' }
                         : id === 'market'
-                          ? { icon: '📈', label: 'Market' }
+                          ? { icon: '📈', label: t('app.market') }
                           : id === 'social'
                             ? { icon: 'Z', label: 'ZZZ' }
                             : id === 'shorts'
@@ -810,7 +815,7 @@ function Desktop({
                                   ? { icon: '🖥️', label: 'Mapple Spark Ultra' }
                                   : id === 'spark'
                                     ? { icon: '🖥️', label: 'Mapple Spark' }
-                                    : { icon: '🖥️', label: id === 'terminal' ? 'Terminal' : 'Terminal 2' }
+                                    : { icon: '🖥️', label: id === 'terminal' ? t('app.terminal') : t('app.terminalNumber', { number: 2 }) }
               const isOpen = id === 'defeat'
                 ? isEnding && !defeatDismissed
                 : windows[id] || (id === 'messenger' && defeatAutoFront)
@@ -823,7 +828,7 @@ function Desktop({
                   type="button"
                   key={id}
                   onClick={() => isFrontmost ? minimizeWindow(id) : openWindow(id)}
-                  aria-label={`${isFrontmost ? 'Minimize' : isOpen ? 'Focus' : 'Open'} ${item.label} window`}
+                  aria-label={t(isFrontmost ? 'window.aria.minimize' : isOpen ? 'app.dock.focus' : 'app.dock.open', { title: item.label })}
                   aria-pressed={isFrontmost}
                 >
                   <span className="dock-icon" aria-hidden="true">{item.icon}</span>
@@ -840,22 +845,34 @@ function Desktop({
 }
 
 function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
-  const timeLabel = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-  const dateLabel = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-  const monthLabel = now.toLocaleDateString([], { month: 'short' }).toUpperCase()
-  const weekdayLabel = now.toLocaleDateString([], { weekday: 'short' }).toUpperCase()
+  const { locale, t, formatCurrency, formatNumber } = useI18n()
+  const dateFormatters = useMemo(() => ({
+    time: new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' }),
+    date: new Intl.DateTimeFormat(locale, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }),
+    month: new Intl.DateTimeFormat(locale, { month: 'short' }),
+    weekday: new Intl.DateTimeFormat(locale, { weekday: 'short' }),
+  }), [locale])
+  const tokenFormatter = useMemo(() => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 2 }), [locale])
+  const compactMoney = state.money >= 100_000
+  const moneyFormatter = useMemo(() => new Intl.NumberFormat(locale, {
+    style: 'currency', currency: 'USD', notation: compactMoney ? 'compact' : 'standard', minimumFractionDigits: 0, maximumFractionDigits: 2,
+  }), [locale, compactMoney])
+  const timeLabel = dateFormatters.time.format(now)
+  const dateLabel = dateFormatters.date.format(now)
+  const monthLabel = dateFormatters.month.format(now).toLocaleUpperCase(locale)
+  const weekdayLabel = dateFormatters.weekday.format(now).toLocaleUpperCase(locale)
   const showPaidResources = state.stage === 'hired' || ((state.stage === 'lost' || state.stage === 'won') && state.company !== null)
   const tokenDeficit = hasTokenDeficit(state)
   const previousTokenDeficitRef = useRef(tokenDeficit)
-  const [tokenDeficitAnnouncement, setTokenDeficitAnnouncement] = useState('')
+  const [tokenDeficitAnnouncement, setTokenDeficitAnnouncement] = useState<MessageKey | null>(null)
 
   useEffect(() => {
     const previousTokenDeficit = previousTokenDeficitRef.current
     previousTokenDeficitRef.current = tokenDeficit
     if (tokenDeficit && !previousTokenDeficit) {
-      setTokenDeficitAnnouncement('Token balance is low or insufficient for pending work.')
+      setTokenDeficitAnnouncement('app.tokenLow')
     } else if (!tokenDeficit && previousTokenDeficit) {
-      setTokenDeficitAnnouncement(state.stage === 'hired' ? 'Token balance restored.' : '')
+      setTokenDeficitAnnouncement(state.stage === 'hired' ? 'app.tokenRestored' : null)
     }
   }, [state.stage, tokenDeficit])
 
@@ -869,56 +886,62 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
 
   return (
     <>
-      <section className={`widget-band ${showPaidResources ? 'widget-band-paid' : ''}`} aria-label="Desktop widgets">
+      <section className={`widget-band ${showPaidResources ? 'widget-band-paid' : ''}`} aria-label={t('app.widgets')}>
       <div className="widget-cluster">
         <div className={`paid-resources ${showPaidResources ? 'paid-resources-visible' : ''}`} aria-hidden={!showPaidResources}>
           <div className="paid-resources-inner">
-            <div className="resource-widget resource-widget-money" aria-label={`Money ${state.money} dollars`} title={state.money.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}>
+            <div className="resource-widget resource-widget-money" aria-label={t('app.moneyAria', { amount: formatNumber(state.money) })} title={formatCurrency(state.money)}>
               <span className="resource-widget-icon" aria-hidden="true">$</span>
               <div>
-                <span className="widget-label">Money</span>
-                <span className="resource-values"><ResourceCounter value={state.money} prefix="$" formatter={state.money >= 100_000 ? tokenFormatter : undefined} /></span>
+                <span className="widget-label">{t(state.wonAt !== null ? 'app.moneyWon' : 'app.money')}</span>
+                <span className="resource-values"><ResourceCounter value={state.money} formatter={moneyFormatter} /></span>
               </div>
             </div>
-            <div className={`resource-widget resource-widget-tokens${tokenDeficit ? ' resource-widget-token-deficit' : ''}`} aria-label={`Tokens ${state.tokens}`} aria-describedby="tokens-deficit-status">
+            <div className={`resource-widget resource-widget-tokens${tokenDeficit ? ' resource-widget-token-deficit' : ''}`} aria-label={t('app.tokenAria', { amount: formatNumber(state.tokens) })} aria-describedby="tokens-deficit-status">
               <span className="resource-widget-icon" aria-hidden="true">◇</span>
               <div>
-                <span className="widget-label">Tokens</span>
+                <span className="widget-label">{t('app.tokens')}</span>
                 <span className="resource-values"><ResourceCounter value={state.tokens} formatter={tokenFormatter} /></span>
               </div>
             </div>
           </div>
         </div>
-        <div className="resource-widget resource-widget-energy" aria-label={`Energy ${state.energy}`}>
+        {showPaidResources && state.monopolyAnnouncedAt !== null && (
+          <div className="resource-widget token-price-widget" title={t('app.tokenPriceTitle')}>
+            <strong>{t('app.tokenPrice', { multiplier: formatNumber(tokenPriceMultiplier(state), { notation: 'compact', maximumFractionDigits: 2 }) })}</strong>
+          </div>
+        )}
+        <div className="resource-widget resource-widget-energy" aria-label={t('app.energyAria', { amount: formatNumber(state.energy) })}>
           <span className="resource-widget-icon" aria-hidden="true">⚡</span>
           <div>
-            <span className="widget-label">Energy</span>
+            <span className="widget-label">{t('app.energy')}</span>
             <span className="resource-values"><ResourceCounter value={state.energy} /></span>
           </div>
         </div>
-        <time className="clock-widget" dateTime={now.toISOString()} aria-label={`Local time ${timeLabel}`}>
+        <time className="clock-widget" dateTime={now.toISOString()} aria-label={t('app.localTime', { time: timeLabel })}>
           <span className="clock-icon" aria-hidden="true">◷</span>
           <span>{timeLabel}</span>
         </time>
         <time className="date-widget" dateTime={now.toISOString()} aria-label={dateLabel}>
           <span className="calendar-month">{monthLabel}</span>
-          <strong>{now.getDate()}</strong>
+          <strong>{formatNumber(now.getDate())}</strong>
           <span className="calendar-weekday">{weekdayLabel}</span>
         </time>
         <button
           className="sound-toggle"
           type="button"
           onClick={toggleSounds}
-          aria-label={soundsMuted ? 'Unmute sounds' : 'Mute sounds'}
+          aria-label={t(soundsMuted ? 'app.unmuteSounds' : 'app.muteSounds')}
           aria-pressed={soundsMuted}
-          title={soundsMuted ? 'Unmute sounds' : 'Mute sounds'}
+          title={t(soundsMuted ? 'app.unmuteSounds' : 'app.muteSounds')}
         >
           <SpeakerIcon muted={soundsMuted} />
         </button>
       </div>
+      <LanguagePicker />
       </section>
       <span id="tokens-deficit-status" className="token-deficit-status" role="status" aria-live="polite" aria-atomic="true">
-        {tokenDeficitAnnouncement}
+        {tokenDeficitAnnouncement === null ? '' : t(tokenDeficitAnnouncement)}
       </span>
     </>
   )
