@@ -234,11 +234,11 @@ const TOKEN_TASK_COST = 100_000
 export const TOKEN_PURCHASE_AMOUNT = 100_000
 export const TOKEN_PURCHASE_COST = 100
 const TASK_REWARD_PER_DIFFICULTY = 5
+export const BASE_SALARY = 5
 // A shorter cycle preserves the 50-delivery promotion while bringing the first loop near five minutes.
 const BASELINE_TASK_CYCLE_SECONDS = 6
 const OPENING_GRACE_SECONDS = 180
 const OPENING_ASSIGNMENT_BONUS_SECONDS = 4
-const OPENING_APPROVAL_BONUS_SECONDS = 4
 const OPENING_DEADLINE_BONUS = 0.5
 const INITIAL_WAGE_ONLY_SECONDS = 90
 const AVERAGE_TASK_DIFFICULTY = 9
@@ -408,9 +408,8 @@ function openingGraceAt(elapsed: number): number {
   const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
   return 1 - clamp(safeElapsed / OPENING_GRACE_SECONDS, 0, 1)
 }
-function drawApprovalCheckpoint(rng: number, elapsed = 0): readonly [number, number, string] {
-  const [delayRng, normalDelay] = drawInteger(rng, 2, 6)
-  const approvalDelay = normalDelay + Math.round(OPENING_APPROVAL_BONUS_SECONDS * openingGraceAt(elapsed))
+function drawApprovalCheckpoint(rng: number): readonly [number, number, string] {
+  const [delayRng, approvalDelay] = drawInteger(rng, 1, 2)
   const [nextRng, promptIndex] = drawInteger(delayRng, 0, APPROVAL_PROMPTS.length - 1)
   return [nextRng, approvalDelay, APPROVAL_PROMPTS[promptIndex] ?? APPROVAL_PROMPTS[0] ?? '']
 }
@@ -418,7 +417,7 @@ function projectedGrossAt(elapsed: number): number {
   const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
   const averageTaskReward = TASK_REWARD_PER_DIFFICULTY * AVERAGE_TASK_DIFFICULTY
   const rewardElapsed = Math.max(0, safeElapsed - INITIAL_WAGE_ONLY_SECONDS)
-  return safeElapsed + rewardElapsed * (averageTaskReward * 0.9 / BASELINE_TASK_CYCLE_SECONDS)
+  return BASE_SALARY * safeElapsed + rewardElapsed * (averageTaskReward * 0.9 / BASELINE_TASK_CYCLE_SECONDS)
 }
 function bossExpectationAt(elapsed: number): number {
   const ratio = projectedGrossAt(elapsed) / BOSS_BUDGET_ANCHOR
@@ -1022,7 +1021,7 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
   let nextApprovalAt = 0
   let nextApprovalPrompt: string | null = null
   if (!terminal.yolo) {
-    const drawn = drawApprovalCheckpoint(state.rng, state.elapsed)
+    const drawn = drawApprovalCheckpoint(state.rng)
     nextRng = drawn[0]
     nextApprovalAt = state.elapsed + drawn[1]
     nextApprovalPrompt = drawn[2]
@@ -1251,7 +1250,7 @@ function tickHired(state: GameState, seconds: number): GameState {
     if (wholeSecond) {
       current = {
         ...current,
-        money: current.money + 1 + (current.secondJob === null ? 0 : 1),
+        money: current.money + BASE_SALARY * (current.secondJob === null ? 1 : 2),
         tokens: current.elapsed % 100 === 0 ? MAX_TOKENS : current.tokens,
         expectation: bossExpectationAt(current.elapsed),
       }
@@ -1536,7 +1535,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (task.terminalId !== null && state.terminals.some((terminal) => terminal.id === task.terminalId && terminal.yolo)) {
         return { ...state, tasks: state.tasks.map((candidate, index) => index === taskIndex ? { ...candidate, status: 'working', nextApprovalAt: 0, approvalPrompt: null } : candidate) }
       }
-      const [nextRng, approvalDelay, approvalPrompt] = drawApprovalCheckpoint(state.rng, state.elapsed)
+      const [nextRng, approvalDelay, approvalPrompt] = drawApprovalCheckpoint(state.rng)
       return {
         ...state,
         tasks: state.tasks.map((candidate, index) => index === taskIndex

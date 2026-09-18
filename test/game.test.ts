@@ -134,7 +134,7 @@ describe('employment transitions', () => {
       individual = gameReducer(individual, { type: 'tick', seconds: 1 })
     }
     expect(batch).toEqual(individual)
-    expect(batch.money).toBe(20)
+    expect(batch.money).toBe(100)
   })
 
   test('fractional ticks accumulate without double-paying or double-working', () => {
@@ -153,7 +153,7 @@ describe('employment transitions', () => {
     const whole = gameReducer(half, { type: 'tick', seconds: 0.5 })
     expect(whole.elapsed).toBe(1)
     expect(whole.tickRemainder).toBe(0)
-    expect(whole.money).toBe(1)
+    expect(whole.money).toBe(5)
     expect(taskWith(whole, id).progress).toBe(1)
   })
 
@@ -170,9 +170,9 @@ describe('employment transitions', () => {
     expect(state.money).toBe(99)
     state = gameReducer(state, { type: 'tick', seconds: 0.5 })
     expect(state.tokens).toBe(200_000)
-    expect(state.money).toBe(0)
+    expect(state.money).toBe(4)
     const unaffordable = gameReducer({ ...state, tokens: 0 }, { type: 'tick', seconds: 1 })
-    expect(unaffordable.money).toBe(1)
+    expect(unaffordable.money).toBe(9)
     const off = gameReducer({ ...state, tokenAutoBuy: false, tokens: 0, money: 200 }, { type: 'tick', seconds: 1 })
     expect(off.tokens).toBe(0)
     const lost = gameReducer({ ...state, stage: 'lost', tokens: 0, money: 200 }, { type: 'tick', seconds: 1 })
@@ -321,6 +321,32 @@ describe('employment transitions', () => {
     expect(taskWith(replayed, id).approvalPrompt).toBe(taskWith(resumed, id).approvalPrompt)
   })
 
+  test('non-YOLO work pauses at repeated approval checkpoints before completion', () => {
+    let state = hireForApproval()
+    const id = taskWith(state, 1).id
+    state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
+
+    for (let checkpoint = 0; checkpoint < 3; checkpoint += 1) {
+      const resumedAt = state.elapsed
+      let ticks = 0
+      while (taskWith(state, id).status !== 'approval' && ticks < 3) {
+        state = gameReducer(state, { type: 'tick', seconds: 1 })
+        ticks += 1
+      }
+      const task = taskWith(state, id)
+      expect(task.status).toBe('approval')
+      expect(state.elapsed - resumedAt).toBeGreaterThanOrEqual(1)
+      expect(state.elapsed - resumedAt).toBeLessThanOrEqual(2)
+      expect(task.progress).toBeLessThan(task.difficulty)
+
+      if (checkpoint < 2) {
+        state = gameReducer(state, { type: 'approve-task', id, approved: true })
+        expect(taskWith(state, id).status).toBe('working')
+      }
+    }
+  })
+
+
   test('spent tokens remain spent until the hundred-second refill boundary', () => {
     const hired = hire()
     const task = taskWith(hired, 1)
@@ -380,7 +406,7 @@ describe('employment transitions', () => {
     expect(longRunning.stage).toBe('hired')
     expect(longRunning.failure).toBeNull()
     expect(longRunning.elapsed).toBe(10_000)
-    expect(longRunning.money).toBe(10_000)
+    expect(longRunning.money).toBe(50_000)
     expect(longRunning.tasks).toHaveLength(0)
   })
 
@@ -501,12 +527,10 @@ describe('hidden boss assignment inventory', () => {
       ...state.taskQueue.map((task) => task.id),
     ]).size).toBe(3)
   })
-  test('opening grace eases assignment, deadline, and approval pressure before normal pacing', () => {
+  test('opening grace eases assignment and deadline before normal pacing', () => {
     const hired = hire()
     const first = taskWith(hired, 1)
     expect(hired.nextTaskAt).toBeGreaterThan(6)
-    const started = gameReducer(hired, { type: 'start-task', id: first.id, terminalId: 'terminal', slot: 0 })
-    expect(taskWith(started, first.id).nextApprovalAt - started.elapsed).toBeGreaterThanOrEqual(6)
     const lateDescriptor = hired.taskQueue[0]
     if (lateDescriptor === undefined) throw new Error('The boss queue was empty')
     const late = gameReducer({
