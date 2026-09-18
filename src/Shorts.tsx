@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Dispatch, KeyboardEvent, WheelEvent } from 'react'
 import type { GameAction, GameState } from './game'
 import { SHORTS_CATALOG, type ShortVideo } from './shortsCatalog'
@@ -11,6 +11,9 @@ type ShortsProps = {
   active: boolean
 }
 
+const slotOffsets = [-2, -1, 0, 1, 2] as const
+const centerSlot = 2
+const lastSlot = slotOffsets.length - 1
 const lastCatalogIndex = SHORTS_CATALOG.length - 1
 
 function shuffledVideos(): ShortVideo[] {
@@ -23,6 +26,7 @@ function shuffledVideos(): ShortVideo[] {
   }
   return videos
 }
+
 const navigationKeys: Record<string, true> = {
   ArrowDown: true,
   ArrowRight: true,
@@ -36,13 +40,13 @@ const navigationKeys: Record<string, true> = {
   End: true,
 }
 
-function clampIndex(index: number): number {
-  return Math.max(0, Math.min(lastCatalogIndex, index))
+function positiveModulo(value: number, length: number): number {
+  return ((value % length) + length) % length
 }
 
-function nearestCardIndex(feed: HTMLDivElement): number {
-  if (feed.clientHeight <= 0) return 0
-  return clampIndex(Math.round(feed.scrollTop / feed.clientHeight))
+function nearestSlot(feed: HTMLDivElement): number {
+  if (feed.clientHeight <= 0) return centerSlot
+  return Math.max(0, Math.min(lastSlot, Math.round(feed.scrollTop / feed.clientHeight)))
 }
 
 function VideoEmbed({ video }: { video: ShortVideo }) {
@@ -68,13 +72,11 @@ function VideoEmbed({ video }: { video: ShortVideo }) {
 export function ShortsContent({ state, dispatch, active }: ShortsProps) {
   const [videos] = useState(shuffledVideos)
   const feedRef = useRef<HTMLDivElement | null>(null)
-  const activeIndexRef = useRef(0)
-  const programmaticTargetRef = useRef<number | null>(null)
-  const settleTimerRef = useRef<number | null>(null)
-  const gestureTimerRef = useRef<number | null>(null)
-  const programmaticResetTimerRef = useRef<number | null>(null)
+  const virtualPositionRef = useRef(0)
+  const [virtualPosition, setVirtualPosition] = useState(0)
+  const [viewingCount, setViewingCount] = useState(1)
+  const pendingRecenterRef = useRef(false)
   const userGestureRef = useRef(false)
-  const [activeIndex, setActiveIndex] = useState(0)
   const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
 
   const playbackActive = active && pageVisible && state.stage === 'hired'
@@ -85,136 +87,96 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 
-  useEffect(() => () => {
-    if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current)
-    if (gestureTimerRef.current !== null) window.clearTimeout(gestureTimerRef.current)
-    if (programmaticResetTimerRef.current !== null) window.clearTimeout(programmaticResetTimerRef.current)
+  const recenterFeed = useCallback(() => {
+    const feed = feedRef.current
+    if (!feed || feed.clientHeight <= 0) return false
+    // Direct assignment deliberately bypasses scroll-behavior and cannot look like
+    // another user navigation. The card at the center slot is unchanged visually.
+    feed.scrollTop = centerSlot * feed.clientHeight
+    return true
   }, [])
 
-  useEffect(() => {
-    if (playbackActive) return
-    userGestureRef.current = false
-    programmaticTargetRef.current = null
-    if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current)
-  }, [playbackActive])
+  useLayoutEffect(() => {
+    if (!pendingRecenterRef.current) return
+    if (recenterFeed()) pendingRecenterRef.current = false
+  }, [recenterFeed, virtualPosition])
+
+  useLayoutEffect(() => {
+    recenterFeed()
+  }, [recenterFeed])
 
   useEffect(() => {
     const feed = feedRef.current
     if (!feed) return
     const observer = new ResizeObserver(() => {
+      // A resize can change card height while a touch or snap is in flight. Keep
+      // the current logical clip and center its bounded window without rewarding it.
       userGestureRef.current = false
-      if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current)
-      feed.scrollTo({ top: activeIndexRef.current * feed.clientHeight, behavior: 'instant' })
+      pendingRecenterRef.current = false
+      recenterFeed()
     })
     observer.observe(feed)
     return () => observer.disconnect()
-  }, [])
+  }, [recenterFeed])
 
-  const clearGestureTimer = useCallback(() => {
-    if (gestureTimerRef.current === null) return
-    window.clearTimeout(gestureTimerRef.current)
-    gestureTimerRef.current = null
-  }, [])
+  useEffect(() => {
+    if (playbackActive) return
+    userGestureRef.current = false
+    pendingRecenterRef.current = false
+    recenterFeed()
+  }, [playbackActive, recenterFeed])
+
+  const announceTransition = useCallback((delta: number) => {
+    if (!playbackActive || delta === 0) return
+    const nextPosition = virtualPositionRef.current + delta
+    const transitionCount = Math.abs(delta)
+    virtualPositionRef.current = nextPosition
+    pendingRecenterRef.current = true
+    setVirtualPosition(nextPosition)
+    setViewingCount((count) => count + transitionCount)
+    for (let transition = 0; transition < transitionCount; transition += 1) {
+      dispatch({ type: 'scroll-short' })
+    }
+  }, [dispatch, playbackActive])
 
   const markUserGesture = useCallback(() => {
     if (!playbackActive) return
-    programmaticTargetRef.current = null
-    if (programmaticResetTimerRef.current !== null) {
-      window.clearTimeout(programmaticResetTimerRef.current)
-      programmaticResetTimerRef.current = null
-    }
     userGestureRef.current = true
-    clearGestureTimer()
-    // A touch fling can keep scrolling after touchend. This only arms the
-    // settle detector; it never dispatches by itself.
-    gestureTimerRef.current = window.setTimeout(() => {
-      userGestureRef.current = false
-      gestureTimerRef.current = null
-    }, 1500)
-  }, [clearGestureTimer, playbackActive])
-
-  const announceUserNavigation = useCallback((index: number) => {
-    if (!playbackActive) return
-    const nextIndex = clampIndex(index)
-    if (nextIndex === activeIndexRef.current) return
-    activeIndexRef.current = nextIndex
-    setActiveIndex(nextIndex)
-    if (state.stage === 'hired') dispatch({ type: 'scroll-short' })
-  }, [dispatch, state.stage, playbackActive])
-
-  const scrollToIndex = useCallback((index: number) => {
-    if (!playbackActive) return
-    const feed = feedRef.current
-    if (!feed) return
-    const nextIndex = clampIndex(index)
-    if (nextIndex === activeIndexRef.current) return
-    if (settleTimerRef.current !== null) {
-      window.clearTimeout(settleTimerRef.current)
-      settleTimerRef.current = null
-    }
-    userGestureRef.current = false
-    clearGestureTimer()
-    programmaticTargetRef.current = nextIndex
-    if (programmaticResetTimerRef.current !== null) window.clearTimeout(programmaticResetTimerRef.current)
-    programmaticResetTimerRef.current = window.setTimeout(() => {
-      programmaticTargetRef.current = null
-      programmaticResetTimerRef.current = null
-    }, 1200)
-    announceUserNavigation(nextIndex)
-    feed.scrollTo({
-      top: nextIndex * feed.clientHeight,
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    })
-  }, [playbackActive, announceUserNavigation, clearGestureTimer])
-
-  const settleUserScroll = useCallback(() => {
-    settleTimerRef.current = null
-    if (!userGestureRef.current || programmaticTargetRef.current !== null) return
-    const feed = feedRef.current
-    if (!feed) return
-    userGestureRef.current = false
-    clearGestureTimer()
-    announceUserNavigation(nearestCardIndex(feed))
-  }, [announceUserNavigation, clearGestureTimer])
+  }, [playbackActive])
 
   const handleScroll = useCallback(() => {
-    if (programmaticTargetRef.current !== null || !userGestureRef.current) return
-    if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current)
-    settleTimerRef.current = window.setTimeout(settleUserScroll, 100)
-  }, [settleUserScroll])
+    const feed = feedRef.current
+    if (!feed || !playbackActive || pendingRecenterRef.current) return
+    const slot = nearestSlot(feed)
+    if (slot === centerSlot || !userGestureRef.current) return
+
+    userGestureRef.current = false
+    announceTransition(slot - centerSlot)
+  }, [announceTransition, playbackActive])
 
   const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
     if (!playbackActive || Math.abs(event.deltaY) < 1) return
     markUserGesture()
-    if (activeIndexRef.current === lastCatalogIndex && event.deltaY > 0) {
-      scrollToIndex(0)
-      return
-    }
-    if (activeIndexRef.current === 0 && event.deltaY < 0) {
-      scrollToIndex(lastCatalogIndex)
-    }
-  }, [markUserGesture, playbackActive, scrollToIndex])
+  }, [markUserGesture, playbackActive])
 
-  const handlePointerDown = useCallback(() => {
-    markUserGesture()
-  }, [markUserGesture])
+  const navigateBy = useCallback((delta: number) => {
+    if (!playbackActive || delta === 0) return
+    userGestureRef.current = false
+    announceTransition(delta)
+  }, [announceTransition, playbackActive])
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || !navigationKeys[event.key]) return
-    const current = activeIndexRef.current
-    let target: number | null = null
-    if (event.key === 'ArrowDown' || event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === 'j') target = current + 1
-    else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft' || event.key === 'PageUp' || event.key === 'k') target = current - 1
-    else if (event.key === 'Home') target = 0
-    else if (event.key === 'End') target = lastCatalogIndex
-    if (target === null) return
-    if (target > lastCatalogIndex) target = 0
-    if (target < 0) target = lastCatalogIndex
-    if (target === current) return
+    const currentIndex = positiveModulo(virtualPositionRef.current, videos.length)
+    let delta: number | null = null
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === 'j') delta = 1
+    else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft' || event.key === 'PageUp' || event.key === 'k') delta = -1
+    else if (event.key === 'Home') delta = -currentIndex
+    else if (event.key === 'End') delta = lastCatalogIndex - currentIndex
+    if (delta === null || delta === 0) return
     event.preventDefault()
-    scrollToIndex(target)
-  }, [scrollToIndex])
-
+    navigateBy(delta)
+  }, [navigateBy, videos.length])
 
   return (
     <section className="shorts-content" aria-label="Shorts" data-playback-active={playbackActive ? 'true' : 'false'}>
@@ -223,12 +185,10 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
           <p className="shorts-eyebrow">Shorts / human reset</p>
           <h2>One more clip</h2>
         </div>
-        <span className="shorts-count" aria-label={`Short ${activeIndex + 1} of ${SHORTS_CATALOG.length}`}>
-          {activeIndex + 1} / {SHORTS_CATALOG.length}
-        </span>
+        <span className="shorts-count" aria-label={`Clip ${viewingCount}`}>{viewingCount}</span>
       </header>
       <p className="shorts-status" role="status" aria-live="polite">
-        {!pageVisible ? 'Playback paused while this window is hidden.' : state.stage !== 'hired' ? 'Run ended · Shorts is read-only.' : !active ? 'Playback paused while Shorts is in the background.' : 'Scroll to a new clip: +1 energy and reset the 3-second inactivity timer.'}
+        {!pageVisible ? 'Playback paused while this window is hidden.' : state.stage !== 'hired' ? 'Run ended · Shorts is read-only.' : !active ? 'Playback paused while Shorts is in the background.' : 'Doomscrolling gives you energy, right?'}
       </p>
       <div
         ref={feedRef}
@@ -238,17 +198,20 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
         tabIndex={0}
         onScroll={handleScroll}
         onWheel={handleWheel}
-        onPointerDown={handlePointerDown}
+        onPointerDown={markUserGesture}
         onTouchMove={markUserGesture}
         onTouchEnd={markUserGesture}
         onKeyDown={handleKeyDown}
       >
-        {videos.map((video, index) => {
-          const isCurrent = index === activeIndex
+        {slotOffsets.map((offset, slot) => {
+          const position = virtualPosition + offset
+          const index = positiveModulo(position, videos.length)
+          const video = videos[index]!
+          const isCurrent = slot === centerSlot
           return (
             <article
               className={`shorts-card${isCurrent ? ' is-current' : ''}`}
-              key={video.id}
+              key={`short-slot-${slot}`}
               aria-label={`${video.title}, ${video.creator}`}
               aria-current={isCurrent ? 'true' : undefined}
               tabIndex={-1}
@@ -268,8 +231,8 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
         })}
       </div>
       <nav className="shorts-controls" aria-label="Short navigation">
-        <button type="button" onClick={() => scrollToIndex((activeIndex + videos.length - 1) % videos.length)} disabled={!playbackActive} aria-label="Previous short">↑ <span>Previous</span></button>
-        <button type="button" onClick={() => scrollToIndex((activeIndex + 1) % videos.length)} disabled={!playbackActive} aria-label="Next short"><span>Next</span> ↓</button>
+        <button type="button" onClick={() => navigateBy(-1)} disabled={!playbackActive} aria-label="Previous short">↑ <span>Previous</span></button>
+        <button type="button" onClick={() => navigateBy(1)} disabled={!playbackActive} aria-label="Next short"><span>Next</span> ↓</button>
       </nav>
     </section>
   )
