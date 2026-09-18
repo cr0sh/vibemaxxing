@@ -1064,7 +1064,6 @@ button {
 
 .dock-item:hover .dock-icon,
 .dock-item:focus-visible .dock-icon {
-  animation: dock-bounce 560ms linear;
   filter: brightness(1.12) saturate(1.08);
 }
 
