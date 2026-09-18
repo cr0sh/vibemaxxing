@@ -16,7 +16,7 @@ export type MessageReference = { readonly key: MessageKey; readonly params?: Mes
 export type MessageParams = Readonly<Record<string, string | number | MessageReference>>
 export type Translate = (message: MessageKey | MessageReference, params?: MessageParams) => string
 
-export const localeCatalogs: Record<Locale, PartialCatalog> = {
+export const localeCatalogs: Record<Locale, Catalog> = {
   en: englishCatalog,
   de: germanCatalog,
   fr: frenchCatalog,

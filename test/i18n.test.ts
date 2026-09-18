@@ -4,10 +4,13 @@ import {
   createTranslator,
   englishCatalog,
   isCatalogComplete,
+  localeCatalogs,
   missingCatalogKeys,
   placeholderParity,
   preferredLocale,
   resolveLocale,
+  SUPPORTED_LOCALES,
+  type MessageKey,
   type MessageReference,
 } from '../src/i18n/catalog'
 
@@ -72,5 +75,29 @@ describe('localized messages', () => {
     expect(missingCatalogKeys({ ...englishCatalog, 'common.off': '' })).toEqual(['common.off'])
     expect(catalogPlaceholderMismatches({ ...englishCatalog, 'common.tokens': '{other}' })).toEqual(['common.tokens'])
     expect(placeholderParity('{first} then {second}', '{second} / {first}')).toBe(true)
+  })
+
+  test('every shipped locale covers the catalog without blank entries or changed placeholders', () => {
+    for (const locale of SUPPORTED_LOCALES) {
+      expect(missingCatalogKeys(localeCatalogs[locale]), `${locale} missing translations`).toEqual([])
+      expect(catalogPlaceholderMismatches(localeCatalogs[locale]), `${locale} interpolation contract`).toEqual([])
+    }
+  })
+
+  test('localized dialogue preserves product, model, and company identities', () => {
+    const names = [
+      'Vibemaxxer', 'Tiro Labs', 'Tiro Max', 'Tiro', 'Mapple Spark Ultra', 'Mapple Spark',
+      'Mapple', 'ConvexLM Reasoning', 'ConvexLM Pro', 'Mercury', 'Shorts', 'YOLO', 'GIPHY', 'BTC', 'USD',
+    ]
+    for (const locale of SUPPORTED_LOCALES) {
+      if (locale === 'en') continue
+      for (const key of Object.keys(englishCatalog) as MessageKey[]) {
+        for (const name of names) {
+          if (englishCatalog[key].includes(name)) {
+            expect(localeCatalogs[locale][key], `${locale}:${key}`).toContain(name)
+          }
+        }
+      }
+    }
   })
 })

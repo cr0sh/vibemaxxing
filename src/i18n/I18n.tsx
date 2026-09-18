@@ -39,9 +39,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     }
   }, [])
   const value = useMemo<I18nValue>(() => {
-    const formatters = new Map<string | undefined, Intl.NumberFormat>()
+    const formatters = new Map<string, Intl.NumberFormat>()
     const formatNumber = (number: number, options?: Intl.NumberFormatOptions): string => {
-      const key = JSON.stringify(options)
+      // React Compiler can retain the Map across locale changes.
+      const key = `${locale}:${JSON.stringify(options)}`
       let formatter = formatters.get(key)
       if (formatter === undefined) {
         formatter = new Intl.NumberFormat(locale, options)
