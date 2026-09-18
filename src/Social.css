@@ -32,16 +32,33 @@
   width: 2.62rem;
   height: 2.62rem;
   place-items: center;
-  border-radius: 0.78rem;
-  background: linear-gradient(145deg, #f65b98, #ca3c8c);
-  box-shadow: 0 0.35rem 0.75rem rgba(190, 55, 121, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 0.65rem;
+  background: linear-gradient(145deg, #15141b, #343042);
+  box-shadow: 0 0.35rem 0.75rem rgba(35, 22, 59, 0.25);
   color: #fff;
-  font-size: 0.85rem;
+  font-family: var(--sans);
+  font-size: 2.15rem;
   font-weight: 900;
-  letter-spacing: -0.1em;
+  line-height: 1;
 }
 
-.social-eyebrow,
+.social-window-frame .window-title > span:first-child {
+  display: inline-grid;
+  width: 1.32rem;
+  height: 1.32rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 0.36rem;
+  background: linear-gradient(145deg, #15141b, #343042);
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 0.94rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .social-feed-title,
 .social-post-kicker {
   margin: 0;
@@ -181,22 +198,15 @@
   border-radius: 0.68rem;
   background: #ffe6f1;
   color: #ba3976;
-  font-family: Georgia, serif;
+  font-family: var(--sans);
   font-size: 1.16rem;
-  font-weight: 900;
-  font-style: italic;
+  font-weight: 800;
+  line-height: 1;
 }
 
-.social-avatar-spark {
+.social-avatar-lab {
   border-color: #9fbde9;
   background: #e7efff;
-  color: #496ca9;
-}
-
-.social-avatar-win {
-  border-color: #8ed5b5;
-  background: #def8eb;
-  color: #20895b;
 }
 
 .social-post-main {
@@ -248,7 +258,6 @@
   line-height: 1.4;
 }
 
-.social-action,
 .social-heart-button {
   min-height: 2.18rem;
   border: 1px solid #d77ca8;
@@ -263,12 +272,6 @@
   transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
 }
 
-.social-claim-button {
-  margin-top: 0.68rem;
-}
-
-.social-action:hover,
-.social-action:focus-visible,
 .social-heart-button:hover,
 .social-heart-button:focus-visible {
   border-color: #a92963;
@@ -278,7 +281,6 @@
   transform: translateY(-1px);
 }
 
-.social-action:disabled,
 .social-heart-button:disabled {
   border-color: #d5c4ce;
   background: #d9cfd5;
@@ -376,7 +378,6 @@
     scroll-behavior: auto;
   }
 
-  .social-action,
   .social-heart-button {
     transition-duration: 0.01ms;
   }

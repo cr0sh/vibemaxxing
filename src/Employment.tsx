@@ -56,6 +56,8 @@ const employerName = (state: GameState, jobId: JobId): string => (
   jobId === 'secondary' ? state.secondJob?.company ?? 'Second employer' : state.company ?? 'Primary employer'
 )
 
+const employerBoss = (jobId: JobId): string => jobId === 'secondary' ? 'boss.dmg' : 'boss.exe'
+
 const employerLevel = (state: GameState, jobId: JobId): 3 | 4 | 5 => (
   jobId === 'secondary' ? state.secondJob?.level ?? 3 : state.level
 )
@@ -331,17 +333,17 @@ function WatercoolerPane({
         <div className="avatar" aria-hidden="true">M</div>
         <div className="message-body">
           <div className="message-meta"><strong>mira.from-product</strong><span>watercooler</span></div>
-          <p>Running low on tokens? Tiro is running a free usage-reset campaign on ZZZ. Grab the reset, then watch the feed for another chance.</p>
+          <p>Running low on tokens? Tiro’s free usage-reset campaign on Vibemaxxers' Social Network applies the initial reset automatically when you install it. Like posts for another chance.</p>
           <button
             className="employment-social-open-button"
             type="button"
             onClick={onOpenSocial}
             disabled={!canOpen}
           >
-            <span aria-hidden="true">↗</span> {installed ? 'Open ZZZ' : 'Install ZZZ and open it'}
+            <span aria-hidden="true">↗</span> {installed ? 'Open Social Network' : 'Install Social Network and open it'}
           </button>
           {!installed && !canOpen && <span className="employment-control-hint">Keep working until this channel unlocks.</span>}
-          {installed && state.stage === 'lost' && <span className="employment-control-hint">ZZZ is read-only after the run ends.</span>}
+          {installed && state.stage === 'lost' && <span className="employment-control-hint">The social network is read-only after the run ends.</span>}
         </div>
       </div>
       ) : <p className="employment-control-hint">No messages yet.</p>}
@@ -452,6 +454,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
 
   const renderGeneralMessage = (message: EmploymentMessage) => {
     const owner = employerName(state, message.jobId)
+    const boss = employerBoss(message.jobId)
     if (message.type === 'welcome') {
       const welcomed = activeJob?.welcomeReacted ?? false
       return (
@@ -462,7 +465,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
           <div className="message-row employment-message-entry">
             <div className="avatar boss-avatar" aria-hidden="true">B</div>
             <div className="message-body">
-              <div className="message-meta"><strong>boss.exe</strong><span>{owner} · just now</span></div>
+              <div className="message-meta"><strong>{boss}</strong><span>{owner} · just now</span></div>
               <p>Welcome aboard. Your workspace is ready.</p>
               <button
                 className={`message-reaction employment-reaction-button ${welcomed ? 'employment-reaction-active' : ''}`}
@@ -486,7 +489,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
         <div className="message-row employment-message-entry" key={message.id}>
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
           <div className="message-body">
-            <div className="message-meta"><strong>boss.exe</strong><span>{owner} · assignment</span></div>
+            <div className="message-meta"><strong>{boss}</strong><span>{owner} · assignment</span></div>
             <p>Next assignment.</p>
             <TaskAttachment state={state} task={currentTask.task} elapsed={state.elapsed} archived={currentTask.archived} />
             {message.artifact !== null && (
@@ -530,7 +533,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
         <div className="message-row employment-message-entry employment-milestone-entry employment-incentives-entry" key={message.id}>
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
           <div className="message-body">
-            <div className="message-meta"><strong>boss.exe</strong><span>{owner} · incentives · {formatSeconds(message.elapsed)}</span></div>
+            <div className="message-meta"><strong>{boss}</strong><span>{owner} · incentives · {formatSeconds(message.elapsed)}</span></div>
             <p>New assignments include a cash bonus. Deliver sooner to earn more; deadlines still apply.</p>
           </div>
         </div>
@@ -542,7 +545,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
         <div className="message-row employment-message-entry employment-milestone-entry employment-promotion-entry" key={message.id}>
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
           <div className="message-body">
-            <div className="message-meta"><strong>boss.exe</strong><span>{owner} · promotion · {formatSeconds(message.elapsed)}</span></div>
+            <div className="message-meta"><strong>{boss}</strong><span>{owner} · promotion · {formatSeconds(message.elapsed)}</span></div>
             <p>You are promoted to <strong>Level {message.level}</strong>. Keep shipping.</p>
           </div>
         </div>
@@ -591,7 +594,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
       <div ref={firingRef} className="message-row employment-message-entry employment-firing-entry" key={message.id}>
         <div className="avatar boss-avatar" aria-hidden="true">B</div>
         <div className="message-body">
-          <div className="message-meta"><strong>boss.exe</strong><span>now</span></div>
+          <div className="message-meta"><strong>{boss}</strong><span>{owner} · now</span></div>
           <p>You are fired. {message.failure}</p>
         </div>
       </div>
@@ -641,8 +644,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
         <p className="sidebar-heading">Channels</p>
         <ChannelButton channel="general" active={channel === 'general'} unread={unreadCount > 0} onSelect={() => selectChannel('general')} />
         <ChannelButton channel="watercooler" active={channel === 'watercooler'} unread={watercoolerUnread} onSelect={() => selectChannel('watercooler')} />
-        <p className="sidebar-heading sidebar-heading-spaced">Direct messages</p>
-        <div className="channel employment-static-channel"><span className="online-dot" aria-hidden="true" /> boss.exe</div>
+        <div className="channel employment-static-channel"><span className="online-dot" aria-hidden="true" /> {employerBoss(activeJobId)}</div>
       </div>
       <div className="chat-pane">
         <div className="chat-header">
@@ -905,8 +907,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
       onDrop={handleTerminalDrop}
     >
       <div className="terminal-topline">
-        <span><span className="terminal-dot" aria-hidden="true" /> agent-shell</span>
-        <span>{isSpark ? 'spark · local Reason' : `${terminalId} · ${AGENT_MODELS[model].label}`}{yolo ? ' · YOLO' : ''}</span>
+        <span>{isSpark ? 'spark · local ConvexLM Reasoning' : `${terminalId} · ${AGENT_MODELS[model].label}`}{yolo ? ' · YOLO' : ''}</span>
         {!isSpark && state.frontierModelUnlocked && (
           <label className="employment-model-selector">
             <span>Model</span>
@@ -941,7 +942,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
         <div className="employment-token-line">
           <span><strong>{isSpark ? 'Spark local' : state.tokens.toLocaleString()}</strong>{isSpark ? ' · no task-token cost' : ' tokens available'}</span>
           <span className="employment-refill-countdown">
-            {isSpark ? 'Reason model' : state.tokens >= MAX_TOKENS ? 'Balance full' : `Refill in ${formatSeconds(refillIn)}`}
+            {isSpark ? 'ConvexLM Reasoning model' : state.tokens >= MAX_TOKENS ? 'Balance full' : `Refill in ${formatSeconds(refillIn)}`}
           </span>
         </div>
       </div>
