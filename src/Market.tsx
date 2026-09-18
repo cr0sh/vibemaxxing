@@ -3,10 +3,8 @@ import type { Dispatch, FormEvent } from 'react'
 import type { GameAction, GameState } from './game'
 import { executableBtcQuantity, type TradeMarker } from './trading'
 import { useAnimatedNumber } from './useAnimatedNumber'
+import { useI18n } from './i18n'
 import './Market.css'
-
-const usdFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const btcFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 8 })
 const EMPTY_HISTORY: readonly { elapsed: number; price: number }[] = []
 const EMPTY_TRADES: readonly TradeMarker[] = []
 
@@ -36,32 +34,6 @@ function parseAmount(value: string): number | null {
   return Number.isFinite(amount) && amount > 0 ? amount : null
 }
 
-function formatUsd(value: number | undefined): string {
-  return value !== undefined && Number.isFinite(value) ? `$${usdFormatter.format(value)}` : '$—'
-}
-
-function formatSignedUsd(value: number | undefined): string {
-  if (value === undefined || !Number.isFinite(value)) return '$—'
-  if (Math.abs(value) < 0.005) return '$0.00'
-  return `${value > 0 ? '+' : '-'}$${usdFormatter.format(Math.abs(value))}`
-}
-
-function formatBtc(value: number | undefined): string {
-  return value !== undefined && Number.isFinite(value) ? btcFormatter.format(value) : '—'
-}
-
-const compactUsdFormatter = new Intl.NumberFormat('en-US', {
-  notation: 'compact',
-  maximumFractionDigits: 2,
-})
-
-function formatCompactUsd(value: number | undefined): string {
-  return value !== undefined && Number.isFinite(value) ? `$${compactUsdFormatter.format(value)}` : '$—'
-}
-
-function formatQuantityNotional(value: number | undefined): string {
-  return value !== undefined && Number.isFinite(value) ? `(= ${compactUsdFormatter.format(value)} USD)` : ''
-}
 
 
 function pnlTone(value: number | undefined): 'positive' | 'negative' | 'neutral' {
@@ -183,11 +155,37 @@ function buildChart(
 }
 
 export function MarketContent({ state, dispatch }: MarketProps) {
+  const { t, formatNumber, formatCurrency } = useI18n()
   const market = state.market
   const [transferAmount, setTransferAmount] = useState('100')
   const [transferMax, setTransferMax] = useState(false)
   const [btcAmount, setBtcAmount] = useState('1')
   const canUseMarket = state.stage === 'hired' && market !== null
+  const formatUsd = (value: number | undefined): string => (
+    value !== undefined && Number.isFinite(value) ? formatCurrency(value, 'USD') : t('market.usdUnavailable')
+  )
+  const formatSignedUsd = (value: number | undefined): string => {
+    if (value === undefined || !Number.isFinite(value)) return t('market.usdUnavailable')
+    if (Math.abs(value) < 0.005) return formatCurrency(0, 'USD')
+    return `${value > 0 ? '+' : '-'}${formatCurrency(Math.abs(value), 'USD')}`
+  }
+  const formatBtc = (value: number | undefined): string => (
+    value !== undefined && Number.isFinite(value)
+      ? formatNumber(value, { minimumFractionDigits: 0, maximumFractionDigits: 8 })
+      : t('common.unavailable')
+  )
+  const formatCompactUsd = (value: number | undefined): string => (
+    value !== undefined && Number.isFinite(value)
+      ? formatNumber(value, { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 2 })
+      : t('market.usdUnavailable')
+  )
+  const formatQuantityNotional = (value: number | undefined): string => (
+    value !== undefined && Number.isFinite(value)
+      ? t('market.quantityNotional', {
+        value: formatNumber(value, { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 2 }),
+      })
+      : ''
+  )
   const transferValue = parseAmount(transferAmount)
   const transferValueFor = (direction: 'deposit' | 'withdraw') => {
     if (!canUseMarket) return null
@@ -250,22 +248,30 @@ export function MarketContent({ state, dispatch }: MarketProps) {
   return (
     <div className="market-app">
       <header className="market-header">
-        <h2>Market</h2>
+        <h2>{t('market.title')}</h2>
         <div className="market-header-values">
           <div
             className="market-pnl"
-            title={`Lifetime P&L ${formatSignedUsd(lifetimePnl)}; realized ${formatSignedUsd(realizedPnl)}; unrealized ${formatSignedUsd(unrealizedPnl)}`}
-            aria-label={`Lifetime P&L ${formatSignedUsd(lifetimePnl)}; realized ${formatSignedUsd(realizedPnl)}; unrealized ${formatSignedUsd(unrealizedPnl)}`}
+            title={t('market.lifetimeTitle', {
+              lifetime: formatSignedUsd(lifetimePnl),
+              realized: formatSignedUsd(realizedPnl),
+              unrealized: formatSignedUsd(unrealizedPnl),
+            })}
+            aria-label={t('market.lifetimeTitle', {
+              lifetime: formatSignedUsd(lifetimePnl),
+              realized: formatSignedUsd(realizedPnl),
+              unrealized: formatSignedUsd(unrealizedPnl),
+            })}
           >
-            <span>Lifetime P&amp;L</span>
+            <span>{t('market.lifetimePnl')}</span>
             <AnimatedMarketNumber tag="strong" target={lifetimePnl} format={formatSignedUsd} tone="pnl" className="market-pnl-value" />
             <small>
-              Realized <AnimatedMarketNumber target={realizedPnl} format={formatSignedUsd} />
+              {t('market.realized')} <AnimatedMarketNumber target={realizedPnl} format={formatSignedUsd} />
               {' · '}
-              Unrealized <AnimatedMarketNumber target={unrealizedPnl} format={formatSignedUsd} />
+              {t('market.unrealized')} <AnimatedMarketNumber target={unrealizedPnl} format={formatSignedUsd} />
             </small>
           </div>
-          <div className="market-current-price" aria-label={`Current Bitcoin price ${formatUsd(market?.price)}`}>
+          <div className="market-current-price" aria-label={t('market.currentBitcoin', { price: formatUsd(market?.price) })}>
             <span>BTC / USD</span>
             <strong>{formatUsd(market?.price)}</strong>
           </div>
@@ -274,148 +280,155 @@ export function MarketContent({ state, dispatch }: MarketProps) {
 
       <div className="market-layout">
         <div className="market-main">
-          <section className="market-balances" aria-label="Balances">
+          <section className="market-balances" aria-label={t('market.balances')}>
             <div
               className="market-balance market-balance-portfolio"
-              title="Trading USD + Trading BTC × current BTC / USD price; excludes cash"
-              aria-label={`Total portfolio value ${formatUsd(portfolioValue)}, excluding cash`}
+              title={t('market.portfolioTitle')}
+              aria-label={t('market.portfolioValue', { value: formatUsd(portfolioValue) })}
             >
-              <span>Total portfolio</span>
+              <span>{t('market.totalPortfolio')}</span>
               <AnimatedMarketNumber tag="strong" target={portfolioValue} format={formatUsd} />
             </div>
             <div
               className="market-balance market-balance-usd"
-              aria-label={`Trading USD ${formatUsd(market?.usd)}`}
+              aria-label={`${t('market.tradingUsd')} ${formatUsd(market?.usd)}`}
             >
-              <span>Trading USD</span>
+              <span>{t('market.tradingUsd')}</span>
               <AnimatedMarketNumber tag="strong" target={market?.usd} format={formatUsd} />
             </div>
             <div
               className="market-balance market-balance-btc"
-              aria-label={`Trading BTC ${formatBtc(market?.btc)} BTC, worth ${formatUsd(btcHoldingValue)}`}
+              aria-label={t('market.btcWorth', { amount: formatBtc(market?.btc), value: formatUsd(btcHoldingValue) })}
             >
-              <span>Trading BTC</span>
+              <span>{t('market.tradingBtc')}</span>
               <strong>
                 <AnimatedMarketNumber target={market?.btc} format={formatBtc} /> <small>BTC</small>
               </strong>
               <small
                 className="market-balance-secondary"
-                aria-label={`Current BTC value ${formatUsd(btcHoldingValue)}`}
+                aria-label={t('market.currentBtcValue', { value: formatUsd(btcHoldingValue) })}
               >
                 ≈ <AnimatedMarketNumber target={btcHoldingValue} format={formatCompactUsd} />
               </small>
             </div>
           </section>
-      <figure className="market-chart">
-        <figcaption>BTC / USD</figcaption>
-        <svg
-          className="market-chart-svg"
-          viewBox="0 0 480 180"
-          role="img"
-          aria-label="Bitcoin price history with trade markers"
-          preserveAspectRatio="none"
-        >
-          <title>Bitcoin price history with trade markers</title>
-          <line className="market-chart-grid" x1="12" y1="12" x2="468" y2="12" />
-          <line className="market-chart-grid" x1="12" y1="90" x2="468" y2="90" />
-          <line className="market-chart-grid" x1="12" y1="168" x2="468" y2="168" />
-          {chart.points && <polyline className="market-chart-line" points={chart.points} />}
-          {chart.markers.map((marker) => {
-            const side = marker.side === 'buy' ? 'Buy' : 'Sell'
-            const description = `${side} ${formatBtc(marker.quantity)} BTC at ${formatUsd(marker.price)} (${marker.elapsed.toFixed(1)}s)`
-            return (
-              <g
-                key={marker.id}
-                className={`market-chart-marker market-chart-marker-${marker.side}`}
-                transform={`translate(${marker.x.toFixed(2)} ${marker.y.toFixed(2)})`}
-                role="img"
-                tabIndex={0}
-                aria-label={description}
-              >
-                <title>{description}</title>
-                {marker.side === 'buy'
-                  ? <path d="M 0,1 L 6,10 L -6,10 Z" />
-                  : <path d="M 0,-1 L 6,-10 L -6,-10 Z" />}
-              </g>
-            )
-          })}
-        </svg>
-        <div className="market-chart-range" aria-hidden="true">
-          <span>Low {formatUsd(chart.min ?? undefined)}</span>
-          <span>High {formatUsd(chart.max ?? undefined)}</span>
-        </div>
-      </figure>
+          <figure className="market-chart">
+            <figcaption>BTC / USD</figcaption>
+            <svg
+              className="market-chart-svg"
+              viewBox="0 0 480 180"
+              role="img"
+              aria-label={t('market.chartAria')}
+              preserveAspectRatio="none"
+            >
+              <title>{t('market.chartAria')}</title>
+              <line className="market-chart-grid" x1="12" y1="12" x2="468" y2="12" />
+              <line className="market-chart-grid" x1="12" y1="90" x2="468" y2="90" />
+              <line className="market-chart-grid" x1="12" y1="168" x2="468" y2="168" />
+              {chart.points && <polyline className="market-chart-line" points={chart.points} />}
+              {chart.markers.map((marker) => {
+                const side = marker.side === 'buy' ? t('market.buy') : t('market.sell')
+                const description = t('market.marker', {
+                  side,
+                  quantity: formatBtc(marker.quantity),
+                  price: formatUsd(marker.price),
+                  seconds: formatNumber(marker.elapsed, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+                })
+                return (
+                  <g
+                    key={marker.id}
+                    className={`market-chart-marker market-chart-marker-${marker.side}`}
+                    transform={`translate(${marker.x.toFixed(2)} ${marker.y.toFixed(2)})`}
+                    role="img"
+                    tabIndex={0}
+                    aria-label={description}
+                  >
+                    <title>{description}</title>
+                    {marker.side === 'buy'
+                      ? <path d="M 0,1 L 6,10 L -6,10 Z" />
+                      : <path d="M 0,-1 L 6,-10 L -6,-10 Z" />}
+                  </g>
+                )
+              })}
+            </svg>
+            <div className="market-chart-range" aria-hidden="true">
+              <span>{t('market.low', { value: formatUsd(chart.min ?? undefined) })}</span>
+              <span>{t('market.high', { value: formatUsd(chart.max ?? undefined) })}</span>
+            </div>
+          </figure>
         </div>
 
-      <div className="market-panels">
-        <section className="market-panel" aria-labelledby="market-transfer-heading">
-          <h3 id="market-transfer-heading">USD wallet</h3>
-          <form className="market-form" onSubmit={submitTransfer('deposit')}>
-            <label htmlFor="market-transfer-amount">Amount <span>(USD)</span></label>
-            <div className="market-input-control">
-              <input
-                id="market-transfer-amount"
-                type="text"
-                inputMode="decimal"
-                value={transferMax ? 'MAX' : transferAmount}
-                onChange={(event) => {
-                  setTransferAmount(event.currentTarget.value)
-                  setTransferMax(false)
-                }}
-                aria-describedby="market-transfer-help"
-              />
-              <button className="market-max-button" type="button" aria-pressed={transferMax} onClick={() => setTransferMax((enabled) => !enabled)} disabled={!canUseMarket}>MAX</button>
-            </div>
-            <span id="market-transfer-help" className="market-form-help">
-              Cash <AnimatedMarketNumber target={state.money} format={formatUsd} />
-              {' · '}
-              wallet <AnimatedMarketNumber target={market?.usd} format={formatUsd} />
-            </span>
-            <div className="market-actions">
-              <button type="submit" disabled={!canDeposit}>{transferMax ? 'Deposit MAX' : 'Deposit USD'}</button>
-              <button type="button" disabled={!canWithdraw} onClick={() => {
-                if (!canUseMarket || withdrawValue === null) return
-                dispatch({ type: 'market-transfer', direction: 'withdraw', amount: transferMax ? 'max' : withdrawValue })
-              }}>{transferMax ? 'Withdraw MAX' : 'Withdraw USD'}</button>
-            </div>
-          </form>
-        </section>
-
-        <section className="market-panel" aria-labelledby="market-trade-heading">
-          <h3 id="market-trade-heading">Trade</h3>
-          <form className="market-form" onSubmit={submitTrade('buy')}>
-            <label htmlFor="market-btc-amount">Quantity <span>(BTC)</span></label>
-            <div className={`market-quantity-control${btcNotional === null ? ' market-quantity-control-empty' : ''}`}>
-              <input
-                id="market-btc-amount"
-                type="number"
-                min="0.00000001"
-                step="any"
-                inputMode="decimal"
-                value={btcAmount}
-                onChange={(event) => setBtcAmount(event.currentTarget.value)}
-                aria-describedby="market-btc-help market-btc-notional"
-              />
-              <span id="market-btc-notional" className="market-quantity-hint">
-                <AnimatedMarketNumber target={btcNotional ?? undefined} format={formatQuantityNotional} />
+        <div className="market-panels">
+          <section className="market-panel" aria-labelledby="market-transfer-heading">
+            <h3 id="market-transfer-heading">{t('market.usdWallet')}</h3>
+            <form className="market-form" onSubmit={submitTransfer('deposit')}>
+              <label htmlFor="market-transfer-amount">{t('market.amount')} <span>(USD)</span></label>
+              <div className="market-input-control">
+                <input
+                  id="market-transfer-amount"
+                  type="text"
+                  inputMode="decimal"
+                  value={transferMax ? t('market.max') : transferAmount}
+                  onChange={(event) => {
+                    setTransferAmount(event.currentTarget.value)
+                    setTransferMax(false)
+                  }}
+                  aria-describedby="market-transfer-help"
+                />
+                <button className="market-max-button" type="button" aria-pressed={transferMax} onClick={() => setTransferMax((enabled) => !enabled)} disabled={!canUseMarket}>{t('market.max')}</button>
+              </div>
+              <span id="market-transfer-help" className="market-form-help">
+                {t('market.transferHelp', {
+                  cash: formatUsd(state.money),
+                  wallet: formatUsd(market?.usd),
+                })}
               </span>
-            </div>
-            <span id="market-btc-help" className="market-form-help">
-              USD wallet <AnimatedMarketNumber target={market?.usd} format={formatUsd} />
-              {' · '}
-              BTC wallet <AnimatedMarketNumber target={market?.btc} format={formatBtc} /> BTC
-            </span>
-            <div className="market-actions">
-              <button type="submit" disabled={!canBuy}>Buy BTC</button>
-              <button type="button" disabled={!canSell} onClick={() => executeTrade('sell')}>Sell BTC</button>
-              <button type="button" disabled={!canSellAll} onClick={() => {
-                if (canUseMarket) dispatch({ type: 'market-trade', side: 'sell', amount: market.btc })
-              }}>Sell all BTC</button>
-            </div>
-          </form>
-        </section>
-      </div>
+              <div className="market-actions">
+                <button type="submit" disabled={!canDeposit}>{transferMax ? t('market.depositMax') : t('market.depositUsd')}</button>
+                <button type="button" disabled={!canWithdraw} onClick={() => {
+                  if (!canUseMarket || withdrawValue === null) return
+                  dispatch({ type: 'market-transfer', direction: 'withdraw', amount: transferMax ? 'max' : withdrawValue })
+                }}>{transferMax ? t('market.withdrawMax') : t('market.withdrawUsd')}</button>
+              </div>
+            </form>
+          </section>
+
+          <section className="market-panel" aria-labelledby="market-trade-heading">
+            <h3 id="market-trade-heading">{t('market.trade')}</h3>
+            <form className="market-form" onSubmit={submitTrade('buy')}>
+              <label htmlFor="market-btc-amount">{t('market.quantity')} <span>(BTC)</span></label>
+              <div className={`market-quantity-control${btcNotional === null ? ' market-quantity-control-empty' : ''}`}>
+                <input
+                  id="market-btc-amount"
+                  type="number"
+                  min="0.00000001"
+                  step="any"
+                  inputMode="decimal"
+                  value={btcAmount}
+                  onChange={(event) => setBtcAmount(event.currentTarget.value)}
+                  aria-describedby="market-btc-help market-btc-notional"
+                />
+                <span id="market-btc-notional" className="market-quantity-hint">
+                  <AnimatedMarketNumber target={btcNotional ?? undefined} format={formatQuantityNotional} />
+                </span>
+              </div>
+              <span id="market-btc-help" className="market-form-help">
+                {t('market.tradeHelp', {
+                  usd: formatUsd(market?.usd),
+                  btc: formatBtc(market?.btc),
+                })}
+              </span>
+              <div className="market-actions">
+                <button type="submit" disabled={!canBuy}>{t('market.buyBtc')}</button>
+                <button type="button" disabled={!canSell} onClick={() => executeTrade('sell')}>{t('market.sellBtc')}</button>
+                <button type="button" disabled={!canSellAll} onClick={() => {
+                  if (canUseMarket) dispatch({ type: 'market-trade', side: 'sell', amount: market.btc })
+                }}>{t('market.sellAllBtc')}</button>
+              </div>
+            </form>
+          </section>
         </div>
       </div>
+    </div>
   )
 }
