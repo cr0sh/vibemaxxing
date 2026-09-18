@@ -145,10 +145,10 @@
 
 .social-post {
   display: grid;
+  flex-shrink: 0;
   grid-template-columns: 2.22rem minmax(0, 1fr);
   gap: 0.56rem;
   min-width: 0;
-  overflow: hidden;
   padding: 0.76rem;
   border: 1px solid #efdce6;
   border-radius: 0.88rem;

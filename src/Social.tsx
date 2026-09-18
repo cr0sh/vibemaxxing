@@ -56,7 +56,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'campaign') {
     return (
       <p className="social-post-copy">
-        I reset your token balance to 10M when you installed this network. That automatic reset happens once per run.
+        Hey, you made it. I topped your tokens back up to 10M. Consider it a welcome gift.
       </p>
     )
   }
@@ -65,7 +65,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
     return (
       <>
         <p className="social-post-copy">
-          I’ll refill your balance to 10M if your Like hits my one-percent lottery. Missed it? You can like this post again.
+          Feeling generous today. Drop a like and I might top your tokens back up to 10M. No luck? Try me again.
         </p>
         <div className="social-lottery-actions">
           <button
@@ -80,7 +80,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
           </button>
           <span className="social-like-count" aria-live="polite">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'}</span>
         </div>
-        {isLost && <p className="social-action-note">The feed is archived after the run ends.</p>}
+        {isLost && <p className="social-action-note">Your work account is read-only now.</p>}
       </>
     )
   }
@@ -88,7 +88,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'reset') {
     return (
       <p className="social-post-copy social-success-copy">
-        I reset your balance to 10M tokens right away.
+        You’re back to 10M tokens. Go make something good.
       </p>
     )
   }
@@ -96,7 +96,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'model') {
     return (
       <p className="social-post-copy">
-        I unlocked ConvexLM Reasoning for your new cloud attempts.
+        We’ve been working on a smarter model. Meet ConvexLM Reasoning — your cloud agents can use it now.
       </p>
     )
   }
@@ -104,7 +104,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'fast-mode') {
     return (
       <p className="social-post-copy">
-        I added Fast mode: new attempts run at <strong>2× speed and spend 2× tokens</strong>. Turn it on in Shop for a cloud terminal.
+        Need it done sooner? We just shipped Fast mode: <strong>twice the speed, twice the tokens</strong>. You’ll find the switch in Shop.
       </p>
     )
   }
@@ -112,7 +112,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'market') {
     return (
       <p className="social-post-copy">
-        I just opened BTC trading. You can trade from Market using your USD balance.
+        Couldn’t resist adding a BTC market. Move some cash into your trading wallet if you feel like taking a risk.
       </p>
     )
   }
@@ -120,7 +120,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'spark') {
     return (
       <p className="social-post-copy">
-        I’m opening Mapple Spark in Shop 10 seconds after this post for <strong>$15,000</strong>. Its local ConvexLM Reasoning panes don’t use cloud task tokens.
+        Finally got the Mapple Spark ready: two local ConvexLM Reasoning agents, no cloud-token bill. It’ll be in Shop in 10 seconds for <strong>$15,000</strong>.
       </p>
     )
   }
@@ -128,7 +128,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'spark-delivered') {
     return (
       <p className="social-post-copy">
-        I delivered Mapple Spark with two fixed ConvexLM Reasoning panes. Install YOLO if you’d rather skip approvals.
+        I dropped off your Mapple Spark. Two local agents, ready to go. Grab YOLO from Shop if you’re tired of approving every command.
       </p>
     )
   }
@@ -136,7 +136,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'advanced-model') {
     return (
       <p className="social-post-copy">
-        I put ConvexLM Pro in Shop for <strong>$5,000</strong>. Buy it to use Pro on new cloud attempts.
+        We’ve got something for the harder jobs: ConvexLM Pro. Same speed as ConvexLM Reasoning, smarter answers. It’s <strong>$5,000</strong> in Shop.
       </p>
     )
   }
@@ -144,7 +144,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'mercury') {
     return (
       <p className="social-post-copy">
-        I put Mercury in Shop for <strong>$8,000</strong>. Turn on automatic retries and I’ll start one 10 seconds after a failure; manual retries stay immediate. Approvals stay manual, and each automatic handoff costs 300K tokens each way.
+        I got tired of dragging files around, so I built Mercury. <strong>$8,000</strong> in Shop. It handles both handoffs for 300K tokens each and retries failures after 10 seconds. You’ll still need to approve commands.
       </p>
     )
   }
@@ -152,14 +152,14 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'second-job') {
     return (
       <p className="social-post-copy">
-        I’m opening a second job. Open Applications and submit the form if you want it.
+        A friend of mine is hiring. If one boss wasn’t enough, check Applications — there’s another job waiting for you.
       </p>
     )
   }
 
   return (
     <p className="social-post-copy">
-      I added Tiro Max to each cloud terminal’s model menu. It uses <strong>2× tokens</strong>.
+      Tiro Max is ready. Pick it from a cloud terminal’s model menu when you need our smartest model. It uses <strong>2× tokens</strong>, so keep an eye on the bill.
     </p>
   )
 }
