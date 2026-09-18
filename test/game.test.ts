@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   canFundMercuryRetry,
+  energyDecayInterval,
   hasTokenDeficit,
   companies,
   gameNetWorth,
@@ -9,6 +10,7 @@ import {
   MAX_TOKENS,
   SOCIAL_LOTTERY_COPY,
   MERCURY_FORWARD_COST,
+  MERCURY_PRICE,
   MERCURY_RETRY_DELAY,
   SPARK_ULTRA_PRICE,
   WIN_NET_WORTH,
@@ -1024,18 +1026,40 @@ describe('extended engine contracts', () => {
       { id: 'terminal', slots: 4, yolo: true, fastMode: true, model: 'reasoning' },
       { id: 'terminal-2', slots: 4, yolo: true, fastMode: true, model: 'reasoning' },
     ])
-    const spark = gameReducer(initialGame, { type: 'dev-jump', stage: 'spark' })
-    expect(spark.terminals.find((terminal) => terminal.id === 'spark')).toMatchObject({ slots: 2, yolo: true, model: 'reasoning' })
     const mercury = gameReducer(initialGame, { type: 'dev-jump', stage: 'mercury' })
     expect(mercury.advancedModelUnlocked).toBe(true)
     expect(mercury.mercuryOwned).toBe(true)
     expect(mercury.mercuryEnabled).toBe(true)
+    expect(mercury.shortsUnlocked).toBe(true)
     expect(mercury.terminals.filter((terminal) => terminal.id !== 'spark').every((terminal) => terminal.model === 'advanced')).toBe(true)
     const secondJob = gameReducer(initialGame, { type: 'dev-jump', stage: 'second-job' })
     expect(secondJob.secondJob).toMatchObject({ level: 3, completedTasks: 0 })
+    expect(secondJob.shortsUnlocked).toBe(true)
     const frontier = gameReducer(initialGame, { type: 'dev-jump', stage: 'frontier' })
+    expect(frontier.shortsUnlocked).toBe(true)
     expect(frontier.terminals.find((terminal) => terminal.id === 'terminal')?.model).toBe('frontier')
     expect(frontier.terminals.find((terminal) => terminal.id === 'terminal-2')?.model).toBe('advanced')
+    const shorts = gameReducer(initialGame, { type: 'dev-jump', stage: 'shorts' })
+    expect(shorts.mercuryOwned).toBe(true)
+    expect(shorts.mercuryEnabled).toBe(true)
+    expect(shorts.shortsUnlocked).toBe(true)
+  })
+  test('Mercury purchase unlocks Shorts once while failed and repeated buys stay inert', () => {
+    const spark = gameReducer(hire(), { type: 'dev-jump', stage: 'spark' })
+    const unavailable = { ...spark, money: MERCURY_PRICE - 1 }
+    expect(gameReducer(unavailable, { type: 'buy-mercury' })).toBe(unavailable)
+    expect(unavailable.shortsUnlocked).toBe(false)
+
+    const purchased = gameReducer({ ...spark, money: MERCURY_PRICE }, { type: 'buy-mercury' })
+    expect(purchased.mercuryOwned).toBe(true)
+    expect(purchased.mercuryEnabled).toBe(true)
+    expect(purchased.shortsUnlocked).toBe(true)
+    expect(purchased.money).toBe(0)
+    expect(gameReducer(purchased, { type: 'buy-mercury' })).toBe(purchased)
+
+    const locked = { ...spark, money: MERCURY_PRICE, advancedModelUnlocked: false }
+    expect(gameReducer(locked, { type: 'buy-mercury' })).toBe(locked)
+    expect(locked.shortsUnlocked).toBe(false)
   })
 
   test('local Spark attempts cost no cloud tokens and snapshot local settings', () => {
@@ -1391,7 +1415,16 @@ describe('extended engine contracts', () => {
     expect(taskWith(started, task.id).model).toBe('advanced')
     expect(started.tokens).toBe(900_000)
   })
-  test('fractional idle time crosses the decay boundary exactly once', () => {
+  test('energy decay intervals interpolate continuously across their anchors', () => {
+    expect(energyDecayInterval({ elapsed: 0 })).toBe(20)
+    expect(energyDecayInterval({ elapsed: 300 })).toBe(15)
+    expect(energyDecayInterval({ elapsed: 600 })).toBe(10)
+    expect(energyDecayInterval({ elapsed: 1_200 })).toBe(7.5)
+    expect(energyDecayInterval({ elapsed: 1_800 })).toBe(5)
+    expect(energyDecayInterval({ elapsed: 2_000 })).toBe(5)
+  })
+
+  test('fractional idle time crosses the dynamic decay boundary exactly once', () => {
     let state: GameState = {
       ...hire(),
       tasks: [],
@@ -1399,14 +1432,30 @@ describe('extended engine contracts', () => {
       nextTaskAt: Number.MAX_SAFE_INTEGER,
       shortsUnlocked: true,
     }
-    state = gameReducer(state, { type: 'tick', seconds: 0.5 })
+    state = gameReducer(state, { type: 'tick', seconds: 10 })
     expect(state.energy).toBe(100)
-    state = gameReducer(state, { type: 'tick', seconds: 0.5 })
+    state = gameReducer(state, { type: 'tick', seconds: 9.6 })
     expect(state.energy).toBe(100)
-    state = gameReducer(state, { type: 'tick', seconds: 1.9 })
-    expect(state.energy).toBe(100)
-    state = gameReducer(state, { type: 'tick', seconds: 0.1 })
+    state = gameReducer(state, { type: 'tick', seconds: 0.4 })
     expect(state.energy).toBe(99)
+    expect(state.inactivityDecay).toBe(2)
+  })
+
+  test('bulk idle ticks match one-second ticks across a shrinking interval boundary', () => {
+    const start: GameState = {
+      ...hire(),
+      elapsed: 590,
+      energy: 1_000,
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+    }
+    const bulk = gameReducer(start, { type: 'tick', seconds: 30 })
+    let individual = start
+    for (let second = 0; second < 30; second += 1) {
+      individual = gameReducer(individual, { type: 'tick', seconds: 1 })
+    }
+    expect(bulk).toEqual(individual)
   })
 
   test('idle decay ramps, while a genuine Shorts scroll resets the ramp and timer', () => {
@@ -1417,15 +1466,16 @@ describe('extended engine contracts', () => {
       nextTaskAt: Number.MAX_SAFE_INTEGER,
       shortsUnlocked: true,
     }
-    state = gameReducer(state, { type: 'tick', seconds: 3 })
+    state = gameReducer(state, { type: 'tick', seconds: 20 })
     expect(state.energy).toBe(99)
-    state = gameReducer(state, { type: 'tick', seconds: 3 })
+    state = gameReducer(state, { type: 'tick', seconds: 20 })
     expect(state.energy).toBe(97)
     state = gameReducer(state, { type: 'scroll-short' })
     expect(state.energy).toBe(98)
-    state = gameReducer(state, { type: 'tick', seconds: 3 })
+    state = gameReducer(state, { type: 'tick', seconds: 20 })
     expect(state.energy).toBe(97)
   })
+
 
   test('token autopurchase does not count as human interaction', () => {
     let state: GameState = {
@@ -1440,7 +1490,7 @@ describe('extended engine contracts', () => {
     state = gameReducer(state, { type: 'set-token-auto-buy', enabled: true })
     expect(state.tokens).toBe(100_000)
     state = gameReducer(state, { type: 'tick', seconds: 3 })
-    expect(state.energy).toBe(99)
+    expect(state.energy).toBe(100)
   })
 
   test('Spark Ultra delivers on schedule and completes advanced local work without tokens', () => {
@@ -1481,22 +1531,20 @@ describe('extended engine contracts', () => {
 
   test('idle energy caps each penalty at sixteen and stops the run at zero', () => {
     let state = { ...hire(), tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER } as GameState
-    state = gameReducer(state, { type: 'tick', seconds: 12 })
-    expect(state.energy).toBe(85)
+    state = gameReducer(state, { type: 'tick', seconds: 100 })
+    expect(state.energy).toBe(69)
+    expect(state.inactivityDecay).toBe(16)
     expect(state.shortsUnlocked).toBe(false)
-    state = gameReducer(state, { type: 'tick', seconds: 15 })
-    expect(state.energy).toBe(5)
-    expect(state.shortsUnlocked).toBe(true)
     state = gameReducer(state, { type: 'tick', seconds: 100 })
     expect(state.stage).toBe('lost')
     expect(state.lossReason).toBe('energy')
     expect(state.energy).toBe(0)
-    expect(state.elapsed).toBe(30)
+    expect(state.shortsUnlocked).toBe(false)
     expect(gameReducer(state, { type: 'scroll-short' })).toBe(state)
   })
 
   test('a clicked Shop upgrade resets inactivity but an equivalent drag purchase does not', () => {
-    const state = { ...hire(), money: 1_000, energy: 80, inactivityElapsed: 2.5, inactivityDecay: 16 }
+    const state = { ...hire(), money: 1_000, energy: 80, inactivityElapsed: 19.5, inactivityDecay: 16 }
     const clicked = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'click' })
     const dragged = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'drag' })
     expect(clicked.money).toBe(dragged.money)
