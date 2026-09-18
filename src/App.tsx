@@ -777,9 +777,9 @@ function DesktopWidgets({ state, now }: { state: GameState; now: Date }) {
     const previousTokenDeficit = previousTokenDeficitRef.current
     previousTokenDeficitRef.current = tokenDeficit
     if (tokenDeficit && !previousTokenDeficit) {
-      setTokenDeficitAnnouncement('Token funding is blocking available work.')
-    } else if (!tokenDeficit && previousTokenDeficit && state.stage === 'hired') {
-      setTokenDeficitAnnouncement('Token funding restored; pending work can be funded.')
+      setTokenDeficitAnnouncement('Token balance is low or insufficient for pending work.')
+    } else if (!tokenDeficit && previousTokenDeficit) {
+      setTokenDeficitAnnouncement(state.stage === 'hired' ? 'Token balance restored.' : '')
     }
   }, [state.stage, tokenDeficit])
 

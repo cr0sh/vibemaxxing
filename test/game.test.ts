@@ -846,8 +846,10 @@ describe('token deficit detection', () => {
     const approval: WorkTask = { ...working, id: 904, status: 'approval', nextApprovalAt: 10, approvalPrompt: 'Approve the next command?' }
     expect(hasTokenDeficit({ ...full, tasks: [approval] })).toBe(false)
 
-    const retry: WorkTask = { ...working, id: 905, difficulty: 1, status: 'failed', failedAt: 0 }
-    expect(hasTokenDeficit({ ...full, elapsed: 1, tasks: [retry] })).toBe(false)
+    const retry: WorkTask = { ...working, id: 905, status: 'failed', failedAt: 0 }
+    const retryState = { ...full, mercuryOwned: true, mercuryEnabled: true, elapsed: MERCURY_RETRY_DELAY - 1, tasks: [retry] }
+    expect(hasTokenDeficit(retryState)).toBe(false)
+    expect(hasTokenDeficit({ ...retryState, elapsed: MERCURY_RETRY_DELAY })).toBe(true)
   })
 
   test('counts Mercury return reservations when they block otherwise eligible work', () => {
@@ -869,7 +871,7 @@ describe('token deficit detection', () => {
       .map((terminal) => ({ ...terminal, fastMode: false }))
     const state: GameState = {
       ...base,
-      tokens: 1_100_000,
+      tokens: 1_700_000,
       tasks: [active, pending],
       taskQueue: [],
       terminals,
@@ -877,7 +879,31 @@ describe('token deficit detection', () => {
     }
 
     expect(hasTokenDeficit(state)).toBe(true)
+    expect(hasTokenDeficit({ ...state, tokens: 1_800_000 })).toBe(false)
+  })
+
+  test('warns when active return fees or a waiting handoff exceed available tokens', () => {
+    const hired = hire()
+    const tasks: WorkTask[] = Array.from({ length: 4 }, (_, slot) => ({
+      ...hired.tasks[0]!,
+      id: 910 + slot,
+      status: 'working',
+      terminalId: 'terminal',
+      slot,
+      mercuryAuto: true,
+    }))
+    const state = {
+      ...hired, tokens: 1_100_000, mercuryOwned: true, mercuryEnabled: true, tasks,
+      terminals: [{ ...hired.terminals[0]!, slots: 4 }],
+    }
+    expect(hasTokenDeficit(state)).toBe(true)
     expect(hasTokenDeficit({ ...state, tokens: 1_200_000 })).toBe(false)
+
+    const handoff = { ...state, tasks: tasks.map((task, index): WorkTask =>
+      index === 3 ? { ...task, status: 'artifact', mercuryAuto: false } : task) }
+    expect(hasTokenDeficit(handoff)).toBe(true)
+    expect(hasTokenDeficit({ ...handoff, tokens: 1_200_000 })).toBe(false)
+    expect(hasTokenDeficit({ ...handoff, mercuryEnabled: false })).toBe(false)
   })
 })
 

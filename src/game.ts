@@ -862,8 +862,9 @@ function canFundAssignedTask(state: GameState, task: WorkTask): boolean {
   return state.terminals.some((terminal) => {
     if (firstFreeSlot(state, terminal) === null) return false
     const fastMode = terminal.id === 'spark' ? false : terminal.fastMode
-    return canFundTaskAttempt(state, task, fastMode, terminal.id) ||
-      canFundMercuryAttempt(state, task, terminal.id)
+    return state.mercuryOwned && state.mercuryEnabled
+      ? canFundMercuryAttempt(state, task, terminal.id)
+      : canFundTaskAttempt(state, task, fastMode, terminal.id)
   })
 }
 
@@ -874,22 +875,31 @@ function canFundRetryTask(state: GameState, task: WorkTask): boolean {
     return false
   }
   const fastMode = terminal.id === 'spark' ? false : terminal.fastMode
-  const manual = canFundTaskAttempt(state, task, fastMode, terminal.id)
-  const mercuryDue = task.failedAt !== null && state.elapsed >= task.failedAt + MERCURY_RETRY_DELAY
-  return manual || (mercuryDue && canFundMercuryRetry(state, task))
+  return state.mercuryOwned && state.mercuryEnabled
+    ? task.failedAt !== null && state.elapsed >= task.failedAt + MERCURY_RETRY_DELAY && canFundMercuryRetry(state, task)
+    : canFundTaskAttempt(state, task, fastMode, terminal.id)
 }
 
 export function hasTokenDeficit(state: GameState): boolean {
   if (state.stage !== 'hired') return false
   if (state.tokens < TOKEN_AUTO_BUY_THRESHOLD) return true
 
-  const fundedState = { ...state, tokens: Number.MAX_VALUE }
+  if (state.mercuryOwned && state.mercuryEnabled) {
+    const reserved = mercuryReturnReservations(state.tasks)
+    if (state.tokens < reserved) return true
+    if (state.tokens - reserved < MERCURY_FORWARD_COST &&
+      state.tasks.some((task) => task.status === 'artifact' && !task.mercuryAuto)) return true
+  }
+
+  let fundedState: GameState | undefined
   return state.tasks.some((task) => {
     if (task.status === 'assigned' && task.terminalId === null && task.slot === null) {
-      return !canFundAssignedTask(state, task) && canFundAssignedTask(fundedState, task)
+      return !canFundAssignedTask(state, task) &&
+        canFundAssignedTask(fundedState ??= { ...state, tokens: Number.MAX_VALUE }, task)
     }
     if (task.status === 'failed') {
-      return !canFundRetryTask(state, task) && canFundRetryTask(fundedState, task)
+      return !canFundRetryTask(state, task) &&
+        canFundRetryTask(fundedState ??= { ...state, tokens: Number.MAX_VALUE }, task)
     }
     return false
   })
