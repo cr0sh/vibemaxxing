@@ -234,6 +234,7 @@ const TOKEN_TASK_COST = 100_000
 export const TOKEN_PURCHASE_AMOUNT = 100_000
 export const TOKEN_PURCHASE_COST = 100
 const TASK_REWARD_PER_DIFFICULTY = 5
+export const BASE_SALARY = 5
 // A shorter cycle preserves the 50-delivery promotion while bringing the first loop near five minutes.
 const BASELINE_TASK_CYCLE_SECONDS = 6
 const OPENING_GRACE_SECONDS = 180
@@ -418,7 +419,7 @@ function projectedGrossAt(elapsed: number): number {
   const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
   const averageTaskReward = TASK_REWARD_PER_DIFFICULTY * AVERAGE_TASK_DIFFICULTY
   const rewardElapsed = Math.max(0, safeElapsed - INITIAL_WAGE_ONLY_SECONDS)
-  return safeElapsed + rewardElapsed * (averageTaskReward * 0.9 / BASELINE_TASK_CYCLE_SECONDS)
+  return BASE_SALARY * safeElapsed + rewardElapsed * (averageTaskReward * 0.9 / BASELINE_TASK_CYCLE_SECONDS)
 }
 function bossExpectationAt(elapsed: number): number {
   const ratio = projectedGrossAt(elapsed) / BOSS_BUDGET_ANCHOR
@@ -1251,7 +1252,7 @@ function tickHired(state: GameState, seconds: number): GameState {
     if (wholeSecond) {
       current = {
         ...current,
-        money: current.money + 1 + (current.secondJob === null ? 0 : 1),
+        money: current.money + BASE_SALARY * (current.secondJob === null ? 1 : 2),
         tokens: current.elapsed % 100 === 0 ? MAX_TOKENS : current.tokens,
         expectation: bossExpectationAt(current.elapsed),
       }
