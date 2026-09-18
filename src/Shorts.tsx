@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { Dispatch, KeyboardEvent, WheelEvent } from 'react'
 import type { GameAction, GameState } from './game'
 import { SHORTS_CATALOG, type ShortVideo } from './shortsCatalog'
+import { useI18n } from './i18n'
 import './Shorts.css'
 
 type ShortsProps = {
@@ -70,6 +71,7 @@ function VideoEmbed({
   registerMedia,
   setStatus,
 }: VideoEmbedProps) {
+  const { t } = useI18n()
   const handleMediaRef = useCallback((media: HTMLVideoElement | null) => {
     registerMedia(video.id, media)
   }, [registerMedia, video.id])
@@ -80,7 +82,7 @@ function VideoEmbed({
         ref={handleMediaRef}
         className="shorts-media"
         src={video.mediaUrl}
-        aria-label={video.title}
+        aria-label={t(video.titleKey)}
         tabIndex={-1}
         autoPlay={playbackActive && isCurrent}
         preload="auto"
@@ -94,22 +96,23 @@ function VideoEmbed({
       />
       {status === 'loading' && (
         <p className="shorts-media-status" role="status">
-          Loading this clip…
+          {t('shorts.loading')}
         </p>
       )}
       {status === 'error' && (
         <p className="shorts-media-status shorts-media-error" role="alert">
-          This clip could not play. <a href={video.sourceUrl} target="_blank" rel="noreferrer noopener">Open original source</a>
+          {t('shorts.playbackError')} <a href={video.sourceUrl} target="_blank" rel="noreferrer noopener">{t('shorts.openSource')}</a>
         </p>
       )}
       <p className="shorts-media-note">
-        Looping meme clip · <a href={video.sourceUrl} target="_blank" rel="noreferrer noopener">View on GIPHY</a>
+        {t('shorts.loop')} · <a href={video.sourceUrl} target="_blank" rel="noreferrer noopener">{t('shorts.viewGiphy')}</a>
       </p>
     </div>
   )
 }
 
 export function ShortsContent({ state, dispatch, active }: ShortsProps) {
+  const { t, formatNumber } = useI18n()
   const [videos] = useState(shuffledVideos)
   const feedRef = useRef<HTMLDivElement | null>(null)
   const mediaRefs = useRef(new Map<string, HTMLVideoElement>())
@@ -277,24 +280,29 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
     event.preventDefault()
     navigateBy(delta)
   }, [navigateBy, videos.length])
-
   return (
-    <section className="shorts-content" aria-label="Shorts" data-playback-active={playbackActive ? 'true' : 'false'}>
+    <section className="shorts-content" aria-label={t('shorts.aria')} data-playback-active={playbackActive ? 'true' : 'false'}>
       <header className="shorts-header">
         <div>
-          <p className="shorts-eyebrow">Shorts / human reset</p>
-          <h2>One more clip</h2>
+          <p className="shorts-eyebrow">{t('shorts.eyebrow')}</p>
+          <h2>{t('shorts.title')}</h2>
         </div>
-        <span className="shorts-count" aria-label={`Clip ${viewingCount}`}>{viewingCount}</span>
+        <span className="shorts-count" aria-label={t('shorts.clip', { count: formatNumber(viewingCount) })}>{formatNumber(viewingCount)}</span>
       </header>
       <p className="shorts-status" role="status" aria-live="polite">
-        {!pageVisible ? 'Playback paused while this window is hidden.' : state.stage !== 'hired' ? 'Run ended · Shorts is read-only.' : !active ? 'Playback paused while Shorts is in the background.' : 'Doomscrolling gives you energy, right?'}
+        {!pageVisible
+          ? t('shorts.status.hidden')
+          : state.stage !== 'hired'
+            ? t('shorts.status.ended')
+            : !active
+              ? t('shorts.status.background')
+              : t('shorts.status.active')}
       </p>
       <div
         ref={feedRef}
         className="shorts-feed"
         role="feed"
-        aria-label="Short videos"
+        aria-label={t('shorts.feed')}
         tabIndex={0}
         onScroll={handleScroll}
         onWheel={handleWheel}
@@ -314,7 +322,7 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
             <article
               className={`shorts-card${isCurrent ? ' is-current' : ''}`}
               key={video.id}
-              aria-label={`${video.title}, ${video.creator}`}
+              aria-label={`${t(video.titleKey)}, ${video.creator}`}
               aria-current={isCurrent ? 'true' : undefined}
               tabIndex={-1}
             >
@@ -330,17 +338,17 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
                 setStatus={setMediaStatus}
               />
               <div className="shorts-card-copy">
-                <h3>{video.title}</h3>
-                <p>{video.description}</p>
-                <a className="shorts-source-link" href={video.sourceUrl} target="_blank" rel="noreferrer noopener">Open original source</a>
+                <h3>{t(video.titleKey)}</h3>
+                <p>{t(video.descriptionKey)}</p>
+                <a className="shorts-source-link" href={video.sourceUrl} target="_blank" rel="noreferrer noopener">{t('shorts.openSource')}</a>
               </div>
             </article>
           )
         })}
       </div>
-      <nav className="shorts-controls" aria-label="Short navigation">
-        <button type="button" onClick={() => navigateBy(-1)} disabled={!playbackActive} aria-label="Previous short">↑ <span>Previous</span></button>
-        <button type="button" onClick={() => navigateBy(1)} disabled={!playbackActive} aria-label="Next short"><span>Next</span> ↓</button>
+      <nav className="shorts-controls" aria-label={t('shorts.navigation')}>
+        <button type="button" onClick={() => navigateBy(-1)} disabled={!playbackActive} aria-label={t('shorts.previous')}>↑ <span>{t('shorts.previous')}</span></button>
+        <button type="button" onClick={() => navigateBy(1)} disabled={!playbackActive} aria-label={t('shorts.next')}><span>{t('shorts.next')}</span> ↓</button>
       </nav>
     </section>
   )

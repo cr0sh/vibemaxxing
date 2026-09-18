@@ -4,7 +4,7 @@ import type { Dispatch } from 'react'
 import {
   ADVANCED_MODEL_PRICE,
   MERCURY_PRICE,
-  SOCIAL_LOTTERY_COPY,
+  SOCIAL_LOTTERY_KEYS,
   SPARK_PRICE,
   SPARK_ULTRA_PRICE,
   type GameAction,
@@ -13,6 +13,7 @@ import {
 } from './game'
 import { UnreadIndicator } from './UnreadIndicator'
 import { useUnreadMessages } from './useUnreadMessages'
+import { Localized, useI18n } from './i18n'
 import './Social.css'
 
 const SOCIAL_HEART_BURST_DURATION = 860
@@ -58,7 +59,6 @@ const elapsedLabel = (elapsed: number): string => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-const moneyLabel = (amount: number): string => `$${amount.toLocaleString()}`
 
 const postAuthor = (post: SocialPost): string => {
   switch (post.type) {
@@ -106,6 +106,7 @@ function PostBody({
   dispatch: Dispatch<GameAction>
   activeLotteryId: string | null
 }) {
+  const { t, formatNumber, formatCurrency } = useI18n()
   const isReadOnly = state.stage !== 'hired'
   const likeButtonRef = useRef<HTMLButtonElement | null>(null)
   const burstSequence = useRef(0)
@@ -155,20 +156,19 @@ function PostBody({
 
     dispatch({ type: 'like-reset', postId: post.id })
   }
+
   if (post.type === 'campaign') {
-    return (
-      <p className="social-post-copy">
-        Hey, you made it. I topped your tokens back up to 10M. Consider it a welcome gift.
-      </p>
-    )
+    return <p className="social-post-copy">{t('social.campaign')}</p>
   }
 
   if (post.type === 'lottery') {
     const isActive = post.id === activeLotteryId
-    const copy = SOCIAL_LOTTERY_COPY[post.lotteryVariant] ?? SOCIAL_LOTTERY_COPY[0]
+    const lotteryKey = SOCIAL_LOTTERY_KEYS[post.lotteryVariant]!
+    const formattedLikes = formatNumber(post.likes)
+    const likeNoun = t(post.likes === 1 ? 'social.like.one' : 'social.like.many')
     return (
       <>
-        <p className="social-post-copy">{copy}</p>
+        <p className="social-post-copy">{t(lotteryKey)}</p>
         {isActive ? (
           <>
             <div className="social-lottery-actions">
@@ -178,17 +178,19 @@ function PostBody({
                 type="button"
                 disabled={isReadOnly}
                 onClick={handleLike}
-                aria-label={`Like Tiro’s post. ${post.likes.toLocaleString()} ${post.likes === 1 ? 'like' : 'likes'} so far.`}
+                aria-label={t('social.likeAria', { count: formattedLikes, noun: likeNoun })}
               >
                 <span aria-hidden="true">♥</span>
-                <span>Like</span>
+                <span>{t('social.like')}</span>
               </button>
-              <span className="social-like-count" aria-live="polite">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'}</span>
+              <span className="social-like-count" aria-live="polite">{formattedLikes} {likeNoun}</span>
             </div>
-            {isReadOnly && <p className="social-action-note">Your work account is read-only now.</p>}
+            {isReadOnly && <p className="social-action-note">{t('social.readOnlyNote')}</p>}
           </>
         ) : (
-          <p className="social-action-note">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'} · This giveaway has ended.</p>
+          <p className="social-action-note">
+            {t('social.giveawayEnded', { count: formattedLikes, noun: likeNoun })}
+          </p>
         )}
         {likeBurst && post.likes > likeBurst.likes && !isActive &&
           <SocialHeartBurst key={likeBurst.id} burst={likeBurst} />}
@@ -197,89 +199,65 @@ function PostBody({
   }
 
   if (post.type === 'reset') {
-    return (
-      <p className="social-post-copy social-success-copy">
-        You’re back to 10M tokens. Go make something good.
-      </p>
-    )
+    return <p className="social-post-copy social-success-copy">{t('social.reset')}</p>
   }
 
   if (post.type === 'model') {
-    return (
-      <p className="social-post-copy">
-        We’ve been working on a smarter model. Meet ConvexLM Reasoning — your cloud agents can use it now.
-      </p>
-    )
+    return <p className="social-post-copy">{t('social.model')}</p>
   }
 
   if (post.type === 'fast-mode') {
     return (
       <p className="social-post-copy">
-        Need it done sooner? We just shipped Fast mode: <strong>twice the speed, twice the tokens</strong>. You’ll find the switch in Shop.
+        {t('social.fastMode.lead')} <strong>{t('social.fastMode.emphasis')}</strong>. {t('social.fastMode.body')}
       </p>
     )
   }
 
   if (post.type === 'market') {
-    return (
-      <p className="social-post-copy">
-        Couldn’t resist adding a BTC market. Move some cash into your trading wallet if you feel like taking a risk.
-      </p>
-    )
+    return <p className="social-post-copy">{t('social.market')}</p>
   }
 
   if (post.type === 'spark') {
     return (
       <p className="social-post-copy">
-        Finally got the Mapple Spark ready: two local ConvexLM Reasoning agents, no cloud-token bill. It’ll be in Shop in 10 seconds for <strong>{moneyLabel(SPARK_PRICE)}</strong>.
+        <Localized message="social.spark" values={{ price: <strong>{formatCurrency(SPARK_PRICE)}</strong> }} />
       </p>
     )
   }
 
   if (post.type === 'spark-delivered') {
-    return (
-      <p className="social-post-copy">
-        I dropped off your Mapple Spark. Two local agents, ready to go. Grab YOLO from Shop if you’re tired of approving every command.
-      </p>
-    )
+    return <p className="social-post-copy">{t('social.sparkDelivered')}</p>
   }
 
   if (post.type === 'spark-ultra') {
     return (
       <p className="social-post-copy">
-        Mapple Spark Ultra is on the way: two local ConvexLM Pro agents with no cloud-token bill. Shop opens in 10 seconds for <strong>{moneyLabel(SPARK_ULTRA_PRICE)}</strong>.
+        <Localized message="social.sparkUltra" values={{ price: <strong>{formatCurrency(SPARK_ULTRA_PRICE)}</strong> }} />
       </p>
     )
   }
 
   if (post.type === 'spark-ultra-delivered') {
-    return (
-      <p className="social-post-copy">
-        Mapple Spark Ultra has arrived. Two fixed local ConvexLM Pro panes are ready for token-free work, with no Fast mode or cloud bill.
-      </p>
-    )
+    return <p className="social-post-copy">{t('social.sparkUltraDelivered')}</p>
   }
 
   if (post.type === 'monopoly') {
     return (
       <p className="social-post-copy">
-        <strong>Where else are you going to go?</strong> The competition’s gone. Token refills cost 10% more every five seconds now. Pay up or stop working.
+        <strong>{t('social.monopoly.lead')}</strong>{' '}{t('social.monopoly.body')}
       </p>
     )
   }
 
   if (post.type === 'shorts') {
-    return (
-      <p className="social-post-copy">
-        Mercury has the work covered. Bored already? Shorts is now in your dock.
-      </p>
-    )
+    return <p className="social-post-copy">{t('social.shorts')}</p>
   }
 
   if (post.type === 'advanced-model') {
     return (
       <p className="social-post-copy">
-        We’ve got something for the harder jobs: ConvexLM Pro. Same speed as ConvexLM Reasoning, smarter answers. It’s <strong>{moneyLabel(ADVANCED_MODEL_PRICE)}</strong> in Shop.
+        <Localized message="social.advancedModel" values={{ price: <strong>{formatCurrency(ADVANCED_MODEL_PRICE)}</strong> }} />
       </p>
     )
   }
@@ -287,24 +265,16 @@ function PostBody({
   if (post.type === 'mercury') {
     return (
       <p className="social-post-copy">
-        I got tired of dragging files around, so I built Mercury. <strong>{moneyLabel(MERCURY_PRICE)}</strong> in Shop. It handles both handoffs for 300K tokens each and retries failures after 10 seconds. You’ll still need to approve commands.
+        <Localized message="social.mercury" values={{ price: <strong>{formatCurrency(MERCURY_PRICE)}</strong> }} />
       </p>
     )
   }
 
   if (post.type === 'second-job') {
-    return (
-      <p className="social-post-copy">
-        A friend of mine is hiring. If one boss wasn’t enough, check Applications — there’s another job waiting for you.
-      </p>
-    )
+    return <p className="social-post-copy">{t('social.secondJob')}</p>
   }
 
-  return (
-    <p className="social-post-copy">
-      Tiro Max is ready. Pick it from a cloud terminal’s model menu when you need our smartest model. It uses <strong>2× tokens</strong>, so keep an eye on the bill.
-    </p>
-  )
+  return <p className="social-post-copy">{t('social.frontier')}</p>
 }
 
 function SocialPostCard({
@@ -318,16 +288,19 @@ function SocialPostCard({
   dispatch: Dispatch<GameAction>
   activeLotteryId: string | null
 }) {
+  const { t, formatNumber } = useI18n()
+  const author = postAuthor(post)
+  const time = elapsedLabel(post.elapsed)
   return (
-    <article className={`social-post social-post-${post.type}`} aria-label={`${postAuthor(post)} post at ${elapsedLabel(post.elapsed)}`}>
+    <article className={`social-post social-post-${post.type}`} aria-label={t('social.postAria', { author, time })}>
       <div className="social-post-rail" aria-hidden="true">
         <ProfileAvatar post={post} state={state} />
       </div>
       <div className="social-post-main">
         <header className="social-post-header">
-          <p className="social-post-author">{postAuthor(post)}</p>
-          <time dateTime={`PT${Math.max(0, post.elapsed)}S`} title={`${post.elapsed} seconds since the run began`}>
-            {elapsedLabel(post.elapsed)}
+          <p className="social-post-author">{author}</p>
+          <time dateTime={`PT${Math.max(0, post.elapsed)}S`} title={t('social.elapsedTitle', { seconds: formatNumber(post.elapsed) })}>
+            {time}
           </time>
         </header>
         <PostBody post={post} state={state} dispatch={dispatch} activeLotteryId={activeLotteryId} />
@@ -337,35 +310,36 @@ function SocialPostCard({
 }
 
 export function SocialContent({ state, dispatch }: SocialProps) {
+  const { t } = useI18n()
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const posts = state.socialPosts
   const activeLotteryId = posts.findLast((post) => post.type === 'lottery')?.id ?? null
   const { unreadCount, scrollToLatest } = useUnreadMessages(posts.map((post) => post.id), scrollRef)
 
   return (
-    <section className="social-app" aria-label="Vibemaxxers' Social Network">
+    <section className="social-app" aria-label={t('social.aria')}>
       <header className="social-header">
         <div className="social-brand-lockup">
           <div className="social-brand-mark" aria-hidden="true">Z</div>
-          <h1>Vibemaxxers' Social Network</h1>
+          <h1>{t('social.aria')}</h1>
         </div>
-        <div className="social-status" aria-label={state.stage === 'hired' ? 'Social network connected' : 'Social network archive'}>
+        <div className="social-status" aria-label={state.stage === 'hired' ? t('social.connected') : t('social.archive')}>
           <span className={`social-status-dot ${state.stage === 'hired' ? 'is-live' : ''}`} aria-hidden="true" />
-          <span>{state.stage === 'hired' ? 'Connected' : 'Read only'}</span>
+          <span>{state.stage === 'hired' ? t('social.status.connected') : t('social.status.readOnly')}</span>
         </div>
       </header>
 
       <div className="social-feed-toolbar">
-        <p className="social-feed-title">Your timeline</p>
+        <p className="social-feed-title">{t('social.timeline')}</p>
       </div>
       <div className="social-feed-shell">
-        <div className="social-feed" ref={scrollRef} role="log" aria-label="Vibemaxxers' Social Network timeline" aria-live="polite">
+        <div className="social-feed" ref={scrollRef} role="log" aria-label={t('social.timelineAria')} aria-live="polite">
           {posts.map((post) => <SocialPostCard key={post.id} post={post} state={state} dispatch={dispatch} activeLotteryId={activeLotteryId} />)}
         </div>
         <UnreadIndicator
           count={unreadCount}
           onClick={scrollToLatest}
-          label={{ singular: 'update', plural: 'updates' }}
+          label={{ singular: t('social.update.one'), plural: t('social.update.many') }}
         />
       </div>
     </section>
