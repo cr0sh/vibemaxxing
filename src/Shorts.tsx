@@ -11,8 +11,10 @@ type ShortsProps = {
   active: boolean
 }
 
-const slotOffsets = [-2, -1, 0, 1, 2] as const
-const centerSlot = 2
+// Three cards are enough to show the current clip and preload both directions.
+// Keeping the window odd-sized also means every rendered clip has a unique key.
+const slotOffsets = [-1, 0, 1] as const
+const centerSlot = 1
 const lastSlot = slotOffsets.length - 1
 const lastCatalogIndex = SHORTS_CATALOG.length - 1
 
@@ -40,6 +42,8 @@ const navigationKeys: Record<string, true> = {
   End: true,
 }
 
+type MediaStatus = 'loading' | 'ready' | 'error'
+
 function positiveModulo(value: number, length: number): number {
   return ((value % length) + length) % length
 }
@@ -49,19 +53,55 @@ function nearestSlot(feed: HTMLDivElement): number {
   return Math.max(0, Math.min(lastSlot, Math.round(feed.scrollTop / feed.clientHeight)))
 }
 
-function VideoEmbed({ video }: { video: ShortVideo }) {
+type VideoEmbedProps = {
+  video: ShortVideo
+  playbackActive: boolean
+  isCurrent: boolean
+  status: MediaStatus
+  registerMedia: (id: string, media: HTMLVideoElement | null) => void
+  setStatus: (id: string, status: MediaStatus) => void
+}
+
+function VideoEmbed({
+  video,
+  playbackActive,
+  isCurrent,
+  status,
+  registerMedia,
+  setStatus,
+}: VideoEmbedProps) {
+  const handleMediaRef = useCallback((media: HTMLVideoElement | null) => {
+    registerMedia(video.id, media)
+  }, [registerMedia, video.id])
+
   return (
-    <div className="shorts-media-frame">
+    <div className="shorts-media-frame" data-media-state={status} aria-busy={status === 'loading'}>
       <video
+        ref={handleMediaRef}
         className="shorts-media"
         src={video.mediaUrl}
         aria-label={video.title}
         tabIndex={-1}
-        autoPlay
+        autoPlay={playbackActive && isCurrent}
+        preload="auto"
         loop
         muted
         playsInline
+        onLoadStart={() => setStatus(video.id, 'loading')}
+        onLoadedData={() => setStatus(video.id, 'ready')}
+        onCanPlay={() => setStatus(video.id, 'ready')}
+        onError={() => setStatus(video.id, 'error')}
       />
+      {status === 'loading' && (
+        <p className="shorts-media-status" role="status">
+          Loading this clip…
+        </p>
+      )}
+      {status === 'error' && (
+        <p className="shorts-media-status shorts-media-error" role="alert">
+          This clip could not load. <a href={video.sourceUrl} target="_blank" rel="noreferrer noopener">Open original source</a>
+        </p>
+      )}
       <p className="shorts-media-note">
         Looping meme clip · <a href={video.sourceUrl} target="_blank" rel="noreferrer noopener">View on GIPHY</a>
       </p>
@@ -72,14 +112,31 @@ function VideoEmbed({ video }: { video: ShortVideo }) {
 export function ShortsContent({ state, dispatch, active }: ShortsProps) {
   const [videos] = useState(shuffledVideos)
   const feedRef = useRef<HTMLDivElement | null>(null)
+  const mediaRefs = useRef(new Map<string, HTMLVideoElement>())
   const virtualPositionRef = useRef(0)
   const [virtualPosition, setVirtualPosition] = useState(0)
   const [viewingCount, setViewingCount] = useState(1)
-  const pendingRecenterRef = useRef(false)
+  const [mediaStatuses, setMediaStatuses] = useState<Record<string, MediaStatus>>({})
   const userGestureRef = useRef(false)
+  const programmaticScrollRef = useRef(false)
+  const recenterSequenceRef = useRef(0)
+  const scrollSettleTimerRef = useRef(0)
   const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
 
   const playbackActive = active && pageVisible && state.stage === 'hired'
+  const currentVideo = videos[positiveModulo(virtualPosition, videos.length)]!
+
+  const setMediaStatus = useCallback((id: string, status: MediaStatus) => {
+    setMediaStatuses((previous) => previous[id] === status ? previous : { ...previous, [id]: status })
+  }, [])
+
+  const registerMedia = useCallback((id: string, media: HTMLVideoElement | null) => {
+    if (media === null) {
+      mediaRefs.current.delete(id)
+    } else {
+      mediaRefs.current.set(id, media)
+    }
+  }, [])
 
   useEffect(() => {
     const handleVisibilityChange = () => setPageVisible(!document.hidden)
@@ -90,15 +147,30 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
   const recenterFeed = useCallback(() => {
     const feed = feedRef.current
     if (!feed || feed.clientHeight <= 0) return false
-    // Recycle only after the native snap settles, and never animate the reset.
-    feed.scrollTo({ top: centerSlot * feed.clientHeight, behavior: 'instant' })
+    if (scrollSettleTimerRef.current !== 0) {
+      window.clearTimeout(scrollSettleTimerRef.current)
+      scrollSettleTimerRef.current = 0
+    }
+    userGestureRef.current = false
+    const target = centerSlot * feed.clientHeight
+    const sequence = recenterSequenceRef.current + 1
+    recenterSequenceRef.current = sequence
+    programmaticScrollRef.current = true
+    // Assigning scrollTop avoids CSS smooth scrolling and is synchronous. Keep
+    // the guard for two frames so a native momentum event cannot be rewarded.
+    feed.scrollTop = target
+    const release = () => {
+      if (recenterSequenceRef.current !== sequence || feedRef.current !== feed) return
+      feed.scrollTop = target
+      programmaticScrollRef.current = false
+    }
+    if (typeof window === 'undefined') {
+      release()
+    } else {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(release))
+    }
     return true
   }, [])
-
-  useLayoutEffect(() => {
-    if (!pendingRecenterRef.current) return
-    if (recenterFeed()) pendingRecenterRef.current = false
-  }, [recenterFeed, virtualPosition])
 
   useLayoutEffect(() => {
     recenterFeed()
@@ -108,10 +180,9 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
     const feed = feedRef.current
     if (!feed) return
     const observer = new ResizeObserver(() => {
-      // A resize can change card height while a touch or snap is in flight. Keep
-      // the current logical clip and center its bounded window without rewarding it.
-      userGestureRef.current = false
-      pendingRecenterRef.current = false
+      // A resize can change card height while a touch or snap is in flight.
+      // Preserve the logical clip, center the bounded window, and never
+      // dispatch a gameplay action for this programmatic correction.
       recenterFeed()
     })
     observer.observe(feed)
@@ -120,36 +191,66 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
 
   useEffect(() => {
     if (playbackActive) return
-    userGestureRef.current = false
-    pendingRecenterRef.current = false
     recenterFeed()
   }, [playbackActive, recenterFeed])
 
+  useEffect(() => {
+    for (const [id, media] of mediaRefs.current) {
+      if (playbackActive && id === currentVideo.id) {
+        void media.play().catch(() => undefined)
+      } else {
+        media.pause()
+      }
+    }
+  }, [currentVideo.id, playbackActive])
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(scrollSettleTimerRef.current)
+      scrollSettleTimerRef.current = 0
+    }
+  }, [])
+
   const announceTransition = useCallback((delta: number) => {
     if (!playbackActive || delta === 0) return
-    const nextPosition = virtualPositionRef.current + delta
+    const nextPosition = positiveModulo(virtualPositionRef.current + delta, videos.length)
     virtualPositionRef.current = nextPosition
-    pendingRecenterRef.current = true
+    userGestureRef.current = false
     setVirtualPosition(nextPosition)
     setViewingCount((count) => count + 1)
     dispatch({ type: 'scroll-short' })
-  }, [dispatch, playbackActive])
+    recenterFeed()
+  }, [dispatch, playbackActive, recenterFeed, videos.length])
+
+  const scheduleNativeTransition = useCallback(() => {
+    window.clearTimeout(scrollSettleTimerRef.current)
+    scrollSettleTimerRef.current = window.setTimeout(() => {
+      scrollSettleTimerRef.current = 0
+      const feed = feedRef.current
+      if (!feed || !playbackActive || programmaticScrollRef.current || !userGestureRef.current) return
+      const slot = nearestSlot(feed)
+      const target = slot * feed.clientHeight
+      if (slot === centerSlot) return
+      if (Math.abs(feed.scrollTop - target) > 3) {
+        scheduleNativeTransition()
+        return
+      }
+      const delta = slot - centerSlot
+      userGestureRef.current = false
+      announceTransition(delta)
+    }, 90)
+  }, [announceTransition, playbackActive])
 
   const markUserGesture = useCallback(() => {
-    if (!playbackActive) return
+    if (!playbackActive || programmaticScrollRef.current) return
     userGestureRef.current = true
   }, [playbackActive])
 
   const handleScroll = useCallback(() => {
     const feed = feedRef.current
-    if (!feed || !playbackActive || pendingRecenterRef.current) return
-    const slot = nearestSlot(feed)
-    if (slot === centerSlot || !userGestureRef.current) return
-    if (Math.abs(feed.scrollTop - slot * feed.clientHeight) > 2) return
-
-    userGestureRef.current = false
-    announceTransition(slot - centerSlot)
-  }, [announceTransition, playbackActive])
+    if (!feed || !playbackActive || programmaticScrollRef.current || !userGestureRef.current) return
+    scheduleNativeTransition()
+  }, [playbackActive, scheduleNativeTransition])
 
   const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
     if (!playbackActive || Math.abs(event.deltaY) < 1) return
@@ -196,6 +297,7 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
         onScroll={handleScroll}
         onWheel={handleWheel}
         onPointerDown={markUserGesture}
+        onTouchStart={markUserGesture}
         onTouchMove={markUserGesture}
         onTouchEnd={markUserGesture}
         onKeyDown={handleKeyDown}
@@ -205,10 +307,11 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
           const index = positiveModulo(position, videos.length)
           const video = videos[index]!
           const isCurrent = slot === centerSlot
+          const status = mediaStatuses[video.id] ?? 'loading'
           return (
             <article
               className={`shorts-card${isCurrent ? ' is-current' : ''}`}
-              key={`short-slot-${slot}`}
+              key={video.id}
               aria-label={`${video.title}, ${video.creator}`}
               aria-current={isCurrent ? 'true' : undefined}
               tabIndex={-1}
@@ -216,7 +319,14 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
               <div className="shorts-card-topline">
                 <span className="shorts-card-source">{video.creator}</span>
               </div>
-              {isCurrent && playbackActive ? <VideoEmbed video={video} /> : <div className="shorts-media-frame shorts-media-unloaded" aria-label="Video unloaded until this short is active"><span>Scroll here to load this clip</span></div>}
+              <VideoEmbed
+                video={video}
+                playbackActive={playbackActive}
+                isCurrent={isCurrent}
+                status={status}
+                registerMedia={registerMedia}
+                setStatus={setMediaStatus}
+              />
               <div className="shorts-card-copy">
                 <h3>{video.title}</h3>
                 <p>{video.description}</p>

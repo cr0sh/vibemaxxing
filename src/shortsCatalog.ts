@@ -8,7 +8,7 @@ export type ShortVideo = {
   readonly mediaUrl: string
 }
 
-// Remote MP4 meme loops: only the foreground clip is loaded.
+// Remote MP4 meme loops; Shorts keeps a bounded three-card preload window.
 export const SHORTS_CATALOG: readonly ShortVideo[] = [
   {
     id: 'typing-cat',
