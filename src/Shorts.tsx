@@ -227,7 +227,7 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
     recenterFeed()
   }, [dispatch, playbackActive, recenterFeed, videos.length])
 
-  const scheduleNativeTransition = useCallback(() => {
+  const scheduleNativeTransition = useCallback(function settleNativeTransition() {
     window.clearTimeout(scrollSettleTimerRef.current)
     scrollSettleTimerRef.current = window.setTimeout(() => {
       scrollSettleTimerRef.current = 0
@@ -237,7 +237,7 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
       const target = slot * feed.clientHeight
       if (slot === centerSlot) return
       if (Math.abs(feed.scrollTop - target) > 3) {
-        scheduleNativeTransition()
+        settleNativeTransition()
         return
       }
       const delta = slot - centerSlot

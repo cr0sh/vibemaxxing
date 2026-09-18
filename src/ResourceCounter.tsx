@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useAnimatedNumber } from './useAnimatedNumber'
+import { useI18n } from './i18n'
 import './ResourceCounter.css'
 
 const duration = 650
@@ -138,6 +139,7 @@ export function ResourceCounter({
   prefix?: string
   formatter?: Intl.NumberFormat
 }) {
+  const { formatNumber } = useI18n()
   const animated = useAnimatedNumber(value)
   const previousTarget = useRef(value)
   const sequence = useRef(0)
@@ -236,8 +238,8 @@ export function ResourceCounter({
 
   return (
     <>
-      <strong ref={widgetRef} className={`resource-count ${animated.active ? 'resource-count-changing' : ''}`} aria-label={`${prefix}${value.toLocaleString()}`}>
-        <span aria-hidden="true">{prefix}{formatter ? formatter.format(renderedValue) : renderedValue.toLocaleString()}</span>
+      <strong ref={widgetRef} className={`resource-count ${animated.active ? 'resource-count-changing' : ''}`} aria-label={`${prefix}${formatNumber(value)}`}>
+        <span aria-hidden="true">{prefix}{formatter ? formatter.format(renderedValue) : formatNumber(renderedValue)}</span>
         <span className="resource-count-direction" aria-hidden="true">{directionIcon}</span>
       </strong>
       {burst && <MemoizedResourceBurst burst={burst} overlayRef={burstRef} />}

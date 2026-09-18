@@ -21,7 +21,7 @@ import {
   upgradePrice,
 } from './game'
 import { useDragDropSource } from './DragDropHintsContext'
-import { useI18n, type Translate } from './i18n'
+import { useI18n, type I18nValue, type Translate } from './i18n'
 import './Shop.css'
 
 type ShopProps = {
@@ -173,11 +173,7 @@ const terminalLabel = (terminalId: TerminalId, t: Translate): string => {
   return t('employment.terminal.name')
 }
 
-const moneyLabel = (amount: number, locale: string): string => new Intl.NumberFormat(locale, {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 2,
-}).format(Math.max(0, amount))
+const moneyLabel = (amount: number, formatCurrency: I18nValue['formatCurrency']): string => formatCurrency(Math.max(0, amount))
 
 const durationLabel = (seconds: number, t: Translate): string => {
   const safeSeconds = Math.max(0, Math.ceil(seconds))
@@ -196,7 +192,7 @@ function UpgradeProductCard({
   targetTerminal,
   highlighted,
 }: ShopProps & { product: UpgradeProduct; targetTerminal: TerminalId } & ShopHighlightProps) {
-  const { t, locale } = useI18n()
+  const { t, formatCurrency } = useI18n()
   const { upgrade, icon, titleKey, detailKey } = product
   const target = upgrade === 'terminal' ? 'terminal' : targetTerminal
   const localTarget = isLocalTerminal(target)
@@ -207,7 +203,7 @@ function UpgradeProductCard({
     if (!canInstall || price === null) return
     dispatch({ type: 'buy-upgrade', upgrade, terminalId: target, source: 'click' })
   }
-  let buttonLabel = moneyLabel(price ?? 0, locale)
+  let buttonLabel = moneyLabel(price ?? 0, formatCurrency)
   if (state.stage !== 'hired') buttonLabel = t('common.unavailable')
   else if (price === null) {
     if (localTarget && upgrade === 'split') buttonLabel = t('shop.fixedPanes')
@@ -215,7 +211,7 @@ function UpgradeProductCard({
     else if (upgrade === 'yolo') buttonLabel = t('common.installed')
     else buttonLabel = t('shop.twoTerminalsMax')
   } else if (state.money < price) {
-    buttonLabel = t('shop.need', { price: moneyLabel(price, locale) })
+    buttonLabel = t('shop.need', { price: moneyLabel(price, formatCurrency) })
   }
 
   return (
@@ -254,7 +250,7 @@ function UpgradeProductCard({
 }
 
 function SparkProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
-  const { t, locale } = useI18n()
+  const { t, formatCurrency } = useI18n()
   const announcedAt = state.sparkAnnouncedAt
   const purchased = state.sparkPurchasedAt !== null
   const delivered = state.terminals.some((terminal) => terminal.id === 'spark')
@@ -268,7 +264,7 @@ function SparkProduct({ state, dispatch, highlighted }: ShopProps & ShopHighligh
   let detail = t('shop.notAnnounced')
   let buttonLabel = t('common.unavailable')
   if (announcedAt !== null && !available) {
-    detail = t('shop.shopOpens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, t), price: moneyLabel(SPARK_PRICE, locale) })
+    detail = t('shop.shopOpens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, t), price: moneyLabel(SPARK_PRICE, formatCurrency) })
     buttonLabel = t('shop.opens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, t) })
   } else if (delivered) {
     detail = t('shop.deliveredSpark', { model: AGENT_MODELS.reasoning.label })
@@ -277,13 +273,13 @@ function SparkProduct({ state, dispatch, highlighted }: ShopProps & ShopHighligh
     const deliveryAt = state.sparkDeliveryAt
     detail = deliveryAt === null
       ? t('shop.paidDeliveryPending')
-      : t('shop.paidDelivery', { price: moneyLabel(SPARK_PRICE, locale), time: durationLabel(deliveryAt - state.elapsed, t) })
+      : t('shop.paidDelivery', { price: moneyLabel(SPARK_PRICE, formatCurrency), time: durationLabel(deliveryAt - state.elapsed, t) })
     buttonLabel = deliveryAt === null ? t('shop.delivering') : t('common.eta', { time: durationLabel(deliveryAt - state.elapsed, t) })
   } else {
-    detail = t('shop.modelNoCloudTokens', { price: moneyLabel(SPARK_PRICE, locale), model: AGENT_MODELS.reasoning.label })
+    detail = t('shop.modelNoCloudTokens', { price: moneyLabel(SPARK_PRICE, formatCurrency), model: AGENT_MODELS.reasoning.label })
     if (state.stage === 'hired') buttonLabel = state.money >= SPARK_PRICE
-      ? t('shop.buy', { price: moneyLabel(SPARK_PRICE, locale) })
-      : t('shop.need', { price: moneyLabel(SPARK_PRICE, locale) })
+      ? t('shop.buy', { price: moneyLabel(SPARK_PRICE, formatCurrency) })
+      : t('shop.need', { price: moneyLabel(SPARK_PRICE, formatCurrency) })
   }
 
   return (
@@ -298,7 +294,7 @@ function SparkProduct({ state, dispatch, highlighted }: ShopProps & ShopHighligh
   )
 }
 function SparkUltraProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
-  const { t, locale } = useI18n()
+  const { t, formatCurrency } = useI18n()
   const announcedAt = state.sparkUltraAnnouncedAt
   const purchased = state.sparkUltraPurchasedAt !== null
   const delivered = state.terminals.some((terminal) => terminal.id === 'spark-ultra')
@@ -311,7 +307,7 @@ function SparkUltraProduct({ state, dispatch, highlighted }: ShopProps & ShopHig
   let detail = t('shop.notAnnounced')
   let buttonLabel = t('common.unavailable')
   if (announcedAt !== null && !available) {
-    detail = t('shop.saleOpens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, t), price: moneyLabel(SPARK_ULTRA_PRICE, locale) })
+    detail = t('shop.saleOpens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, t), price: moneyLabel(SPARK_ULTRA_PRICE, formatCurrency) })
     buttonLabel = t('shop.opens', { time: durationLabel((availableAt ?? state.elapsed) - state.elapsed, t) })
   } else if (delivered) {
     detail = t('shop.deliveredSpark', { model: AGENT_MODELS.advanced.label })
@@ -320,13 +316,13 @@ function SparkUltraProduct({ state, dispatch, highlighted }: ShopProps & ShopHig
     const deliveryAt = state.sparkUltraDeliveryAt
     detail = deliveryAt === null
       ? t('shop.paidDeliveryPending')
-      : t('shop.paidDelivery', { price: moneyLabel(SPARK_ULTRA_PRICE, locale), time: durationLabel(deliveryAt - state.elapsed, t) })
+      : t('shop.paidDelivery', { price: moneyLabel(SPARK_ULTRA_PRICE, formatCurrency), time: durationLabel(deliveryAt - state.elapsed, t) })
     buttonLabel = deliveryAt === null ? t('shop.delivering') : t('common.eta', { time: durationLabel(deliveryAt - state.elapsed, t) })
   } else {
-    detail = t('shop.modelNoCloudTokens', { price: moneyLabel(SPARK_ULTRA_PRICE, locale), model: AGENT_MODELS.advanced.label })
+    detail = t('shop.modelNoCloudTokens', { price: moneyLabel(SPARK_ULTRA_PRICE, formatCurrency), model: AGENT_MODELS.advanced.label })
     if (state.stage === 'hired') buttonLabel = state.money >= SPARK_ULTRA_PRICE
-      ? t('shop.buy', { price: moneyLabel(SPARK_ULTRA_PRICE, locale) })
-      : t('shop.need', { price: moneyLabel(SPARK_ULTRA_PRICE, locale) })
+      ? t('shop.buy', { price: moneyLabel(SPARK_ULTRA_PRICE, formatCurrency) })
+      : t('shop.need', { price: moneyLabel(SPARK_ULTRA_PRICE, formatCurrency) })
   }
   return (
     <article className={productClassName(`shop-product shop-spark-ultra-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label={t(sparkUltraProduct.titleKey)}>
@@ -340,7 +336,7 @@ function SparkUltraProduct({ state, dispatch, highlighted }: ShopProps & ShopHig
   )
 }
 function AdvancedModelProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
-  const { t, locale } = useI18n()
+  const { t, formatCurrency } = useI18n()
   const canBuy = state.stage === 'hired' &&
     state.advancedModelAnnouncedAt !== null &&
     !state.advancedModelUnlocked &&
@@ -348,15 +344,15 @@ function AdvancedModelProduct({ state, dispatch, highlighted }: ShopProps & Shop
   const buyModel = () => {
     if (canBuy) dispatch({ type: 'buy-model', model: 'advanced' })
   }
-  let detail = t('shop.advancedDetail', { price: moneyLabel(ADVANCED_MODEL_PRICE, locale), model: AGENT_MODELS.reasoning.label })
+  let detail = t('shop.advancedDetail', { price: moneyLabel(ADVANCED_MODEL_PRICE, formatCurrency), model: AGENT_MODELS.reasoning.label })
   let buttonLabel = t('common.unavailable')
   if (state.advancedModelUnlocked) {
     detail = t('shop.handlesHarder', { model: AGENT_MODELS.reasoning.label })
     buttonLabel = t('common.owned')
   } else if (state.stage === 'hired' && state.advancedModelAnnouncedAt !== null) {
     buttonLabel = state.money >= ADVANCED_MODEL_PRICE
-      ? t('shop.buy', { price: moneyLabel(ADVANCED_MODEL_PRICE, locale) })
-      : t('shop.need', { price: moneyLabel(ADVANCED_MODEL_PRICE, locale) })
+      ? t('shop.buy', { price: moneyLabel(ADVANCED_MODEL_PRICE, formatCurrency) })
+      : t('shop.need', { price: moneyLabel(ADVANCED_MODEL_PRICE, formatCurrency) })
   }
   return (
     <article className={productClassName(`shop-product shop-model-product ${canBuy ? '' : 'shop-product-unavailable'}`, highlighted)} aria-label={t(advancedModelProduct.titleKey)}>
@@ -370,7 +366,7 @@ function AdvancedModelProduct({ state, dispatch, highlighted }: ShopProps & Shop
   )
 }
 function MercuryProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
-  const { t, locale } = useI18n()
+  const { t, formatCurrency } = useI18n()
   const canBuy = state.stage === 'hired' && state.advancedModelUnlocked && !state.mercuryOwned && state.money >= MERCURY_PRICE
   const buyMercury = () => {
     if (canBuy) dispatch({ type: 'buy-mercury' })
@@ -386,7 +382,7 @@ function MercuryProduct({ state, dispatch, highlighted }: ShopProps & ShopHighli
         <p>{t('shop.mercuryDetail')}</p>
         <p>{state.mercuryOwned
           ? t('shop.mercuryOwnedDetail')
-          : t('shop.mercuryPriceDetail', { price: moneyLabel(MERCURY_PRICE, locale) })}</p>
+          : t('shop.mercuryPriceDetail', { price: moneyLabel(MERCURY_PRICE, formatCurrency) })}</p>
       </div>
       {state.mercuryOwned ? (
         <label className="shop-fast-mode-toggle shop-mercury-toggle">
@@ -402,7 +398,7 @@ function MercuryProduct({ state, dispatch, highlighted }: ShopProps & ShopHighli
         </label>
       ) : (
         <button className="shop-buy-button" type="button" onClick={buyMercury} disabled={!canBuy}>
-          {state.stage !== 'hired' ? t('common.unavailable') : state.money >= MERCURY_PRICE ? t('shop.buy', { price: moneyLabel(MERCURY_PRICE, locale) }) : t('shop.need', { price: moneyLabel(MERCURY_PRICE, locale) })}
+          {state.stage !== 'hired' ? t('common.unavailable') : state.money >= MERCURY_PRICE ? t('shop.buy', { price: moneyLabel(MERCURY_PRICE, formatCurrency) }) : t('shop.need', { price: moneyLabel(MERCURY_PRICE, formatCurrency) })}
         </button>
       )}
     </article>
@@ -411,7 +407,7 @@ function MercuryProduct({ state, dispatch, highlighted }: ShopProps & ShopHighli
 
 
 export function ShopContent({ state, dispatch, active }: ShopContentProps) {
-  const { t, locale, formatNumber } = useI18n()
+  const { t, formatCurrency, formatNumber } = useI18n()
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
   const highlighted = useShopHighlights(state, active)
   const hasDiscovery = (id: ShopItemId): boolean => state.shopDiscoveries.includes(id)
@@ -427,7 +423,7 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
     !isLocalTerminal(selectedTerminal.id)
   const refillAmount = tokenPurchaseAmount(state.tokens, state.tokenPacks)
   const refillCost = tokenPurchaseCost(refillAmount, state)
-  const refillPrice = moneyLabel(refillCost, locale)
+  const refillPrice = moneyLabel(refillCost, formatCurrency)
   const canBuyTokens = state.stage === 'hired' && state.money >= refillCost && refillAmount > 0
   const tokenMultiplier = tokenPriceMultiplier(state)
   const monopolyActive = state.monopolyAnnouncedAt !== null
@@ -524,7 +520,7 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
                     const quantity = amount >= MAX_TOKENS - state.tokens
                       ? t('shop.fillBalance')
                       : t('common.tokens', { amount: formatNumber(amount) })
-                    return <option key={packs} value={packs}>{quantity} · {moneyLabel(cost, locale)}</option>
+                    return <option key={packs} value={packs}>{quantity} · {moneyLabel(cost, formatCurrency)}</option>
                   })}
                 </select>
               </label>
@@ -546,7 +542,7 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
               : t('shop.inventoryFull')}</p>
             {monopolyActive && (
               <p className="shop-token-rate">
-                {t('shop.monopolyRate', { multiplier: tokenMultiplier.toFixed(2), seconds: formatNumber(secondsToNextTokenIncrease ?? 0) })}
+                {t('shop.monopolyRate', { multiplier: formatNumber(tokenMultiplier, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), seconds: formatNumber(secondsToNextTokenIncrease ?? 0) })}
               </p>
             )}
           </div>

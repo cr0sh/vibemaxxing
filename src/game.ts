@@ -1104,12 +1104,12 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
   if (!canFundTaskAttempt(state, task, fastMode, terminalId, preserveAssignedReservations) || !Number.isFinite(cost) || state.tokens < cost) return state
   let nextRng = state.rng
   let nextApprovalAt = 0
-  let nextApprovalPrompt: string | null = null
+  let nextApprovalPromptKey: MessageKey | null = null
   if (!terminal.yolo) {
     const drawn = drawApprovalCheckpoint(state.rng)
     nextRng = drawn[0]
     nextApprovalAt = state.elapsed + drawn[1]
-    nextApprovalPrompt = drawn[2]
+    nextApprovalPromptKey = drawn[2]
   }
   const nextTokens = state.tokens - cost
   return {
@@ -1130,7 +1130,7 @@ function startTaskAttempt(state: GameState, taskIndex: number, terminalId: Termi
       status: 'working',
       progress: candidate.status === 'failed' ? 0 : candidate.progress,
       nextApprovalAt,
-      approvalPromptKey: nextApprovalPrompt,
+      approvalPromptKey: nextApprovalPromptKey,
     } : candidate),
     rng: nextRng,
   }
@@ -1253,7 +1253,7 @@ function deadlineFailure(state: GameState, task: WorkTask): MessageReference {
     key: 'ending.deadlineFailure',
     params: {
       title: { key: task.titleKey },
-      company: company ?? 'your company',
+      company: company ?? { key: 'app.yourCompany' },
     },
   }
 }
@@ -1677,7 +1677,7 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         frontierPreview = appendSocialPost(frontierPreview, { id: 'spark-ultra-announced', type: 'spark-ultra', elapsed: 150, likes: 0 })
         return issueAvailableAssignments(frontierPreview)
       }
-      const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? 'your company'
+      const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0]
       return lose({ ...state, company }, { key: 'ending.previewFailure', params: { company } }, 'deadline')
     }
     case 'tick':

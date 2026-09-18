@@ -26,7 +26,7 @@ import { useDragDropHints, useDragDropSource, useDragDropTarget } from './DragDr
 import type { DragDropSource } from './DragDropHintsContext'
 import { UnreadIndicator } from './UnreadIndicator'
 import { useUnreadMessages } from './useUnreadMessages'
-import { useI18n, type Translate } from './i18n'
+import { Localized, useI18n, type I18nValue, type Translate } from './i18n'
 import './Employment.css'
 
 type MessengerProps = {
@@ -44,12 +44,9 @@ type TerminalProps = {
 
 type Channel = 'general' | 'watercooler'
 
-const formatMoney = (amount: number, locale: string): string => new Intl.NumberFormat(locale, {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-}).format(Math.max(0, Number.isFinite(amount) ? amount : 0))
+const formatMoney = (amount: number, formatCurrency: I18nValue['formatCurrency']): string => (
+  formatCurrency(Math.max(0, Number.isFinite(amount) ? amount : 0))
+)
 
 const formatSeconds = (seconds: number, t: Translate): string => {
   const safeSeconds = Math.max(0, Math.ceil(seconds))
@@ -60,10 +57,9 @@ const formatSeconds = (seconds: number, t: Translate): string => {
     : t('common.durationSeconds', { seconds: remainder })
 }
 
-const compactTokens = (amount: number, locale: string): string => new Intl.NumberFormat(locale, {
-  notation: 'compact',
-  maximumFractionDigits: 1,
-}).format(Math.max(0, amount))
+const compactTokens = (amount: number, formatNumber: I18nValue['formatNumber']): string => (
+  formatNumber(Math.max(0, amount), { notation: 'compact', maximumFractionDigits: 1 })
+)
 
 const employerName = (state: GameState, jobId: JobId, t: Translate): string => (
   jobId === 'secondary'
@@ -318,7 +314,7 @@ function TaskAttachment({
   elapsed: number
   archived?: boolean
 }) {
-  const { t, locale, formatNumber } = useI18n()
+  const { t, formatCurrency, formatNumber } = useI18n()
   const isAssigned = task.status === 'assigned' && task.terminalId === null && task.slot === null
   const forwarded = !archived && isForwardedTask(task)
   const canStart = state.stage === 'hired' && !archived && isAssigned && state.terminals.some((terminal) => (
@@ -365,8 +361,8 @@ function TaskAttachment({
         {task.baseReward > 0 && (
         <span className="employment-reward-line">
           {archived
-            ? t('employment.task.initialBonus', { amount: formatMoney(reward, locale) })
-            : t('employment.task.rewardNow', { amount: formatMoney(reward, locale) })}
+            ? t('employment.task.initialBonus', { amount: formatMoney(reward, formatCurrency) })
+            : t('employment.task.rewardNow', { amount: formatMoney(reward, formatCurrency) })}
           <span className="employment-reward-decay">{archived ? '' : t('employment.task.deliverSooner')}</span>
         </span>
         )}
@@ -377,13 +373,13 @@ function TaskAttachment({
           return (
             <div className="employment-attachment-meta employment-task-economy" key={terminal.id}>
               {state.terminals.length > 1 && <span>{label}</span>}
-              <span>{t('employment.task.cost', { amount: compactTokens(taskTokenCost(task, terminal.fastMode, model, local), locale) })}</span>
+              <span>{t('employment.task.cost', { amount: compactTokens(taskTokenCost(task, terminal.fastMode, model, local), formatNumber) })}</span>
               <span>{t('employment.task.successOdds', { percent: Math.round(taskSuccessChance(task, model) * 100) })}</span>
             </div>
           )
         }) : (
           <span className="employment-attachment-meta employment-task-economy">
-            <span>{t('employment.task.cost', { amount: compactTokens(taskCost(task), locale) })}</span>
+            <span>{t('employment.task.cost', { amount: compactTokens(taskCost(task), formatNumber) })}</span>
             {!archived && <span>{t('employment.task.successOdds', { percent: Math.round(taskSuccessChance(task, taskModel(task)) * 100) })}</span>}
           </span>
         )}
@@ -543,7 +539,7 @@ function WatercoolerPane({
 }
 
 export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerProps) {
-  const { t, locale, formatNumber } = useI18n()
+  const { t, formatCurrency, formatNumber } = useI18n()
   const [reactionBurst, setReactionBurst] = useState(0)
   const [channel, setChannel] = useState<Channel>('general')
   const [selectedJobId, setActiveJobId] = useState<JobId>('primary')
@@ -748,10 +744,10 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
               artifact: message.task.artifactName,
               count: formatNumber(message.completedTasks),
             })}</p>
-            {message.reward > 0 && <p className="employment-delivery-reward"><span aria-hidden="true">💰</span> {t('employment.message.earnedBonus', { amount: formatMoney(message.reward, locale) })}</p>}
+            {message.reward > 0 && <p className="employment-delivery-reward"><span aria-hidden="true">💰</span> {t('employment.message.earnedBonus', { amount: formatMoney(message.reward, formatCurrency) })}</p>}
             <div className="employment-delivery-meta">
               <TaskDifficulty complexity={message.task.complexity} />
-              <span>{t('employment.message.cost', { amount: compactTokens(taskCost(message.task), locale) })}</span>
+              <span>{t('employment.message.cost', { amount: compactTokens(taskCost(message.task), formatNumber) })}</span>
               <span>{taskModelLabel(message.task)}</span>
               {message.task.local && <span>{t('employment.message.localTerminal')}</span>}
               {message.task.fastMode && <span>{t('employment.message.fastMode')}</span>}
@@ -804,7 +800,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
             <p>{t('employment.message.attemptFailedCopy', { title: t(message.task.titleKey) })}</p>
             <div className="employment-failed-summary">
               <TaskDifficulty complexity={message.task.complexity} />
-              <span>{t('employment.message.cost', { amount: compactTokens(taskCost(message.task), locale) })}</span>
+              <span>{t('employment.message.cost', { amount: compactTokens(taskCost(message.task), formatNumber) })}</span>
               <span>{taskModelLabel(message.task)}</span>
               {message.task.local && <span>{t('employment.message.localTerminal')}</span>}
               <span>{message.task.fastMode ? t('employment.message.fastMode') : t('employment.message.standardPace')}</span>
@@ -816,7 +812,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
               onClick={() => dispatch({ type: 'retry-task', id: message.task.id })}
               disabled={!canRetry}
             >
-              {t('employment.message.retryAttempt', { amount: compactTokens(retryCost, locale) })}
+              {t('employment.message.retryAttempt', { amount: compactTokens(retryCost, formatNumber) })}
             </button>}
             {state.stage === 'hired' && currentFailure && !canFundTaskAttempt(state, currentTask.task, retryFastMode, retryTerminalId) && <span className="employment-control-hint">{t('employment.message.needMoreTokens')}</span>}
           </div>
@@ -955,7 +951,7 @@ type TerminalLaneProps = {
 }
 
 function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode, windowError, clearWindowError }: TerminalLaneProps) {
-  const { t, locale } = useI18n()
+  const { t, formatNumber } = useI18n()
   const laneRef = useRef<HTMLElement>(null)
   const { isSourceActive, clear } = useDragDropHints()
   const { error, showError, clearError } = useDropError(task?.id)
@@ -1077,7 +1073,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode,
             <div className="employment-terminal-action-block employment-failed-block">
               <p className="terminal-muted">{t('employment.terminal.failedCopy')}</p>
               <button className="employment-terminal-button employment-retry-button" type="button" onClick={() => dispatch({ type: 'retry-task', id: task.id })} disabled={state.stage !== 'hired' || !canFundTaskAttempt(state, task, fastMode, terminalId)}>
-                {t('employment.terminal.retry', { amount: compactTokens(retryCost, locale) })}
+                {t('employment.terminal.retry', { amount: compactTokens(retryCost, formatNumber) })}
               </button>
             </div>
           )}
@@ -1097,7 +1093,7 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode,
 }
 
 export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) {
-  const { t, locale } = useI18n()
+  const { t, formatNumber } = useI18n()
   const terminal = state.terminals.find((candidate) => candidate.id === terminalId)
   const isLocal = isLocalTerminal(terminalId)
   const slots = isLocal ? 2 : terminal?.slots ?? 0
@@ -1187,7 +1183,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
     event.dataTransfer.dropEffect = 'move'
   }
 
-  const terminalLabel = isLocal ? terminalId === 'spark-ultra' ? 'Mapple Spark Ultra' : 'Mapple Spark' : terminalId === 'terminal-2' ? 'Terminal 2' : 'Terminal'
+  const terminalLabel = t(isLocal ? terminalId === 'spark-ultra' ? 'employment.terminal.nameSparkUltra' : 'employment.terminal.nameSpark' : terminalId === 'terminal-2' ? 'employment.terminal.nameTwo' : 'employment.terminal.name')
   return (
     <div
       ref={terminalRef}
@@ -1213,7 +1209,7 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
           </label>
         )}
       </div>
-      <div className={`terminal-output employment-terminal-lanes panes-${slots}`} aria-label={t('employment.terminal.statusAria', { terminal: terminalId })}>
+      <div className={`terminal-output employment-terminal-lanes panes-${slots}`} aria-label={t('employment.terminal.statusAria', { terminal: terminalLabel })}>
         {Array.from({ length: slots }, (_, slot) => (
           <TerminalLane
             key={`${terminalId}-${slot}`}
@@ -1232,7 +1228,10 @@ export function TerminalContent({ state, dispatch, terminalId }: TerminalProps) 
       </div>
       <div className="employment-terminal-footer">
         <div className="employment-token-line">
-          <span><strong>{isLocal ? `${terminalLabel} ${t('employment.terminal.localTokens')}` : formatNumber(state.tokens)}</strong>{isLocal ? t('employment.terminal.noTaskTokens') : t('employment.terminal.tokensAvailable')}</span>
+          <span>{isLocal
+            ? <><strong>{t('employment.terminal.localTokens', { terminal: terminalLabel })}</strong>{t('employment.terminal.noTaskTokens')}</>
+            : <Localized message="employment.terminal.tokensAvailable" values={{ tokens: <strong>{formatNumber(state.tokens)}</strong> }} />
+          }</span>
           <span className="employment-refill-countdown">
             {isLocal ? t('employment.terminal.modelLabel', { model: AGENT_MODELS[model].label }) : state.tokens >= MAX_TOKENS ? t('employment.terminal.balanceFull') : t('employment.terminal.refillIn', { time: formatSeconds(refillIn, t) })}
           </span>
