@@ -588,7 +588,7 @@
   font-size: 0.69rem;
   line-height: 1.35;
 }
-.employment-drop-error {
+.employment-terminal-lane > .employment-drop-error {
   flex: 0 0 auto;
   margin: auto 0 0;
   padding-top: 0.55rem;
@@ -598,9 +598,6 @@
   overflow-wrap: anywhere;
 }
 
-.employment-terminal-footer .employment-drop-error {
-  margin-top: 0;
-}
 
 
 .employment-terminal-footer {

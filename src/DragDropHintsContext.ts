@@ -70,11 +70,11 @@ export function useDragDropTarget<T extends HTMLElement>(
     targetRef.current = target
   })
 
+  const hasRejectionReason = target.rejectionReason !== undefined
+  const hasOnReject = target.onReject !== undefined
   useEffect(() => {
     const element = ref.current
     if (!element) return
-    const hasRejectionReason = target.rejectionReason !== undefined
-    const hasOnReject = target.onReject !== undefined
     return registerDropTarget({
       id: target.id,
       priority: target.priority,
@@ -89,7 +89,7 @@ export function useDragDropTarget<T extends HTMLElement>(
         : undefined,
       onHover: () => targetRef.current.onHover?.(),
     })
-  }, [ref, registerDropTarget, target.id, target.priority, target.rejectionReason !== undefined, target.onReject !== undefined])
+  }, [ref, registerDropTarget, target.id, target.priority, hasRejectionReason, hasOnReject])
 }
 
 export function useDragDropSource(source: DragDropSource, enabled: boolean) {
