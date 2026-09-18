@@ -25,7 +25,7 @@ const windowDefaults: Record<string, Size & Point> = {
   'terminal-2': { width: 705, height: 500, x: 0.26, y: 0.28 },
   spark: { width: 705, height: 500, x: 0.8, y: 0.18 },
   market: { width: 960, height: 600, x: 0.5, y: 0.1 },
-  shop: { width: 780, height: 528, x: 0.5, y: 0.14 },
+  shop: { width: 546, height: 686.4, x: 0.5, y: 0.14 },
   social: { width: 780, height: 600, x: 0.76, y: 0.12 },
   mercury: { width: 960, height: 600, x: 0.5, y: 0.12 },
   defeat: { width: 645, height: 330, x: 0.5, y: 0.28 },
