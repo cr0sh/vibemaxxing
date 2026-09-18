@@ -123,6 +123,7 @@ export type GameState = {
   tokens: number
   money: number
   elapsed: number
+  tickRemainder: number
   tasks: WorkTask[]
   taskQueue: TaskDescriptor[]
   terminals: TerminalState[]
@@ -154,6 +155,8 @@ export type GameState = {
   sparkDeliveryAt: number | null
   mercuryOwned: boolean
   mercuryEnabled: boolean
+  tokenAutoBuy: boolean
+  tokenPacks: TokenPackCount
   market: MarketState | null
 }
 
@@ -169,6 +172,8 @@ export type GameAction =
   | { type: 'approve-task'; id: number; approved: boolean }
   | { type: 'deliver-task'; id: number }
   | { type: 'buy-tokens'; packs: TokenPackCount }
+  | { type: 'set-token-auto-buy'; enabled: boolean }
+  | { type: 'set-token-packs'; packs: TokenPackCount }
   | { type: 'buy-upgrade'; upgrade: TerminalUpgrade; terminalId: TerminalId }
   | { type: 'read-watercooler' }
   | { type: 'install-social' }
@@ -185,6 +190,7 @@ export type GameAction =
   | { type: 'accept-second-job' }
   | { type: 'market-transfer'; direction: 'deposit' | 'withdraw'; amount: number | 'max' }
   | { type: 'market-trade'; side: 'buy' | 'sell'; amount: number }
+
 
 export const companies: readonly string[] = [
   'Prompt & Circumstance',
@@ -221,6 +227,7 @@ const YOLO_PRICE = 420
 const SECONDARY_PRICE_MULTIPLIER = 2
 const ADDITIONAL_TERMINAL_PRICE = 1_000
 const WATERCOOLER_THRESHOLD = MAX_TOKENS * 0.2
+const TOKEN_AUTO_BUY_THRESHOLD = 1_000_000
 const SOCIAL_LOTTERY_DELAY = 5
 const TIRO_PREVIEW_TOKENS = 1_900_000
 export const MERCURY_RETRY_DELAY = 10
@@ -266,6 +273,18 @@ export function tokenPurchaseAmount(tokens: number, packs: TokenPackCount): numb
 
 export function tokenPurchaseCost(amount: number): number {
   return Math.ceil(amount * TOKEN_PURCHASE_COST * 100 / TOKEN_PURCHASE_AMOUNT) / 100
+}
+function purchaseTokens(state: GameState, packs: TokenPackCount): GameState {
+  if (!TOKEN_PACK_COUNTS.includes(packs) || state.stage !== 'hired') return state
+  const amount = tokenPurchaseAmount(state.tokens, packs)
+  const cost = tokenPurchaseCost(amount)
+  if (!Number.isFinite(state.money) || !Number.isFinite(state.tokens) || !Number.isFinite(amount) || !Number.isFinite(cost) ||
+    state.money < cost || amount <= 0) return state
+  return issueAvailableAssignments({
+    ...state,
+    money: Math.max(0, Math.round((state.money - cost) * 100) / 100),
+    tokens: Math.min(MAX_TOKENS, state.tokens + amount),
+  })
 }
 
 const taskBlueprints: readonly Pick<TaskDescriptor, 'title' | 'description' | 'artifactName'>[] = [
@@ -667,6 +686,7 @@ function createHiredState(state: GameState): GameState {
     ...state,
     stage: 'hired',
     energy: MAX_ENERGY,
+    tickRemainder: 0,
     tasks: [],
     taskQueue: [],
     terminals: [{ ...PRIMARY_TERMINAL }],
@@ -696,6 +716,8 @@ function createHiredState(state: GameState): GameState {
     sparkDeliveryAt: null,
     mercuryOwned: false,
     mercuryEnabled: false,
+    tokenAutoBuy: false,
+    tokenPacks: 10,
     market: null,
   }
   const welcomed = appendMessage(hired, { id: 'welcome', type: 'welcome', jobId: 'primary', elapsed: hired.elapsed })
@@ -746,14 +768,14 @@ function lose(state: GameState, failure: string, jobId: JobId = 'primary'): Game
 }
 export const initialGame: GameState = {
   stage: 'ready', tiroAvatar: TIRO_AVATARS[0]!, submissions: 0, company: null, lastResult: null, energy: MAX_ENERGY,
-  tokens: MAX_TOKENS, money: 0, elapsed: 0, tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }],
+  tokens: MAX_TOKENS, money: 0, elapsed: 0, tickRemainder: 0, tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }],
   completedTasks: 0, level: 3, completedArchitectureTasks: 0, reasoningUnlocked: false, fastModeUnlocked: false,
   watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
   socialPosts: [], nextTaskId: 1, nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
   expectation: 0.2, rng: 1, secondJob: null, secondJobUnlocked: false, secondJobApplications: 0,
   secondJobOffer: null, advancedModelAnnouncedAt: null, advancedModelUnlocked: false, frontierModelUnlocked: false,
   sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null, mercuryOwned: false,
-  mercuryEnabled: false, market: null,
+  mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null,
 }
 
 function getTerminal(state: Pick<GameState, 'terminals'>, terminalId: TerminalId): TerminalState | undefined {
@@ -891,6 +913,21 @@ function completeDelivery(state: GameState, task: WorkTask, forwardingCost: numb
   }
   return maybeUnlockProgression(delivered)
 }
+function terminalWorkload(state: GameState, terminalId: TerminalId): number {
+  return state.tasks.reduce((total, task) => total + Number(
+    task.terminalId === terminalId && task.status !== 'assigned',
+  ), 0)
+}
+
+function mercuryTerminalOrder(state: GameState, task: WorkTask): TerminalState[] {
+  return [...state.terminals].sort((a, b) => {
+    const quality = taskSuccessChance(task, terminalModel(state, b.id)) - taskSuccessChance(task, terminalModel(state, a.id))
+    if (quality !== 0) return quality
+    const workload = terminalWorkload(state, a.id) - terminalWorkload(state, b.id)
+    return workload !== 0 ? workload : a.id.localeCompare(b.id)
+  })
+}
+
 function processMercury(state: GameState): GameState {
   if (!state.mercuryOwned || !state.mercuryEnabled) return state
   let current = state
@@ -913,32 +950,45 @@ function processMercury(state: GameState): GameState {
     if (task.terminalId === null || task.slot === null || !canFundMercuryRetry(current, task)) continue
     const taskIndex = current.tasks.findIndex((candidate) => candidate.id === task.id)
     const started = startTaskAttempt(current, taskIndex, task.terminalId, task.slot, true)
-    if (started !== current) return started
+    if (started !== current) current = started
   }
   const candidates = current.tasks
     .filter((task) => task.status === 'assigned')
     .sort((a, b) => a.deadlineAt - b.deadlineAt || a.id - b.id)
   for (const task of candidates) {
     const taskIndex = current.tasks.findIndex((candidate) => candidate.id === task.id)
-    const terminals = [...current.terminals].sort((a, b) => (
-      taskSuccessChance(task, terminalModel(current, b.id)) - taskSuccessChance(task, terminalModel(current, a.id)) ||
-      a.id.localeCompare(b.id)
-    ))
+    const terminals = mercuryTerminalOrder(current, task)
     for (const terminal of terminals) {
       const slot = firstFreeSlot(current, terminal)
-      if (slot === null) continue
-      if (!canFundMercuryAttempt(current, task, terminal.id)) continue
+      if (slot === null || !canFundMercuryAttempt(current, task, terminal.id)) continue
       const funded = { ...current, tokens: current.tokens - MERCURY_FORWARD_COST }
       const started = startTaskAttempt(funded, taskIndex, terminal.id, slot, true)
-      if (started !== funded) return started
+      if (started !== funded) {
+        current = started
+        break
+      }
     }
   }
   return current
 }
+function autoBuyTokens(state: GameState): GameState {
+  return state.stage === 'hired' && state.tokenAutoBuy && state.tokens < TOKEN_AUTO_BUY_THRESHOLD
+    ? purchaseTokens(state, state.tokenPacks)
+    : state
+}
+
+function deadlineFailure(state: GameState, task: WorkTask): string {
+  const company = task.jobId === 'secondary' ? state.secondJob?.company : state.company
+  return `You missed “${task.title}” at ${company ?? 'your company'}.`
+}
 
 function tickHired(state: GameState, seconds: number): GameState {
-  const wholeSeconds = Math.floor(seconds)
-  if (state.stage !== 'hired' || !Number.isFinite(seconds) || wholeSeconds <= 0) return state
+  if (state.stage !== 'hired' || !Number.isFinite(seconds) || seconds <= 0) return state
+  const previousRemainder = Number.isFinite(state.tickRemainder) ? clamp(state.tickRemainder, 0, 0.999999999) : 0
+  const total = previousRemainder + seconds
+  const wholeSeconds = Math.floor(total + 1e-9)
+  let remainder = Math.max(0, total - wholeSeconds)
+  if (remainder >= 1 - 1e-9) remainder = 0
   let current = state
   for (let second = 0; second < wholeSeconds; second += 1) {
     const nextElapsed = current.elapsed + 1
@@ -950,9 +1000,10 @@ function tickHired(state: GameState, seconds: number): GameState {
       expectation: bossExpectationAt(nextElapsed),
     }
     if (current.secondJob !== null) current = withJob(current, 'secondary', (job) => ({ ...job, expectation: bossExpectationAt(nextElapsed) }))
+    current = autoBuyTokens(current)
     current = updateSparkDelivery(current)
     const overdue = current.tasks.find((task) => current.elapsed >= task.deadlineAt)
-    if (overdue !== undefined) return lose(current, 'The task deadline was missed.', overdue.jobId)
+    if (overdue !== undefined) return lose({ ...current, tickRemainder: remainder }, deadlineFailure(current, overdue), overdue.jobId)
     const previousTasks = current.tasks
     let nextRng = current.rng
     const advancedTasks: WorkTask[] = []
@@ -976,6 +1027,9 @@ function tickHired(state: GameState, seconds: number): GameState {
     current = issueAvailableAssignments(current)
     if (current.market !== null) current = { ...current, market: advanceMarket(current.market, current.elapsed) }
   }
+  if (current.stage !== 'hired') return current
+  current = { ...current, tickRemainder: remainder }
+  if (current.market !== null) current = { ...current, market: advanceMarket(current.market, current.elapsed + remainder) }
   return current
 }
 
@@ -995,12 +1049,13 @@ function resetEmploymentPreview(state: GameState, stage: 'applying' | 'offer'): 
     ...state,
     stage,
     company: stage === 'offer' ? (state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null) : null,
+    tickRemainder: 0,
     tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }], completedTasks: 0, level: 3, completedArchitectureTasks: 0,
     reasoningUnlocked: false, fastModeUnlocked: false, watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
     socialPosts: [], nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
     secondJob: null, secondJobUnlocked: false, secondJobApplications: 0, secondJobOffer: null, advancedModelAnnouncedAt: null,
     advancedModelUnlocked: false, frontierModelUnlocked: false, sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null,
-    mercuryOwned: false, mercuryEnabled: false, market: null,
+    mercuryOwned: false, mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null,
   }
 }
 
@@ -1142,8 +1197,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
         return appendSocialPost(issueAvailableAssignments(preview), { id: 'frontier-model-unlocked', type: 'frontier-model', elapsed: 30, likes: 0 })
       }
-      const failure = 'The run ended in the developer preview.'
-      return lose({ ...state, stage: 'lost', company: state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? null, failure }, 'primary')
+      const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0] ?? 'your company'
+      const failure = `The developer preview did not clear ${company}'s hiring bar.`
+      return lose({ ...state, company }, failure)
     }
     case 'tick':
       return tickHired(state, action.seconds)
@@ -1183,12 +1239,16 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const task = state.tasks.find((candidate) => candidate.id === action.id)
       return task === undefined || task.status !== 'artifact' ? state : completeDelivery(state, task, 0)
     }
-    case 'buy-tokens': {
-      if (!TOKEN_PACK_COUNTS.includes(action.packs)) return state
-      const amount = tokenPurchaseAmount(state.tokens, action.packs)
-      const cost = tokenPurchaseCost(amount)
-      if (state.stage !== 'hired' || !Number.isFinite(state.money) || !Number.isFinite(state.tokens) || state.money < cost || amount === 0) return state
-      return issueAvailableAssignments({ ...state, money: Math.round((state.money - cost) * 100) / 100, tokens: state.tokens + amount })
+    case 'buy-tokens':
+      return purchaseTokens(state, action.packs)
+    case 'set-token-packs':
+      return TOKEN_PACK_COUNTS.includes(action.packs) && state.tokenPacks !== action.packs
+        ? { ...state, tokenPacks: action.packs }
+        : state
+    case 'set-token-auto-buy': {
+      if (state.stage !== 'hired' || typeof action.enabled !== 'boolean' || state.tokenAutoBuy === action.enabled) return state
+      const next = { ...state, tokenAutoBuy: action.enabled }
+      return action.enabled ? autoBuyTokens(next) : next
     }
     case 'read-watercooler':
       return state.stage === 'hired' && state.watercoolerUnlocked && !state.watercoolerRead ? { ...state, watercoolerRead: true } : state

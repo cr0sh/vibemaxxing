@@ -21,45 +21,28 @@ const elapsedLabel = (elapsed: number): string => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-const postHeading = (post: SocialPost): string => {
-  switch (post.type) {
-    case 'campaign': return 'Token reset applied'
-    case 'lottery': return 'Like for a token refill'
-    case 'reset': return 'Tokens reset'
-    case 'model': return 'ConvexLM Reasoning online'
-    case 'fast-mode': return 'Fast mode unlocked'
-    case 'market': return 'BTC market is open'
-    case 'spark': return 'Mapple Spark announced'
-    case 'spark-delivered': return 'Mapple Spark delivered'
-    case 'advanced-model': return 'ConvexLM Pro available'
-    case 'mercury': return 'Mercury available'
-    case 'second-job': return 'Second job open'
-    case 'frontier-model': return 'Tiro Max unlocked'
-  }
-}
-
-const postKicker = (post: SocialPost): string => {
+const postAuthor = (post: SocialPost): string => {
   switch (post.type) {
     case 'campaign':
     case 'lottery':
     case 'reset':
-      return 'TIRO'
+      return 'Tiro'
     case 'model':
     case 'fast-mode':
     case 'advanced-model':
     case 'frontier-model':
-      return 'TIRO LABS'
+      return 'Tiro Labs'
     case 'market':
     case 'spark':
     case 'spark-delivered':
     case 'mercury':
     case 'second-job':
-      return 'TIRO'
+      return 'Tiro'
   }
 }
 
 function ProfileAvatar({ post, state }: { post: SocialPost; state: GameState }) {
-  const laboratory = postKicker(post) === 'TIRO LABS'
+  const laboratory = postAuthor(post) === 'Tiro Labs'
   return (
     <span className={`social-avatar ${laboratory ? 'social-avatar-lab' : 'social-avatar-tiro'}`} aria-hidden="true">
       {laboratory ? '🧪' : state.tiroAvatar}
@@ -73,7 +56,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'campaign') {
     return (
       <p className="social-post-copy">
-        Your token balance was reset to 10M automatically when you installed this network. One reset per run.
+        Hey, you made it. I topped your tokens back up to 10M. Consider it a welcome gift.
       </p>
     )
   }
@@ -82,7 +65,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
     return (
       <>
         <p className="social-post-copy">
-          Like for a chance to refill to 10M. No luck? Like again.
+          Feeling generous today. Drop a like and I might top your tokens back up to 10M. No luck? Try me again.
         </p>
         <div className="social-lottery-actions">
           <button
@@ -97,7 +80,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
           </button>
           <span className="social-like-count" aria-live="polite">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'}</span>
         </div>
-        {isLost && <p className="social-action-note">The feed is archived after the run ends.</p>}
+        {isLost && <p className="social-action-note">Your work account is read-only now.</p>}
       </>
     )
   }
@@ -105,7 +88,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'reset') {
     return (
       <p className="social-post-copy social-success-copy">
-        We reset your balance to 10M tokens immediately.
+        You’re back to 10M tokens. Go make something good.
       </p>
     )
   }
@@ -113,7 +96,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'model') {
     return (
       <p className="social-post-copy">
-        ConvexLM Reasoning is unlocked. New cloud attempts use it.
+        We’ve been working on a smarter model. Meet ConvexLM Reasoning — your cloud agents can use it now.
       </p>
     )
   }
@@ -121,8 +104,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'fast-mode') {
     return (
       <p className="social-post-copy">
-        Fast mode: <strong>2× speed · 2× tokens</strong>. Applies to new attempts while enabled.
-        Turn it on in Shop for a cloud terminal.
+        Need it done sooner? We just shipped Fast mode: <strong>twice the speed, twice the tokens</strong>. You’ll find the switch in Shop.
       </p>
     )
   }
@@ -130,7 +112,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'market') {
     return (
       <p className="social-post-copy">
-        BTC trading is live. Open Market to trade with your USD balance.
+        Couldn’t resist adding a BTC market. Move some cash into your trading wallet if you feel like taking a risk.
       </p>
     )
   }
@@ -138,8 +120,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'spark') {
     return (
       <p className="social-post-copy">
-        Mapple Spark opens in Shop 10 seconds after this post · <strong>$15,000</strong>.
-        Local ConvexLM Reasoning panes use no cloud task tokens.
+        Finally got the Mapple Spark ready: two local ConvexLM Reasoning agents, no cloud-token bill. It’ll be in Shop in 10 seconds for <strong>$15,000</strong>.
       </p>
     )
   }
@@ -147,7 +128,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'spark-delivered') {
     return (
       <p className="social-post-copy">
-        Mapple Spark delivered: two fixed ConvexLM Reasoning panes. Install YOLO if you want to skip approvals.
+        I dropped off your Mapple Spark. Two local agents, ready to go. Grab YOLO from Shop if you’re tired of approving every command.
       </p>
     )
   }
@@ -155,7 +136,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'advanced-model') {
     return (
       <p className="social-post-copy">
-        ConvexLM Pro is in Shop for <strong>$5,000</strong>. Buy it to use Pro for new cloud attempts.
+        We’ve got something for the harder jobs: ConvexLM Pro. Same speed as ConvexLM Reasoning, smarter answers. It’s <strong>$5,000</strong> in Shop.
       </p>
     )
   }
@@ -163,8 +144,7 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'mercury') {
     return (
       <p className="social-post-copy">
-        Mercury is in Shop for <strong>$8,000</strong>. Automatic retries begin 10 seconds after a failure when enabled;
-        manual retries are immediate. Approvals always stay manual, and automatic handoffs cost 300K tokens each way.
+        I got tired of dragging files around, so I built Mercury. <strong>$8,000</strong> in Shop. It handles both handoffs for 300K tokens each and retries failures after 10 seconds. You’ll still need to approve commands.
       </p>
     )
   }
@@ -172,30 +152,27 @@ function PostBody({ post, state, dispatch }: { post: SocialPost; state: GameStat
   if (post.type === 'second-job') {
     return (
       <p className="social-post-copy">
-        A second job is open. Open Applications and submit its form.
+        A friend of mine is hiring. If one boss wasn’t enough, check Applications — there’s another job waiting for you.
       </p>
     )
   }
 
   return (
     <p className="social-post-copy">
-      Tiro Max is available in each cloud terminal’s model menu. It uses <strong>2× tokens</strong>.
+      Tiro Max is ready. Pick it from a cloud terminal’s model menu when you need our smartest model. It uses <strong>2× tokens</strong>, so keep an eye on the bill.
     </p>
   )
 }
 
 function SocialPostCard({ post, state, dispatch }: { post: SocialPost; state: GameState; dispatch: Dispatch<GameAction> }) {
   return (
-    <article className={`social-post social-post-${post.type}`} aria-labelledby={`social-post-title-${post.id}`}>
+    <article className={`social-post social-post-${post.type}`} aria-label={`${postAuthor(post)} post at ${elapsedLabel(post.elapsed)}`}>
       <div className="social-post-rail" aria-hidden="true">
         <ProfileAvatar post={post} state={state} />
       </div>
       <div className="social-post-main">
         <header className="social-post-header">
-          <div>
-            <p className="social-post-kicker">{postKicker(post)}</p>
-            <h2 id={`social-post-title-${post.id}`}>{postHeading(post)}</h2>
-          </div>
+          <p className="social-post-author">{postAuthor(post)}</p>
           <time dateTime={`PT${Math.max(0, post.elapsed)}S`} title={`${post.elapsed} seconds since the run began`}>
             {elapsedLabel(post.elapsed)}
           </time>
