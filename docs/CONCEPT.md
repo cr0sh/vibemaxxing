@@ -155,9 +155,9 @@ The flow of the game is:
   Each qualifying interaction resets the inactivity timer and penalty ramp,
   and restores 1 energy.
 
-- Also, Tiro (eventually) announces "WE MONOPOLIZED THE FRONTIERS" and the token prices goes
-  up by 1.1x for every 5s. So the user should eventually lose more money than
-  the reward solving the tasks.
+- Tiro gloats that the competition is gone and demands payment. Token refill
+  prices compound by 1.1× every five seconds. The widget bar shows the current
+  multiplier in bold dark red, so the rising cost stays visible outside Shop.
 
 - Some time later(like ≈1m?), Mapple announces another local LLM machine (Mapple
   Spark Ultra) that costs \$100k, with intelligence=3. Same delivery delay
@@ -171,8 +171,8 @@ The flow of the game is:
 - When energy goes to 0, the player defeats. The end message is like "the user got
   to depression".
 
-- When the user reaches \$4.242M, the user wins the game. End message like: "You are
-  now a multimillionare. No need to work"
+- Reaching \$4.242M in liquid net worth records a victory. “Keep playing” resumes
+  the same run beyond that target without resetting progress or repeating the win.
 
 ## Implementation and balance notes
 
@@ -192,12 +192,17 @@ The flow of the game is:
   model/token multipliers, purchase prices, and \$5/s wages are unchanged.
   Base wages alone fund the first \$200 split in 40 seconds.
 - The $4.242M victory threshold includes cash, trading USD, and BTC at its current
-  market price, without double-counting transfers. Both endings freeze gameplay.
-- Shorts shuffles four remotely hosted GIPHY MP4 meme loops, recycles five cards
-  for bounded infinite scrolling, and loads only the foreground clip. Each
-  genuine clip transition increments a running viewing count and restores
-  energy once. Each clip links to its source; playback depends on the remote
-  host. Playback, focus changes, and layout changes do not restore energy.
+  market price, without double-counting transfers. Winning pauses only until
+  acknowledgment; the achievement remains recorded during continued play.
+  Ordinary deadline and energy-loss rules still apply. Loss ends the run.
+- Shorts shuffles four remotely hosted GIPHY MP4 meme loops and keeps three
+  clip-keyed cards for bounded infinite scrolling. Both neighboring videos
+  preload before navigation; moving a clip to the center preserves its media
+  element. Only the current foreground clip plays. Each settled user transition
+  increments the viewing count and restores energy once; playback, focus,
+  resizing, and internal recentering do not. Clips retain their source links.
+  Media failures show an explicit error and source link rather than an unloaded
+  placeholder; playback still depends on GIPHY availability.
 - Default-open and already-focused apps do not bounce in the dock. Unseen
   background updates and newly available unopened apps can still attract attention.
 - Every window resizes from all four edges and corners with directional cursors.

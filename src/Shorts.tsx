@@ -12,7 +12,7 @@ type ShortsProps = {
 }
 
 // Three cards are enough to show the current clip and preload both directions.
-// Keeping the window odd-sized also means every rendered clip has a unique key.
+// With four catalog entries, each of these three cards has a unique clip key.
 const slotOffsets = [-1, 0, 1] as const
 const centerSlot = 1
 const lastSlot = slotOffsets.length - 1
@@ -99,7 +99,7 @@ function VideoEmbed({
       )}
       {status === 'error' && (
         <p className="shorts-media-status shorts-media-error" role="alert">
-          This clip could not load. <a href={video.sourceUrl} target="_blank" rel="noreferrer noopener">Open original source</a>
+          This clip could not play. <a href={video.sourceUrl} target="_blank" rel="noreferrer noopener">Open original source</a>
         </p>
       )}
       <p className="shorts-media-note">
@@ -164,11 +164,7 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
       feed.scrollTop = target
       programmaticScrollRef.current = false
     }
-    if (typeof window === 'undefined') {
-      release()
-    } else {
-      window.requestAnimationFrame(() => window.requestAnimationFrame(release))
-    }
+    window.requestAnimationFrame(() => window.requestAnimationFrame(release))
     return true
   }, [])
 
@@ -195,14 +191,20 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
   }, [playbackActive, recenterFeed])
 
   useEffect(() => {
+    let cancelled = false
     for (const [id, media] of mediaRefs.current) {
       if (playbackActive && id === currentVideo.id) {
-        void media.play().catch(() => undefined)
+        void media.play().catch((error: unknown) => {
+          if (!cancelled && !(error instanceof DOMException && error.name === 'AbortError')) {
+            setMediaStatus(id, 'error')
+          }
+        })
       } else {
         media.pause()
       }
     }
-  }, [currentVideo.id, playbackActive])
+    return () => { cancelled = true }
+  }, [currentVideo.id, playbackActive, setMediaStatus])
 
   useEffect(() => {
     return () => {
