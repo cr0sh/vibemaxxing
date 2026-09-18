@@ -65,9 +65,9 @@ function buildChart(history: readonly { elapsed: number; price: number }[]): Cha
 export function MarketContent({ state, dispatch }: MarketProps) {
   const market = state.market
   const [transferAmount, setTransferAmount] = useState('100')
+  const [transferMax, setTransferMax] = useState(false)
   const [btcAmount, setBtcAmount] = useState('1')
   const canUseMarket = state.stage === 'hired' && market !== null
-  const transferMax = transferAmount === 'MAX'
   const transferValue = parseAmount(transferAmount)
   const transferValueFor = (direction: 'deposit' | 'withdraw') => {
     if (!canUseMarket) return null
@@ -164,11 +164,14 @@ export function MarketContent({ state, dispatch }: MarketProps) {
                 id="market-transfer-amount"
                 type="text"
                 inputMode="decimal"
-                value={transferAmount}
-                onChange={(event) => setTransferAmount(event.currentTarget.value)}
+                value={transferMax ? 'MAX' : transferAmount}
+                onChange={(event) => {
+                  setTransferAmount(event.currentTarget.value)
+                  setTransferMax(false)
+                }}
                 aria-describedby="market-transfer-help"
               />
-              <button className="market-max-button" type="button" onClick={() => setTransferAmount('MAX')} disabled={!canUseMarket}>MAX</button>
+              <button className="market-max-button" type="button" aria-pressed={transferMax} onClick={() => setTransferMax((enabled) => !enabled)} disabled={!canUseMarket}>MAX</button>
             </div>
             <span id="market-transfer-help" className="market-form-help">Cash {formatUsd(state.money)} · wallet {formatUsd(market?.usd)}</span>
             <div className="market-actions">
