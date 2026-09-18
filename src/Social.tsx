@@ -38,8 +38,8 @@ function SocialHeartBurst({ burst }: { burst: SocialHeartBurstState }) {
       <span className="social-heart-burst-sparkle social-heart-burst-sparkle-one">✦</span>
       <span className="social-heart-burst-sparkle social-heart-burst-sparkle-two">✦</span>
       <span className="social-heart-burst-sparkle social-heart-burst-sparkle-three">✧</span>
-      <span className="social-heart-burst-sparkle social-heart-burst-sparkle-four">·</span>
-      <span className="social-heart-burst-sparkle social-heart-burst-sparkle-five">·</span>
+      <span className="social-heart-burst-sparkle social-heart-burst-sparkle-four">♥</span>
+      <span className="social-heart-burst-sparkle social-heart-burst-sparkle-five">♥</span>
     </span>,
     document.body,
   )
@@ -171,7 +171,7 @@ function PostBody({
         ) : (
           <p className="social-action-note">{post.likes.toLocaleString()} {post.likes === 1 ? 'like' : 'likes'} · This giveaway has ended.</p>
         )}
-        {likeBurst && <SocialHeartBurst burst={likeBurst} />}
+        {likeBurst && <SocialHeartBurst key={likeBurst.id} burst={likeBurst} />}
       </>
     )
   }

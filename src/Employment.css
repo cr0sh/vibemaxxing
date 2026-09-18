@@ -965,9 +965,9 @@
   min-height: 2.35rem;
   margin-top: 0.35rem;
   padding: 0.52rem 0.76rem;
-  border: 1px solid rgba(174, 255, 216, 0.84);
+  border: 1px solid #14563f;
   border-radius: 0.5rem;
-  background: rgba(38, 145, 111, 0.74);
+  background: #176b50;
   color: #f4fff9;
   cursor: pointer;
   font-size: 0.75rem;
@@ -978,8 +978,8 @@
 
 .employment-social-open-button:not(:disabled):hover,
 .employment-social-open-button:not(:disabled):focus-visible {
-  border-color: #d1ffe8;
-  background: rgba(48, 170, 130, 0.9);
+  border-color: #103f30;
+  background: #12533e;
   box-shadow: 0 0 0 2px rgba(174, 255, 216, 0.22);
   transform: translateY(-1px);
 }

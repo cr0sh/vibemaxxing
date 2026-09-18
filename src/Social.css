@@ -436,7 +436,7 @@
 .social-heart-burst-sparkle-five {
   --spark-x: 0.05rem;
   --spark-y: -1.65rem;
-  color: #ffe9a7;
+  color: #e970af;
   font-size: 0.94rem;
   animation-delay: 8ms;
 }
@@ -468,6 +468,10 @@
   22% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1.15) rotate(10deg);
+  }
+  65% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--spark-x)), calc(-50% + var(--spark-y))) scale(1) rotate(25deg);
   }
   100% {
     opacity: 0;

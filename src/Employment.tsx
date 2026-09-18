@@ -460,7 +460,6 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
     : state.tasks
       .filter((task) => task.jobId === activeJobId && isPendingActionTask(task))
       .map((task) => ({ task, messageId: pendingActionMessageId(visibleMessages, task) }))
-  const pendingActionKey = pendingActionItems.map(({ task, messageId }) => `${task.id}:${task.status}:${messageId ?? ''}`).join('|')
   const unseenMessageCount = state.messages.reduce((count, message) => (
     message.jobId === activeJobId && !seenMessageIdsByJob[activeJobId].has(message.id) ? count + 1 : count
   ), 0)
@@ -482,17 +481,11 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
   const watercoolerUnread = state.watercoolerUnlocked && !state.watercoolerRead
   const artifactDropVisible = state.stage === 'hired' && isSourceActive('artifact')
 
-  useEffect(() => {
-    setPendingActionIndex((current) => pendingActionItems.length === 0 ? 0 : Math.min(current, pendingActionItems.length - 1))
-  }, [pendingActionKey])
-  useEffect(() => {
-    if (highlightedTaskId !== null && !pendingActionItems.some(({ task }) => task.id === highlightedTaskId)) {
-      setHighlightedTaskId(null)
-    }
-  }, [highlightedTaskId, pendingActionKey])
-  const currentPendingAction = pendingActionItems.length > 0
-    ? pendingActionItems[Math.min(pendingActionIndex, pendingActionItems.length - 1)]
-    : undefined
+  const currentPendingIndex = Math.min(pendingActionIndex, Math.max(0, pendingActionItems.length - 1))
+  const currentPendingAction = pendingActionItems[currentPendingIndex]
+  const activeHighlightedTaskId = pendingActionItems.some(({ task }) => task.id === highlightedTaskId)
+    ? highlightedTaskId
+    : null
 
   useDragDropTarget(messengerRef, {
     id: 'messenger-artifact',
@@ -525,32 +518,24 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
     }
   }
   const locatePendingAction = () => {
-    const item = pendingActionItems[pendingActionIndex]
+    const item = currentPendingAction
     if (item === undefined) return
     const nextIndex = pendingActionItems.length > 1
-      ? (pendingActionIndex + 1) % pendingActionItems.length
+      ? (currentPendingIndex + 1) % pendingActionItems.length
       : 0
     setPendingActionIndex(nextIndex)
     setChannel('general')
     setHighlightedTaskId(item.task.id)
     if (highlightTimer.current !== null) window.clearTimeout(highlightTimer.current)
 
-    const findTarget = (attempt = 0) => {
-      const candidates = chatPaneRef.current?.querySelectorAll<HTMLElement>('[data-employment-message-id], [data-employment-task-id]')
-      const target = candidates === undefined
-        ? undefined
-        : Array.from(candidates).find((candidate) => (
-          candidate.dataset.employmentMessageId === item.messageId ||
-          candidate.dataset.employmentTaskId === String(item.task.id)
-        ))
-      if (target !== undefined) {
-        target.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
-        highlightTimer.current = window.setTimeout(() => setHighlightedTaskId(null), 2200)
-        return
-      }
-      if (attempt < 4) window.requestAnimationFrame(() => findTarget(attempt + 1))
+    const messageTarget = item.messageId === null
+      ? null
+      : chatPaneRef.current?.querySelector<HTMLElement>(`[data-employment-message-id="${CSS.escape(item.messageId)}"]`)
+    const target = messageTarget ?? chatPaneRef.current?.querySelector<HTMLElement>(`[data-employment-task-id="${item.task.id}"]`)
+    if (target) {
+      target.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
+      highlightTimer.current = window.setTimeout(() => setHighlightedTaskId(null), 2200)
     }
-    window.requestAnimationFrame(() => findTarget())
   }
 
 
@@ -576,7 +561,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
   const renderGeneralMessage = (message: EmploymentMessage) => {
     const owner = employerName(state, message.jobId)
     const boss = employerBoss(message.jobId)
-    const targetClass = pendingTargetClass(highlightedTaskId, message)
+    const targetClass = pendingTargetClass(activeHighlightedTaskId, message)
     if (message.type === 'welcome') {
       const welcomed = activeJob?.welcomeReacted ?? false
       return (
@@ -606,6 +591,7 @@ export function MessengerContent({ state, dispatch, onOpenSocial }: MessengerPro
     }
 
     if (message.type === 'assignment') {
+      const currentTask = taskForMessage(state, message.task)
       return (
         <div {...messageWrapperProps(message)} className={`message-row employment-message-entry${targetClass}`} key={message.id}>
           <div className="avatar boss-avatar" aria-hidden="true">B</div>
