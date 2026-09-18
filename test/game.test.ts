@@ -1045,7 +1045,7 @@ describe('extended engine contracts', () => {
     expect(shorts.shortsUnlocked).toBe(true)
   })
   test('Mercury purchase unlocks Shorts once while failed and repeated buys stay inert', () => {
-    const spark = gameReducer(hire(), { type: 'dev-jump', stage: 'spark' })
+    const spark = gameReducer(gameReducer(hire(), { type: 'dev-jump', stage: 'spark' }), { type: 'buy-model', model: 'advanced' })
     const unavailable = { ...spark, money: MERCURY_PRICE - 1 }
     expect(gameReducer(unavailable, { type: 'buy-mercury' })).toBe(unavailable)
     expect(unavailable.shortsUnlocked).toBe(false)
@@ -1441,6 +1441,19 @@ describe('extended engine contracts', () => {
     expect(state.inactivityDecay).toBe(2)
   })
 
+  test('crossing a pacing anchor does not move the next energy penalty earlier', () => {
+    for (const [elapsed, inactivityElapsed] of [[599, 9.7], [1_799, 4.7]] as const) {
+      let state: GameState = {
+        ...hire(), elapsed, tickRemainder: 0.8, inactivityElapsed,
+        tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER,
+      }
+      state = gameReducer(state, { type: 'tick', seconds: 0.15 })
+      expect(state.energy).toBe(100)
+      state = gameReducer(state, { type: 'tick', seconds: 0.2 })
+      expect(state.energy).toBe(99)
+    }
+  })
+
   test('bulk idle ticks match one-second ticks across a shrinking interval boundary', () => {
     const start: GameState = {
       ...hire(),
@@ -1480,6 +1493,9 @@ describe('extended engine contracts', () => {
   test('token autopurchase does not count as human interaction', () => {
     let state: GameState = {
       ...hire(),
+      elapsed: 19,
+      tickRemainder: 0.5,
+      inactivityElapsed: 19.5,
       money: 100,
       tokens: 0,
       tasks: [],
@@ -1489,8 +1505,8 @@ describe('extended engine contracts', () => {
     state = gameReducer(state, { type: 'set-token-packs', packs: 1 })
     state = gameReducer(state, { type: 'set-token-auto-buy', enabled: true })
     expect(state.tokens).toBe(100_000)
-    state = gameReducer(state, { type: 'tick', seconds: 3 })
-    expect(state.energy).toBe(100)
+    state = gameReducer(state, { type: 'tick', seconds: 0.5 })
+    expect(state.energy).toBe(99)
   })
 
   test('Spark Ultra delivers on schedule and completes advanced local work without tokens', () => {

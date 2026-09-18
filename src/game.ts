@@ -388,16 +388,17 @@ export function energyDecayInterval(state: Pick<GameState, 'elapsed'>): number {
 }
 
 function timeUntilEnergyDecay(elapsed: number, inactivityElapsed: number): number {
-  let cursor = Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0
+  const start = Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0
+  let cursor = start
   let timer = Number.isFinite(inactivityElapsed) ? Math.max(0, inactivityElapsed) : 0
   while (true) {
     const interval = energyDecayInterval({ elapsed: cursor })
-    if (timer >= interval - ENERGY_DECAY_EPSILON) return 0
+    if (timer >= interval - ENERGY_DECAY_EPSILON) return cursor - start
     const slope = cursor < 600 ? -1 / 60 : cursor < 1_800 ? -1 / 240 : 0
     const nextBoundary = cursor < 600 ? 600 : cursor < 1_800 ? 1_800 : Number.POSITIVE_INFINITY
     const untilBoundary = nextBoundary - cursor
     const candidate = (interval - timer) / (1 - slope)
-    if (candidate <= untilBoundary + ENERGY_DECAY_EPSILON) return Math.max(0, candidate)
+    if (candidate <= untilBoundary + ENERGY_DECAY_EPSILON) return cursor - start + Math.max(0, candidate)
     timer += untilBoundary
     cursor = nextBoundary
   }
@@ -1153,6 +1154,16 @@ function processMercury(state: GameState): GameState {
     }
   }
   return current
+}
+function autoBuyTokens(state: GameState): GameState {
+  return state.stage === 'hired' && state.tokenAutoBuy && state.tokens < TOKEN_AUTO_BUY_THRESHOLD
+    ? purchaseTokens(state, state.tokenPacks)
+    : state
+}
+
+function deadlineFailure(state: GameState, task: WorkTask): string {
+  const company = task.jobId === 'secondary' ? state.secondJob?.company : state.company
+  return `You missed “${task.title}” at ${company ?? 'your company'}.`
 }
 function unlockShorts(state: GameState): GameState {
   if (state.stage !== 'hired' || !state.mercuryOwned || state.shortsUnlocked) return state
