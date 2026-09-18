@@ -245,17 +245,19 @@ export const WIN_NET_WORTH = 4_242_000
 const TOKEN_TASK_COST = 100_000
 export const TOKEN_PURCHASE_AMOUNT = 100_000
 export const TOKEN_PURCHASE_COST = 100
-const TASK_REWARD_PER_DIFFICULTY = 5
+// Three-times longer work windows preserve the existing model and fast-mode ratios.
+const TASK_PACING_MULTIPLIER = 3
+const TASK_REWARD_PER_DIFFICULTY = 15
 export const BASE_SALARY = 5
-// A shorter cycle preserves the 50-delivery promotion while bringing the first loop near five minutes.
-const BASELINE_TASK_CYCLE_SECONDS = 6
+// Keep gross-income projection aligned with the slower assignment cadence.
+const BASELINE_TASK_CYCLE_SECONDS = 18
 const OPENING_GRACE_SECONDS = 180
-const OPENING_ASSIGNMENT_BONUS_SECONDS = 4
+const OPENING_ASSIGNMENT_BONUS_SECONDS = 12
 const OPENING_DEADLINE_BONUS = 0.5
 const INITIAL_WAGE_ONLY_SECONDS = 90
 const AVERAGE_TASK_DIFFICULTY = 9
 const BOSS_BUDGET_ANCHOR = 620
-const MIN_ASSIGNMENT_INTERVAL = 3
+const MIN_ASSIGNMENT_INTERVAL = 9
 const MIN_EXPECTATION = 0.05
 const MAX_EXPECTATION = 1
 const UINT_RANGE = 4_294_967_296
@@ -275,10 +277,21 @@ export const SPARK_PRICE = 15_000
 export const ADVANCED_MODEL_PRICE = 5_000
 export const MERCURY_PRICE = 8_000
 export const MERCURY_FORWARD_COST = 300_000
-const MARKET_TASK_GATE = 55
-const MARKET_ARCHITECTURE_GATE = 8
-const SECOND_JOB_TASK_GATE = 100
-const FRONTIER_TASK_GATE = 290
+// Rounded one-third checkpoints keep the progression readable without artificial waits.
+const INCENTIVE_TASK_GATE = 2
+const LEVEL_4_TASK_GATE = 17
+const FAST_MODE_ARCHITECTURE_GATE = 2
+const MARKET_TASK_GATE = 18
+const MARKET_ARCHITECTURE_GATE = 3
+const SECOND_JOB_TASK_GATE = 33
+const LEVEL_5_TASK_GATE = 27
+const FRONTIER_TASK_GATE = 97
+const APPROVAL_DELAY_MIN_SECONDS = 3
+const APPROVAL_DELAY_MAX_SECONDS = 6
+const DELIVERY_ASSIGNMENT_ACCELERATION_SECONDS = 15
+const REWARD_DECAY_INTERVAL_SECONDS = 30
+// Slower task issuance needs a proportionally longer refill window to preserve scarcity.
+export const TOKEN_REFILL_INTERVAL_SECONDS = 360
 const INACTIVITY_MAX_DECAY = 16
 const ENERGY_DECAY_EPSILON = 1e-9
 
@@ -305,7 +318,7 @@ export function taskReward(task: Pick<WorkTask, 'baseReward' | 'assignedAt'>, el
   const initial = Number.isFinite(task.baseReward) ? Math.max(0, task.baseReward) : 0
   const safeElapsed = Number.isFinite(elapsed) ? elapsed : task.assignedAt
   const elapsedSinceAssignment = Math.max(0, safeElapsed - task.assignedAt)
-  const retained = Math.max(0.05, 1 - 0.1 * Math.floor(elapsedSinceAssignment / 10))
+  const retained = Math.max(0.05, 1 - 0.1 * Math.floor(elapsedSinceAssignment / REWARD_DECAY_INTERVAL_SECONDS))
   return Math.round(initial * retained * 100) / 100
 }
 
@@ -463,7 +476,7 @@ function openingGraceAt(elapsed: number): number {
   return 1 - clamp(safeElapsed / OPENING_GRACE_SECONDS, 0, 1)
 }
 function drawApprovalCheckpoint(rng: number): readonly [number, number, string] {
-  const [delayRng, approvalDelay] = drawInteger(rng, 1, 2)
+  const [delayRng, approvalDelay] = drawInteger(rng, APPROVAL_DELAY_MIN_SECONDS, APPROVAL_DELAY_MAX_SECONDS)
   const [nextRng, promptIndex] = drawInteger(delayRng, 0, APPROVAL_PROMPTS.length - 1)
   return [nextRng, approvalDelay, APPROVAL_PROMPTS[promptIndex] ?? APPROVAL_PROMPTS[0] ?? '']
 }
@@ -480,18 +493,20 @@ function bossExpectationAt(elapsed: number): number {
 }
 function assignmentIntervalAt(elapsed: number, expanded = false, activeTasks = 0): number {
   const ratio = projectedGrossAt(elapsed) / BOSS_BUDGET_ANCHOR
-  const target = Math.max(expanded ? 5 : MIN_ASSIGNMENT_INTERVAL, Math.ceil(BASELINE_TASK_CYCLE_SECONDS / (1 + ratio)))
-  const overload = Math.max(0, activeTasks - (expanded ? 2 : 1)) * 2
-  return Math.max(expanded ? 5 : MIN_ASSIGNMENT_INTERVAL, Math.ceil(target + OPENING_ASSIGNMENT_BONUS_SECONDS * openingGraceAt(elapsed) + overload))
+  const minimum = expanded ? MIN_ASSIGNMENT_INTERVAL + 6 : MIN_ASSIGNMENT_INTERVAL
+  const target = Math.max(minimum, Math.ceil(BASELINE_TASK_CYCLE_SECONDS / (1 + ratio)))
+  const overload = Math.max(0, activeTasks - (expanded ? 2 : 1)) * 6
+  return Math.max(minimum, Math.ceil(target + OPENING_ASSIGNMENT_BONUS_SECONDS * openingGraceAt(elapsed) + overload))
 }
 function deadlineFor(difficulty: number, expectation: number, elapsed: number, complexity: number): number {
   const safeExpectation = Math.max(MIN_EXPECTATION, Number.isFinite(expectation) ? expectation : 0.2)
-  const executionBudget = difficulty / AGENT_MODELS.reasoning.speed * Math.max(2, complexity) + 8
+  const executionBudget = (difficulty / AGENT_MODELS.reasoning.speed * Math.max(2, complexity) + 8) * TASK_PACING_MULTIPLIER
   const graceMultiplier = 1 + OPENING_DEADLINE_BONUS * openingGraceAt(elapsed)
-  return elapsed + Math.max((1.5 * difficulty) / safeExpectation, executionBudget) * graceMultiplier
+  return elapsed + Math.max((1.5 * difficulty * TASK_PACING_MULTIPLIER) / safeExpectation, executionBudget) * graceMultiplier
 }
 function roundedProgress(value: number): number {
-  return Math.round(value * 1_000_000) / 1_000_000
+  // Keep thirds and other paced speeds from accumulating a visible one-tick deficit.
+  return Math.round(value * 1_000_000_000) / 1_000_000_000
 }
 
 function jobFromState(state: GameState, jobId: JobId): EmploymentJob | null {
@@ -536,7 +551,7 @@ function createDescriptor(
   if (job.level >= 4) {
     const [architectureRng, architectureRoll] = nextRandom(rng)
     rng = architectureRng
-    const architectureChance = Math.min(0.8, 0.35 + 0.05 * job.completedArchitectureTasks)
+    const architectureChance = Math.min(0.8, 0.35 + 0.125 * job.completedArchitectureTasks)
     kind = architectureRoll < architectureChance ? 'architecture' : 'standard'
   }
   const blueprints = kind === 'architecture' ? architectureBlueprints : taskBlueprints
@@ -790,7 +805,7 @@ function issueAvailableAssignments(state: GameState): GameState {
     deadlineAt: descriptor.kind === 'architecture' ? current.elapsed + (normalDeadline - current.elapsed) * 5 : normalDeadline,
     startedAt: null,
     assignedAt: current.elapsed,
-    baseReward: job.completedTasks >= 5
+    baseReward: job.completedTasks >= INCENTIVE_TASK_GATE
       ? TASK_REWARD_PER_DIFFICULTY * descriptor.difficulty * (job.level === 5 ? 600 : job.level === 4 ? 100 : 1)
       : 0,
     model: null,
@@ -978,14 +993,13 @@ export function gameNetWorth(state: Pick<GameState, 'money' | 'market'>): number
     ? market.btc * market.price
     : 0
   const tradingUsd = market !== null && Number.isFinite(market.usd) ? market.usd : 0
-  const cash = Number.isFinite(state.money) ? state.money : 0
   return cash + tradingUsd + markedBtc
 }
 
 function advanceTask(task: WorkTask, elapsed: number, terminals: readonly TerminalState[], rng: number): readonly [WorkTask, number] {
   if (task.status !== 'working') return [task, rng]
   const model = task.model ?? 'basic'
-  const speed = AGENT_MODELS[model].speed * (task.fastMode ? 2 : 1)
+  const speed = AGENT_MODELS[model].speed * (task.fastMode ? 2 : 1) / TASK_PACING_MULTIPLIER
   const progress = Math.min(task.difficulty, roundedProgress(task.progress + speed))
   if (progress >= task.difficulty - 0.000001) {
     const completed = { ...task, progress: task.difficulty, nextApprovalAt: 0, approvalPrompt: null }
@@ -1126,8 +1140,8 @@ function completeDelivery(state: GameState, task: WorkTask, forwardingCost: numb
   const nextCompleted = job.completedTasks + 1
   const nextArchitecture = job.completedArchitectureTasks + (task.kind === 'architecture' ? 1 : 0)
   let nextLevel = job.level
-  if (nextCompleted >= 50 && nextLevel < 4) nextLevel = 4
-  if (state.secondJobUnlocked && nextCompleted >= 80 && nextLevel < 5) nextLevel = 5
+  if (nextCompleted >= LEVEL_4_TASK_GATE && nextLevel < 4) nextLevel = 4
+  if (state.secondJobUnlocked && nextCompleted >= LEVEL_5_TASK_GATE && nextLevel < 5) nextLevel = 5
   const remainingTasks = state.tasks.filter((candidate) => candidate.id !== task.id)
   const updated = withJob({
     ...state,
@@ -1140,7 +1154,9 @@ function completeDelivery(state: GameState, task: WorkTask, forwardingCost: numb
     completedArchitectureTasks: nextArchitecture,
     level: nextLevel,
     expectation: bossExpectationAt(state.elapsed),
-    nextTaskAt: remainingTasks.length === 0 ? Math.min(current.nextTaskAt, state.elapsed + 5) : current.nextTaskAt,
+    nextTaskAt: remainingTasks.length === 0
+      ? Math.min(current.nextTaskAt, state.elapsed + DELIVERY_ASSIGNMENT_ACCELERATION_SECONDS)
+      : current.nextTaskAt,
   }))
   let delivered = appendMessage(updated, {
     id: `delivery-${task.id}`,
@@ -1151,7 +1167,7 @@ function completeDelivery(state: GameState, task: WorkTask, forwardingCost: numb
     reward,
     completedTasks: nextCompleted,
   })
-  if (nextCompleted === 5) delivered = appendMessage(delivered, { id: `${task.jobId}-incentives`, type: 'incentives', jobId: task.jobId, elapsed: state.elapsed })
+  if (nextCompleted === INCENTIVE_TASK_GATE) delivered = appendMessage(delivered, { id: `${task.jobId}-incentives`, type: 'incentives', jobId: task.jobId, elapsed: state.elapsed })
   if (nextLevel !== job.level && nextLevel !== 3) {
     delivered = appendMessage(delivered, { id: `${task.jobId}-promotion-${nextLevel}`, type: 'promotion', jobId: task.jobId, elapsed: state.elapsed, level: nextLevel })
   }
@@ -1159,7 +1175,7 @@ function completeDelivery(state: GameState, task: WorkTask, forwardingCost: numb
     delivered = {
       ...delivered,
       reasoningUnlocked: delivered.reasoningUnlocked || nextArchitecture >= 1,
-      fastModeUnlocked: delivered.fastModeUnlocked || nextArchitecture >= 5,
+      fastModeUnlocked: delivered.fastModeUnlocked || nextArchitecture >= FAST_MODE_ARCHITECTURE_GATE,
     }
   }
   return discoverShopProducts(maybeUnlockProgression(delivered))
@@ -1319,7 +1335,7 @@ function tickHired(state: GameState, seconds: number): GameState {
       current = {
         ...current,
         money: current.money + BASE_SALARY * (current.secondJob === null ? 1 : 2),
-        tokens: current.elapsed % 100 === 0 ? MAX_TOKENS : current.tokens,
+        tokens: current.elapsed % TOKEN_REFILL_INTERVAL_SECONDS === 0 ? MAX_TOKENS : current.tokens,
         expectation: bossExpectationAt(current.elapsed),
       }
       if (current.secondJob !== null) current = withJob(current, 'secondary', (job) => ({ ...job, expectation: bossExpectationAt(current.elapsed) }))
@@ -1550,8 +1566,8 @@ function reduceGame(state: GameState, action: GameAction): GameState {
           messages: preview.messages.filter((message) => message.type === 'welcome'),
           nextTaskId: 1,
           nextTaskAt: 0,
-          completedTasks: 60,
-          completedArchitectureTasks: 8,
+          completedTasks: MARKET_TASK_GATE + 2,
+          completedArchitectureTasks: MARKET_ARCHITECTURE_GATE,
           level: 4,
           reasoningUnlocked: true,
           fastModeUnlocked: true,
@@ -1598,7 +1614,7 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         }
         preview = {
           ...preview,
-          completedTasks: 100,
+          completedTasks: SECOND_JOB_TASK_GATE,
           level: 4,
           secondJob: secondary,
           secondJobUnlocked: true,
@@ -1613,18 +1629,18 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         if (action.stage === 'second-job') return issueAvailableAssignments(preview)
         preview = {
           ...preview,
-          completedTasks: 200,
+          completedTasks: 67,
           level: 5,
           tasks: [],
           taskQueue: [],
           nextTaskId: 1,
           nextTaskAt: 30,
-          completedArchitectureTasks: 18,
+          completedArchitectureTasks: 6,
           secondJob: {
             ...secondary,
             level: 5,
-            completedTasks: 90,
-            completedArchitectureTasks: 10,
+            completedTasks: 30,
+            completedArchitectureTasks: 3,
           },
           frontierModelUnlocked: true,
           frontierUnlockedAt: 30,
