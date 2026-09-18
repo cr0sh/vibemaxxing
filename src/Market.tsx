@@ -41,7 +41,7 @@ function formatUsd(value: number | undefined): string {
 
 function formatSignedUsd(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return '$—'
-  if (value === 0) return '$0.00'
+  if (Math.abs(value) < 0.005) return '$0.00'
   return `${value > 0 ? '+' : '-'}$${usdFormatter.format(Math.abs(value))}`
 }
 
@@ -56,7 +56,7 @@ const compactUsdFormatter = new Intl.NumberFormat('en-US', {
 
 
 function pnlTone(value: number | undefined): 'positive' | 'negative' | 'neutral' {
-  if (value === undefined || !Number.isFinite(value) || value === 0) return 'neutral'
+  if (value === undefined || !Number.isFinite(value) || Math.abs(value) < 0.005) return 'neutral'
   return value > 0 ? 'positive' : 'negative'
 }
 
@@ -328,7 +328,7 @@ export function MarketContent({ state, dispatch }: MarketProps) {
                 onChange={(event) => setBtcAmount(event.currentTarget.value)}
                 aria-describedby="market-btc-help market-btc-notional"
               />
-              <span id="market-btc-notional" className="market-quantity-hint" aria-live="polite">
+              <span id="market-btc-notional" className="market-quantity-hint">
                 {btcNotional !== null ? `(= ${compactUsdFormatter.format(btcNotional)} USD)` : ''}
               </span>
             </div>

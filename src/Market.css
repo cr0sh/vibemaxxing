@@ -78,8 +78,8 @@
 .market-pnl small {
   max-width: min(24rem, 42vw);
   color: #8aa5aa;
-  font-size: 0.58rem;
-  line-height: 1.2;
+  font-size: 0.66rem;
+  line-height: 1.35;
   letter-spacing: normal;
   text-align: right;
   text-transform: none;
