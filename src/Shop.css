@@ -112,6 +112,13 @@
   line-height: 1.35;
 }
 
+.shop-token-rate {
+  color: #f0cfff;
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+}
+
+
 .shop-token-options {
   display: flex;
   align-items: end;
@@ -267,6 +274,11 @@
 .shop-spark-product {
   border-color: #78a7e8;
   background: linear-gradient(105deg, #273d76, #30205a);
+}
+
+.shop-spark-ultra-product {
+  border-color: #c2a2e8;
+  background: linear-gradient(105deg, #493372, #34205d);
 }
 
 .shop-model-product {

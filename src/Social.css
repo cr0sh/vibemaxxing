@@ -187,6 +187,10 @@
 .social-post-market,
 .social-post-spark,
 .social-post-spark-delivered,
+.social-post-spark-ultra,
+.social-post-spark-ultra-delivered,
+.social-post-monopoly,
+.social-post-shorts,
 .social-post-advanced-model,
 .social-post-mercury,
 .social-post-second-job,
@@ -195,10 +199,27 @@
   background: linear-gradient(145deg, #f9fbff, #f1f6ff);
 }
 
+
 .social-post-spark,
 .social-post-spark-delivered {
   border-color: #9fbde9;
   background: linear-gradient(145deg, #f5f9ff, #eaf1ff);
+}
+
+.social-post-spark-ultra,
+.social-post-spark-ultra-delivered {
+  border-color: #b79be4;
+  background: linear-gradient(145deg, #fbf7ff, #f2eaff);
+}
+
+.social-post-monopoly {
+  border-color: #e8b6d0;
+  background: linear-gradient(145deg, #fff8fc, #fff0f7);
+}
+
+.social-post-shorts {
+  border-color: #b6decf;
+  background: linear-gradient(145deg, #f5fffb, #eafaf4);
 }
 
 .social-post-mercury {

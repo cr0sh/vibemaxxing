@@ -6,16 +6,17 @@ import {
   MAX_TOKENS,
   MERCURY_PRICE,
   SPARK_PRICE,
+  SPARK_ULTRA_PRICE,
   TOKEN_PACK_COUNTS,
-  TOKEN_PURCHASE_AMOUNT,
-  TOKEN_PURCHASE_COST,
   tokenPurchaseAmount,
   tokenPurchaseCost,
+  tokenPriceMultiplier,
   type GameAction,
   type GameState,
   type TerminalId,
   type TerminalUpgrade,
   type TokenPackCount,
+  isLocalTerminal,
   upgradePrice,
 } from './game'
 import { useDragDropSource } from './DragDropHintsContext'
@@ -41,6 +42,7 @@ const upgradeProducts: readonly UpgradeProduct[] = [
 
 const terminalLabel = (terminalId: TerminalId): string => {
   if (terminalId === 'terminal-2') return 'Terminal 2'
+  if (terminalId === 'spark-ultra') return 'Mapple Spark Ultra'
   if (terminalId === 'spark') return 'Mapple Spark'
   return 'Terminal'
 }
@@ -67,17 +69,18 @@ function UpgradeProductCard({
 }) {
   const { upgrade, icon, title, detail } = product
   const target = upgrade === 'terminal' ? 'terminal' : targetTerminal
-  const price = upgradePrice(state, upgrade, target)
-  const canInstall = price !== null && state.money >= price
+  const localTarget = isLocalTerminal(target)
+  const price = localTarget && upgrade === 'split' ? null : upgradePrice(state, upgrade, target)
+  const canInstall = state.stage === 'hired' && price !== null && state.money >= price
   const dragSource = useDragDropSource({ kind: 'upgrade', id: upgrade }, canInstall)
   const installUpgrade = () => {
-    if (price === null || state.money < price) return
-    dispatch({ type: 'buy-upgrade', upgrade, terminalId: target })
+    if (!canInstall || price === null) return
+    dispatch({ type: 'buy-upgrade', upgrade, terminalId: target, source: 'click' })
   }
   let buttonLabel = moneyLabel(price ?? 0)
   if (state.stage !== 'hired') buttonLabel = 'Unavailable'
   else if (price === null) {
-    if (target === 'spark' && upgrade === 'split') buttonLabel = 'Spark panes fixed'
+    if (localTarget && upgrade === 'split') buttonLabel = 'Fixed panes'
     else if (upgrade === 'split') buttonLabel = 'Maximum panes'
     else if (upgrade === 'yolo') buttonLabel = 'Installed'
     else buttonLabel = 'Two terminals max'
@@ -123,7 +126,7 @@ function SparkProduct({ state, dispatch }: ShopProps) {
   const delivered = state.terminals.some((terminal) => terminal.id === 'spark')
   const availableAt = announcedAt === null ? null : announcedAt + 10
   const available = availableAt !== null && state.elapsed >= availableAt
-  const canBuy = state.stage === 'hired' && available && !purchased && state.money >= SPARK_PRICE
+  const canBuy = state.stage === 'hired' && state.market !== null && available && !purchased && state.money >= SPARK_PRICE
   const buySpark = () => {
     if (canBuy) dispatch({ type: 'buy-spark' })
   }
@@ -157,6 +160,52 @@ function SparkProduct({ state, dispatch }: ShopProps) {
         <p>{detail}</p>
       </div>
       <button className="shop-buy-button" type="button" onClick={buySpark} disabled={!canBuy}>
+        {buttonLabel}
+      </button>
+    </article>
+  )
+}
+
+function SparkUltraProduct({ state, dispatch }: ShopProps) {
+  const announcedAt = state.sparkUltraAnnouncedAt
+  const purchased = state.sparkUltraPurchasedAt !== null
+  const delivered = state.terminals.some((terminal) => terminal.id === 'spark-ultra')
+  const availableAt = announcedAt === null ? null : announcedAt + 10
+  const available = availableAt !== null && state.elapsed >= availableAt
+  const canBuy = state.stage === 'hired' && state.market !== null && available && !purchased && state.money >= SPARK_ULTRA_PRICE
+  const buySparkUltra = () => {
+    if (canBuy) dispatch({ type: 'buy-spark-ultra' })
+  }
+
+  let detail = 'Not announced yet.'
+  let buttonLabel = 'Unavailable'
+  if (announcedAt !== null && !available) {
+    detail = `Sale opens in ${durationLabel((availableAt ?? state.elapsed) - state.elapsed)} · ${moneyLabel(SPARK_ULTRA_PRICE)}.`
+    buttonLabel = `Opens ${durationLabel((availableAt ?? state.elapsed) - state.elapsed)}`
+  } else if (delivered) {
+    detail = `Delivered · 2 fixed ${AGENT_MODELS.advanced.label} panes · intelligence 3 · no cloud task tokens.`
+    buttonLabel = 'Owned'
+  } else if (purchased) {
+    const deliveryAt = state.sparkUltraDeliveryAt
+    detail = deliveryAt === null
+      ? 'Paid · delivery pending.'
+      : `Paid ${moneyLabel(SPARK_ULTRA_PRICE)} · delivery in ${durationLabel(deliveryAt - state.elapsed)}.`
+    buttonLabel = deliveryAt === null ? 'Delivering' : `ETA ${durationLabel(deliveryAt - state.elapsed)}`
+  } else if (state.stage !== 'hired') {
+    detail = `${moneyLabel(SPARK_ULTRA_PRICE)} · 2 fixed ${AGENT_MODELS.advanced.label} panes · intelligence 3 · no cloud task tokens.`
+  } else {
+    detail = `${moneyLabel(SPARK_ULTRA_PRICE)} · 2 fixed ${AGENT_MODELS.advanced.label} panes · intelligence 3 · no cloud task tokens.`
+    buttonLabel = state.money >= SPARK_ULTRA_PRICE ? `Buy · ${moneyLabel(SPARK_ULTRA_PRICE)}` : `Need ${moneyLabel(SPARK_ULTRA_PRICE)}`
+  }
+
+  return (
+    <article className={`shop-product shop-spark-ultra-product ${canBuy ? '' : 'shop-product-unavailable'}`} aria-label="Mapple Spark Ultra">
+      <span className="shop-product-icon" aria-hidden="true">▣</span>
+      <div className="shop-product-copy">
+        <h3>Mapple Spark Ultra</h3>
+        <p>{detail}</p>
+      </div>
+      <button className="shop-buy-button" type="button" onClick={buySparkUltra} disabled={!canBuy}>
         {buttonLabel}
       </button>
     </article>
@@ -254,11 +303,17 @@ export function ShopContent({ state, dispatch }: ShopProps) {
     state.stage === 'hired' &&
     state.fastModeUnlocked &&
     selectedTerminal !== undefined &&
-    selectedTerminal.id !== 'spark'
+    !isLocalTerminal(selectedTerminal.id)
   const refillAmount = tokenPurchaseAmount(state.tokens, state.tokenPacks)
-  const refillCost = tokenPurchaseCost(refillAmount)
+  const refillCost = tokenPurchaseCost(refillAmount, state)
   const refillPrice = moneyLabel(refillCost)
   const canBuyTokens = state.stage === 'hired' && state.money >= refillCost && refillAmount > 0
+  const tokenMultiplier = tokenPriceMultiplier(state)
+  const monopolyActive = state.monopolyAnnouncedAt !== null
+  const secondsSinceMonopoly = monopolyActive ? Math.max(0, state.elapsed - state.monopolyAnnouncedAt) : 0
+  const secondsToNextTokenIncrease = monopolyActive
+    ? Math.max(1, Math.ceil(5 - (secondsSinceMonopoly % 5)))
+    : null
 
   const buyTokens = () => {
     if (canBuyTokens) dispatch({ type: 'buy-tokens', packs: state.tokenPacks })
@@ -271,8 +326,8 @@ export function ShopContent({ state, dispatch }: ShopProps) {
 
   const fastModeLabel = state.stage !== 'hired'
     ? 'Unavailable'
-    : selectedTerminal?.id === 'spark'
-      ? 'Spark fixed'
+    : selectedTerminal !== undefined && isLocalTerminal(selectedTerminal.id)
+      ? 'Local fixed'
       : selectedTerminal?.fastMode ? 'On' : 'Off'
 
   return (
@@ -324,6 +379,7 @@ export function ShopContent({ state, dispatch }: ShopProps) {
           </article>
         )}
         {state.sparkAnnouncedAt !== null && <SparkProduct state={state} dispatch={dispatch} />}
+        {state.sparkUltraAnnouncedAt !== null && <SparkUltraProduct state={state} dispatch={dispatch} />}
         {state.advancedModelAnnouncedAt !== null && <AdvancedModelProduct state={state} dispatch={dispatch} />}
         <MercuryProduct state={state} dispatch={dispatch} />
         <article
@@ -341,7 +397,12 @@ export function ShopContent({ state, dispatch }: ShopProps) {
                   disabled={state.stage !== 'hired'}
                   onChange={(event) => dispatch({ type: 'set-token-packs', packs: Number(event.currentTarget.value) as TokenPackCount })}
                 >
-                  {TOKEN_PACK_COUNTS.map((packs) => <option key={packs} value={packs}>{packs === 100 ? 'Fill balance · 10M max' : `${(TOKEN_PURCHASE_AMOUNT * packs).toLocaleString()} tokens · $${TOKEN_PURCHASE_COST * packs}`}</option>)}
+                  {TOKEN_PACK_COUNTS.map((packs) => {
+                    const amount = tokenPurchaseAmount(state.tokens, packs)
+                    const cost = tokenPurchaseCost(amount, state)
+                    const quantity = amount >= MAX_TOKENS - state.tokens ? 'Fill balance · 10M max' : `${amount.toLocaleString()} tokens`
+                    return <option key={packs} value={packs}>{quantity} · {moneyLabel(cost)}</option>
+                  })}
                 </select>
               </label>
               <label className="shop-fast-mode-toggle shop-auto-buy-toggle">
@@ -358,6 +419,11 @@ export function ShopContent({ state, dispatch }: ShopProps) {
               </label>
             </div>
             <p>{refillAmount > 0 ? `${refillAmount.toLocaleString()} tokens received · partial packs prorated` : 'Inventory is at the 10M token limit.'}</p>
+            <p className="shop-token-rate">
+              {monopolyActive
+                ? `Monopoly rate ${tokenMultiplier.toFixed(2)}× · +10% every 5s · next increase in ${secondsToNextTokenIncrease}s.`
+                : 'Token rate 1.00× · prices rise 10% every 5s after the frontier monopoly.'}
+            </p>
           </div>
           <button className="shop-buy-button" type="button" onClick={buyTokens} disabled={!canBuyTokens}>
             {state.stage !== 'hired' ? 'Unavailable' : state.tokens >= MAX_TOKENS ? 'Balance full' : canBuyTokens ? refillPrice : `Need ${refillPrice}`}
