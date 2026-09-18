@@ -1001,10 +1001,9 @@ function TerminalLane({ state, dispatch, terminalId, slot, task, yolo, fastMode 
           }
           return
         }
-        const reason = terminalDropReason(state, source, terminalId, fastMode, task)
         event.preventDefault()
         event.stopPropagation()
-        event.dataTransfer.dropEffect = reason === null ? 'move' : 'none'
+        event.dataTransfer.dropEffect = 'move'
       }}
       onDrop={handleDrop}
     >
