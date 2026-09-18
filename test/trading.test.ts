@@ -17,6 +17,15 @@ describe('trading balances', () => {
     expect(withdrawn.market.btc).toBe(0)
   })
 
+  test('decimal quantity sales can empty the displayed BTC balance without dust', () => {
+    const funded = transferMarket(createMarket(17, 0), 100, 'deposit', 100).market
+    const bought = tradeMarket(funded, 'buy', 1)
+    const partlySold = tradeMarket(bought, 'sell', 0.9)
+    const sold = tradeMarket(partlySold, 'sell', 0.1)
+    expect(sold.btc).toBe(0)
+    expect(sold.usd).toBeCloseTo(100, 10)
+  })
+
   test('invalid trades and transfers cannot poison or overdraw either wallet', () => {
     const funded = transferMarket(createMarket(17, 0), 1_000, 'deposit', 250)
     const before = { ...funded.market }

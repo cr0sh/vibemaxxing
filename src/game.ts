@@ -181,7 +181,7 @@ export type GameAction =
   | { type: 'set-mercury'; enabled: boolean }
   | { type: 'submit-second-job'; roll: number; companyIndex: number }
   | { type: 'accept-second-job' }
-  | { type: 'market-transfer'; direction: 'deposit' | 'withdraw'; amount: number }
+  | { type: 'market-transfer'; direction: 'deposit' | 'withdraw'; amount: number | 'max' }
   | { type: 'market-trade'; side: 'buy' | 'sell'; amount: number }
 
 export const companies: readonly string[] = [
@@ -1221,7 +1221,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
     case 'market-transfer': {
       if (state.stage !== 'hired' || state.market === null) return state
-      const result = transferMarket(state.market, state.money, action.direction, action.amount)
+      const amount = action.amount === 'max'
+        ? action.direction === 'deposit' ? state.money : state.market.usd
+        : action.amount
+      const result = transferMarket(state.market, state.money, action.direction, amount)
       return result.market === state.market && result.money === state.money ? state : { ...state, market: result.market, money: result.money }
     }
     case 'market-trade': {
