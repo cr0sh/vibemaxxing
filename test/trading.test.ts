@@ -36,6 +36,44 @@ describe('trading balances', () => {
     expect(advanced.price).toBeGreaterThanOrEqual(1)
     expect(advanced.price).toBeLessThanOrEqual(10_000_000)
   })
+  test('records successful buy and sell executions at the current chart sample', () => {
+    const funded = transferMarket(createMarket(17, 0), 1_000, 'deposit', 250).market
+    const current = advanceMarket(funded, 0.5)
+    const bought = tradeMarket(current, 'buy', 0.125)
+    const sold = tradeMarket(bought, 'sell', 0.05)
+
+    expect(sold.trades).toEqual([
+      { id: 1, elapsed: 0.5, side: 'buy', price: current.price, quantity: 0.125 },
+      { id: 2, elapsed: 0.5, side: 'sell', price: current.price, quantity: 0.05 },
+    ])
+    expect(sold.nextTradeId).toBe(3)
+  })
+
+  test('records the clamped quantity for a wallet-boundary execution', () => {
+    const funded = transferMarket(createMarket(17, 0), 1, 'deposit', 1).market
+    const bought = tradeMarket(funded, 'buy', 0.010000000000000002)
+
+    expect(bought.btc).toBe(0.01)
+    expect(bought.usd).toBe(0)
+    expect(bought.trades.at(-1)).toEqual({ id: 1, elapsed: 0, side: 'buy', price: 100, quantity: 0.01 })
+  })
+
+  test('prunes only markers older than the retained history boundary during catch-up', () => {
+    const funded = transferMarket(createMarket(17, 0), 1_000, 'deposit', 250).market
+    const first = tradeMarket(funded, 'buy', 0.1)
+    const second = tradeMarket(first, 'buy', 0.2)
+    const atBoundary = tradeMarket(advanceMarket(second, 0.5), 'buy', 0.3)
+    const visible = atBoundary.trades.at(-1)
+    if (visible === undefined) throw new Error('Expected a visible trade marker')
+
+    const caughtUp = advanceMarket(atBoundary, 120)
+
+    expect(caughtUp.history[0]?.elapsed).toBe(0.5)
+    expect(caughtUp.trades).toEqual([visible])
+    expect(caughtUp.trades).not.toContain(first.trades[0])
+    expect(caughtUp.trades).not.toContain(second.trades[1])
+  })
+
 
   test('a fractional BTC round trip returns all cash without fees or rounding dust', () => {
     const deposited = transferMarket(createMarket(17, 0), 1_000, 'deposit', 250)

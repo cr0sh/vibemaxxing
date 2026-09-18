@@ -1,8 +1,18 @@
+export type TradeMarker = {
+  id: number
+  elapsed: number
+  side: 'buy' | 'sell'
+  price: number
+  quantity: number
+}
+
 export type MarketState = {
   usd: number
   btc: number
   price: number
   history: { elapsed: number; price: number }[]
+  trades: TradeMarker[]
+  nextTradeId: number
   rng: number
 }
 
@@ -47,6 +57,8 @@ export function createMarket(seed: number, elapsed: number): MarketState {
     btc: 0,
     price,
     history: [{ elapsed: at, price }],
+    trades: [],
+    nextTradeId: 1,
     rng,
   }
 }
@@ -80,13 +92,29 @@ export function advanceMarket(market: MarketState, elapsed: number): MarketState
   }
   if (history.length > HISTORY_LIMIT) history.splice(0, history.length - HISTORY_LIMIT)
 
-  return { ...market, price, history, rng }
+  let trades = market.trades
+  const retainedFrom = history[0]?.elapsed
+  if (retainedFrom !== undefined && trades.length > 0) {
+    let hasExpired = false
+    for (const trade of trades) {
+      if (trade.elapsed < retainedFrom) {
+        hasExpired = true
+        break
+      }
+    }
+    if (hasExpired) trades = trades.filter((trade) => trade.elapsed >= retainedFrom)
+  }
+
+  return { ...market, price, history, trades, rng }
 }
 
 function validMarket(market: MarketState): boolean {
   return Number.isFinite(market.usd) && market.usd >= 0 &&
     Number.isFinite(market.btc) && market.btc >= 0 &&
     Number.isFinite(market.price) && market.price >= MIN_PRICE && market.price <= MAX_PRICE &&
+    Array.isArray(market.history) &&
+    Array.isArray(market.trades) &&
+    Number.isInteger(market.nextTradeId) && market.nextTradeId >= 1 &&
     Number.isFinite(market.rng)
 }
 
@@ -109,10 +137,20 @@ export function executableBtcQuantity(market: MarketState, side: 'buy' | 'sell',
 export function tradeMarket(market: MarketState, side: 'buy' | 'sell', amount: number): MarketState {
   const quantity = executableBtcQuantity(market, side, amount)
   if (quantity === null) return market
+  const latest = market.history.at(-1)
+  if (latest === undefined || !Number.isFinite(latest.elapsed)) return market
   const value = quantity * market.price
+  const marker: TradeMarker = {
+    id: market.nextTradeId,
+    elapsed: latest.elapsed,
+    side,
+    price: market.price,
+    quantity,
+  }
+  const trades = [...market.trades, marker]
   return side === 'buy'
-    ? { ...market, usd: Math.max(0, market.usd - value), btc: market.btc + quantity }
-    : { ...market, usd: market.usd + value, btc: market.btc - quantity }
+    ? { ...market, usd: Math.max(0, market.usd - value), btc: market.btc + quantity, trades, nextTradeId: market.nextTradeId + 1 }
+    : { ...market, usd: market.usd + value, btc: market.btc - quantity, trades, nextTradeId: market.nextTradeId + 1 }
 }
 
 export function transferMarket(
