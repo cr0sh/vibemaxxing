@@ -96,7 +96,7 @@ export function useAnimatedNumber(target: number | undefined): AnimationState {
     const from = displayed.current
     const direction: Exclude<Direction, null> = normalizedTarget > oldTarget ? 'up' : 'down'
     const run = ++animation.current
-    const startedAt = performance.now()
+    let startedAt: number | null = null
 
     setState((current) => {
       if (current.value === from && current.active && current.direction === direction) return current
@@ -105,6 +105,7 @@ export function useAnimatedNumber(target: number | undefined): AnimationState {
 
     const advance = (now: number) => {
       if (!mounted.current || animation.current !== run) return
+      if (startedAt === null) startedAt = now
 
       const progress = Math.min(1, (now - startedAt) / duration)
       const eased = 1 - (1 - progress) ** 3

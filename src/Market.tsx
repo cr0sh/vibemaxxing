@@ -86,11 +86,7 @@ function AnimatedMarketNumber({
 }: AnimatedMarketNumberProps) {
   const { value } = useAnimatedNumber(target)
   const Tag = tag
-  const classes = [
-    'market-animated-number',
-    className,
-    tone === 'pnl' ? `market-pnl-${pnlTone(value)}` : undefined,
-  ].filter(Boolean).join(' ')
+  const classes = `market-animated-number${className ? ` ${className}` : ''}${tone === 'pnl' ? ` market-pnl-${pnlTone(value)}` : ''}`
   return (
     <Tag className={classes} aria-label={format(target)}>
       {format(value)}
