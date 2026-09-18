@@ -22,7 +22,9 @@ type RegisteredTarget = {
   priority?: number
   element: HTMLElement
   accepts: (source: DragDropSource) => boolean
+  rejectionReason?: (source: DragDropSource) => string | null
   onDrop: (source: DragDropSource) => void
+  onReject?: (reason: string) => void
   onHover?: () => void
 }
 
@@ -74,7 +76,10 @@ export function DragDropHintsProvider({ children }: { children: ReactNode }) {
     let bestArea = Infinity
     const hitElements = document.elementsFromPoint(x, y)
     for (const target of targetsRef.current.values()) {
-      if (!target.element.isConnected || !hitElements.includes(target.element) || !target.accepts(source)) continue
+      if (!target.element.isConnected || !hitElements.includes(target.element)) continue
+      const accepted = target.accepts(source)
+      const rejectionReason = accepted ? null : target.rejectionReason?.(source) ?? null
+      if (!accepted && (!target.onReject || rejectionReason === null)) continue
       const bounds = target.element.getBoundingClientRect()
       if (bounds.width <= 0 || bounds.height <= 0 || x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) continue
       const computedZIndex = Number.parseInt(window.getComputedStyle(target.element.closest('.window') ?? target.element).zIndex, 10)
@@ -135,7 +140,12 @@ export function DragDropHintsProvider({ children }: { children: ReactNode }) {
       if (!cancelled && pointer.dragging) {
         updateTarget(pointer, event.clientX, event.clientY)
         const target = pointer.targetId ? targetsRef.current.get(pointer.targetId) : null
-        target?.onDrop(pointer.source)
+        if (target?.accepts(pointer.source)) {
+          target.onDrop(pointer.source)
+        } else {
+          const reason = target?.rejectionReason?.(pointer.source)
+          if (reason !== null && reason !== undefined) target?.onReject?.(reason)
+        }
       }
       clear()
     }

@@ -24,7 +24,9 @@ type DragDropTargetDefinition = Readonly<{
   id: string
   priority?: number
   accepts: (source: DragDropSource) => boolean
+  rejectionReason?: (source: DragDropSource) => string | null
   onDrop: (source: DragDropSource) => void
+  onReject?: (reason: string) => void
   onHover?: () => void
 }>
 
@@ -71,15 +73,23 @@ export function useDragDropTarget<T extends HTMLElement>(
   useEffect(() => {
     const element = ref.current
     if (!element) return
+    const hasRejectionReason = target.rejectionReason !== undefined
+    const hasOnReject = target.onReject !== undefined
     return registerDropTarget({
       id: target.id,
       priority: target.priority,
       element,
       accepts: (source) => targetRef.current.accepts(source),
+      rejectionReason: hasRejectionReason
+        ? (source) => targetRef.current.rejectionReason?.(source) ?? null
+        : undefined,
       onDrop: (source) => targetRef.current.onDrop(source),
+      onReject: hasOnReject
+        ? (reason) => targetRef.current.onReject?.(reason)
+        : undefined,
       onHover: () => targetRef.current.onHover?.(),
     })
-  }, [ref, registerDropTarget, target.id, target.priority])
+  }, [ref, registerDropTarget, target.id, target.priority, target.rejectionReason !== undefined, target.onReject !== undefined])
 }
 
 export function useDragDropSource(source: DragDropSource, enabled: boolean) {
