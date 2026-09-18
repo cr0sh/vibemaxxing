@@ -45,8 +45,18 @@
   letter-spacing: -0.02em;
 }
 
+.market-header-values {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.market-portfolio,
 .market-current-price {
   display: grid;
+  min-width: 0;
   gap: 0.08rem;
   color: #a8c0c4;
   font-size: 0.66rem;
@@ -55,10 +65,22 @@
   letter-spacing: 0.06em;
 }
 
+.market-portfolio strong {
+  overflow: hidden;
+  color: #f7e6a5;
+  font-size: 0.95rem;
+  letter-spacing: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .market-current-price strong {
+  overflow: hidden;
   color: #69dbb5;
   font-size: 0.95rem;
   letter-spacing: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .market-balances {
@@ -153,6 +175,26 @@
   stroke-linejoin: round;
   stroke-width: 3;
   vector-effect: non-scaling-stroke;
+}
+.market-chart-marker {
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.market-chart-marker-buy {
+  fill: #69dbb5;
+  stroke: #0a3328;
+}
+
+.market-chart-marker-sell {
+  fill: #ff9c93;
+  stroke: #4c1b24;
+}
+
+.market-chart-marker:hover,
+.market-chart-marker:focus-visible {
+  stroke-width: 2.5;
 }
 
 .market-chart-range {
@@ -292,6 +334,24 @@
 
   .market-panels {
     grid-template-rows: auto auto;
+  }
+}
+
+@container (max-width: 480px) {
+  .market-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .market-header-values {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.6rem;
+  }
+
+  .market-portfolio,
+  .market-current-price {
+    flex: 1 1 0;
   }
 }
 

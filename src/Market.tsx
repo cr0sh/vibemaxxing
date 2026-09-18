@@ -1,22 +1,33 @@
 import { useMemo, useState } from 'react'
 import type { Dispatch, FormEvent } from 'react'
 import type { GameAction, GameState } from './game'
-import { executableBtcQuantity } from './trading'
+import { executableBtcQuantity, type TradeMarker } from './trading'
 import './Market.css'
 
 const usdFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const btcFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 8 })
-const EMPTY_HISTORY: { elapsed: number; price: number }[] = []
+const EMPTY_HISTORY: readonly { elapsed: number; price: number }[] = []
+const EMPTY_TRADES: readonly TradeMarker[] = []
+
+const CHART_WIDTH = 480
+const CHART_HEIGHT = 180
+const CHART_PADDING = 12
 
 type MarketProps = {
   state: GameState
   dispatch: Dispatch<GameAction>
 }
 
+type ChartMarker = TradeMarker & {
+  x: number
+  y: number
+}
+
 type ChartData = {
   points: string
   min: number | null
   max: number | null
+  markers: readonly ChartMarker[]
 }
 
 function parseAmount(value: string): number | null {
@@ -32,34 +43,63 @@ function formatBtc(value: number | undefined): string {
   return value !== undefined && Number.isFinite(value) ? btcFormatter.format(value) : '—'
 }
 
-function buildChart(history: readonly { elapsed: number; price: number }[]): ChartData {
+function buildChart(
+  history: readonly { elapsed: number; price: number }[],
+  trades: readonly TradeMarker[],
+): ChartData {
   let min = Number.POSITIVE_INFINITY
   let max = Number.NEGATIVE_INFINITY
+  let minElapsed = Number.POSITIVE_INFINITY
+  let maxElapsed = Number.NEGATIVE_INFINITY
   let count = 0
   for (const point of history) {
     if (!Number.isFinite(point.elapsed) || !Number.isFinite(point.price) || point.price <= 0) continue
     min = Math.min(min, point.price)
     max = Math.max(max, point.price)
+    minElapsed = Math.min(minElapsed, point.elapsed)
+    maxElapsed = Math.max(maxElapsed, point.elapsed)
     count += 1
   }
-  if (count === 0) return { points: '', min: null, max: null }
+  if (count === 0) return { points: '', min: null, max: null, markers: [] }
 
-  const width = 480
-  const height = 180
-  const padding = 12
   const span = Math.max(max - min, Math.max(1, max * 0.02))
-  const xSpan = Math.max(1, count - 1)
-  let index = 0
+  const xSpan = maxElapsed - minElapsed
+  const xForElapsed = (elapsed: number) => {
+    if (xSpan <= 0) return CHART_WIDTH / 2
+    const x = CHART_PADDING + (CHART_WIDTH - CHART_PADDING * 2) * (elapsed - minElapsed) / xSpan
+    return Math.max(CHART_PADDING, Math.min(CHART_WIDTH - CHART_PADDING, x))
+  }
+  const yForPrice = (price: number) => Math.max(
+    CHART_PADDING,
+    Math.min(
+      CHART_HEIGHT - CHART_PADDING,
+      CHART_HEIGHT - CHART_PADDING - (CHART_HEIGHT - CHART_PADDING * 2) * (price - min) / span,
+    ),
+  )
+
   let points = ''
   for (const point of history) {
     if (!Number.isFinite(point.elapsed) || !Number.isFinite(point.price) || point.price <= 0) continue
-    const x = padding + (width - padding * 2) * index / xSpan
-    const y = height - padding - (height - padding * 2) * (point.price - min) / span
+    const x = xForElapsed(point.elapsed)
+    const y = yForPrice(point.price)
     if (points.length > 0) points += ' '
     points += `${x.toFixed(2)},${y.toFixed(2)}`
-    index += 1
   }
-  return { points, min, max }
+
+  const markers: ChartMarker[] = []
+  for (const marker of trades) {
+    if (
+      !Number.isFinite(marker.id) ||
+      !Number.isFinite(marker.elapsed) ||
+      !Number.isFinite(marker.price) ||
+      marker.price <= 0 ||
+      !Number.isFinite(marker.quantity) ||
+      marker.quantity <= 0 ||
+      (marker.side !== 'buy' && marker.side !== 'sell')
+    ) continue
+    markers.push({ ...marker, x: xForElapsed(marker.elapsed), y: yForPrice(marker.price) })
+  }
+  return { points, min, max, markers }
 }
 
 export function MarketContent({ state, dispatch }: MarketProps) {
@@ -86,7 +126,15 @@ export function MarketContent({ state, dispatch }: MarketProps) {
   const canSell = canUseMarket && btcValue !== null && executableBtcQuantity(market, 'sell', btcValue) !== null
   const canSellAll = canUseMarket && executableBtcQuantity(market, 'sell', market.btc) !== null
   const history = market?.history ?? EMPTY_HISTORY
-  const chart = useMemo(() => buildChart(history), [history])
+  const trades = market?.trades ?? EMPTY_TRADES
+  const chart = useMemo(() => buildChart(history, trades), [history, trades])
+  const portfolioValue = market !== null &&
+    Number.isFinite(state.money) &&
+    Number.isFinite(market.usd) &&
+    Number.isFinite(market.btc) &&
+    Number.isFinite(market.price)
+    ? state.money + market.usd + market.btc * market.price
+    : undefined
 
   const submitTransfer = (direction: 'deposit' | 'withdraw') => (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -109,9 +157,19 @@ export function MarketContent({ state, dispatch }: MarketProps) {
     <div className="market-app">
       <header className="market-header">
         <h2>Market</h2>
-        <div className="market-current-price" aria-label={`Current Bitcoin price ${formatUsd(market?.price)}`}>
-          <span>BTC / USD</span>
-          <strong>{formatUsd(market?.price)}</strong>
+        <div className="market-header-values">
+          <div
+            className="market-portfolio"
+            title="Cash + Trading USD + Trading BTC × current BTC / USD price"
+            aria-label={`Total portfolio value ${formatUsd(portfolioValue)}`}
+          >
+            <span>Total</span>
+            <strong>{formatUsd(portfolioValue)}</strong>
+          </div>
+          <div className="market-current-price" aria-label={`Current Bitcoin price ${formatUsd(market?.price)}`}>
+            <span>BTC / USD</span>
+            <strong>{formatUsd(market?.price)}</strong>
+          </div>
         </div>
       </header>
 
@@ -131,21 +189,39 @@ export function MarketContent({ state, dispatch }: MarketProps) {
           <strong>{formatBtc(market?.btc)} <small>BTC</small></strong>
         </div>
       </section>
-
       <figure className="market-chart">
         <figcaption>BTC / USD</figcaption>
         <svg
           className="market-chart-svg"
           viewBox="0 0 480 180"
           role="img"
-          aria-label="Bitcoin price history"
+          aria-label="Bitcoin price history with trade markers"
           preserveAspectRatio="none"
         >
-          <title>Bitcoin price history</title>
+          <title>Bitcoin price history with trade markers</title>
           <line className="market-chart-grid" x1="12" y1="12" x2="468" y2="12" />
           <line className="market-chart-grid" x1="12" y1="90" x2="468" y2="90" />
           <line className="market-chart-grid" x1="12" y1="168" x2="468" y2="168" />
           {chart.points && <polyline className="market-chart-line" points={chart.points} />}
+          {chart.markers.map((marker) => {
+            const side = marker.side === 'buy' ? 'Buy' : 'Sell'
+            const description = `${side} ${formatBtc(marker.quantity)} BTC at ${formatUsd(marker.price)} (${marker.elapsed.toFixed(1)}s)`
+            return (
+              <g
+                key={marker.id}
+                className={`market-chart-marker market-chart-marker-${marker.side}`}
+                transform={`translate(${marker.x.toFixed(2)} ${marker.y.toFixed(2)})`}
+                role="img"
+                tabIndex={0}
+                aria-label={description}
+              >
+                <title>{description}</title>
+                {marker.side === 'buy'
+                  ? <path d="M 0,-9 L 7,4 L -7,4 Z" />
+                  : <path d="M 0,9 L 7,-4 L -7,-4 Z" />}
+              </g>
+            )
+          })}
         </svg>
         <div className="market-chart-range" aria-hidden="true">
           <span>Low {formatUsd(chart.min ?? undefined)}</span>
