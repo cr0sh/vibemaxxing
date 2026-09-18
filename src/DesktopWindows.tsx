@@ -133,7 +133,47 @@ interface WindowFrameProps {
 }
 
 type Drag = { pointerId: number; origin: Point; start: Point }
-type Resize = { pointerId: number; origin: Size; position: Point; start: Point }
+type ResizeDirection = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
+type Resize = { pointerId: number; direction: ResizeDirection; origin: Size; position: Point; start: Point }
+
+const resizeDirections: ResizeDirection[] = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se']
+
+function resizeWindow(current: Resize, pointer: Point, bounds: Bounds, minimum: Size): { size: Size; position: Point } {
+  const delta = { x: pointer.x - current.start.x, y: pointer.y - current.start.y }
+  let width = current.origin.width
+  let height = current.origin.height
+  let position = current.position
+
+  if (current.direction.includes('w')) {
+    const right = current.position.x + current.origin.width
+    const minimumWidth = Math.min(minimum.width, Math.max(0, bounds.width))
+    const left = Math.max(bounds.x, Math.min(current.position.x + delta.x, right - minimumWidth))
+    width = right - left
+    position = { ...position, x: left }
+  } else if (current.direction.includes('e')) {
+    width = clampSize(
+      { width: current.origin.width + delta.x, height: current.origin.height },
+      { width: bounds.x + bounds.width - current.position.x, height: bounds.y + bounds.height - current.position.y },
+      minimum,
+    ).width
+  }
+
+  if (current.direction.includes('n')) {
+    const bottom = current.position.y + current.origin.height
+    const minimumHeight = Math.min(minimum.height, Math.max(0, bounds.height))
+    const top = Math.max(bounds.y, Math.min(current.position.y + delta.y, bottom - minimumHeight))
+    height = bottom - top
+    position = { ...position, y: top }
+  } else if (current.direction.includes('s')) {
+    height = clampSize(
+      { width: current.origin.width, height: current.origin.height + delta.y },
+      { width: bounds.x + bounds.width - current.position.x, height: bounds.y + bounds.height - current.position.y },
+      minimum,
+    ).height
+  }
+
+  return { size: { width, height }, position }
+}
 
 export function WindowFrame({ id, icon, title, active, className = '', contentLayout = 'padded', onFocus, onMinimize, children, hidden = false }: WindowFrameProps) {
   const workspace = useContext(WorkspaceContext)
@@ -224,22 +264,19 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
     event.preventDefault()
     event.stopPropagation()
     focus()
-    event.currentTarget.focus({ preventScroll: true })
+    const direction = event.currentTarget.dataset.direction as ResizeDirection
+    if (direction === 'se') event.currentTarget.focus({ preventScroll: true })
     setSavedPosition(position)
-    resize.current = { pointerId: event.pointerId, origin: size, position, start: { x: event.clientX, y: event.clientY } }
+    resize.current = { pointerId: event.pointerId, direction, origin: size, position, start: { x: event.clientX, y: event.clientY } }
     event.currentTarget.setPointerCapture(event.pointerId)
     setResizing(true)
   }
   const moveResize = (event: PointerEvent<HTMLButtonElement>) => {
     const current = resize.current
     if (!current || current.pointerId !== event.pointerId) return
-    setSavedSize(clampSize({
-      width: current.origin.width + event.clientX - current.start.x,
-      height: current.origin.height + event.clientY - current.start.y,
-    }, {
-      width: bounds.x + bounds.width - current.position.x,
-      height: bounds.y + bounds.height - current.position.y,
-    }, minimumSize))
+    const next = resizeWindow(current, { x: event.clientX, y: event.clientY }, bounds, minimumSize)
+    setSavedPosition(next.position)
+    setSavedSize(next.size)
   }
   const endResize = (event: PointerEvent<HTMLButtonElement>) => {
     if ((event.type === 'lostpointercapture' && event.target !== event.currentTarget) || resize.current?.pointerId !== event.pointerId) return
@@ -321,23 +358,32 @@ export function WindowFrame({ id, icon, title, active, className = '', contentLa
         </button>
       </div>
       <div className={`window-content window-content-${contentLayout}`}>{children}</div>
-      <button
-        className="window-resize-handle"
-        type="button"
-        aria-label={`Resize ${title} window`}
-        aria-describedby={`window-resize-instructions-${id}`}
-        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
-        onKeyDown={resizeWithKeys}
-        onPointerDown={startResize}
-        onPointerMove={moveResize}
-        onPointerUp={endResize}
-        onPointerCancel={endResize}
-        onLostPointerCapture={endResize}
-      >
-        <span aria-hidden="true" />
-      </button>
+      {resizeDirections.map((direction) => {
+        const keyboardAccessible = direction === 'se'
+        return (
+          <button
+            key={direction}
+            className={`window-resize-handle window-resize-handle-${direction}`}
+            type="button"
+            tabIndex={keyboardAccessible ? 0 : -1}
+            aria-hidden={keyboardAccessible ? undefined : true}
+            aria-label={keyboardAccessible ? `Resize ${title} window` : undefined}
+            aria-describedby={keyboardAccessible ? `window-resize-instructions-${id}` : undefined}
+            aria-keyshortcuts={keyboardAccessible ? 'ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined}
+            data-direction={direction}
+            onKeyDown={keyboardAccessible ? resizeWithKeys : undefined}
+            onPointerDown={startResize}
+            onPointerMove={moveResize}
+            onPointerUp={endResize}
+            onPointerCancel={endResize}
+            onLostPointerCapture={endResize}
+          >
+            {keyboardAccessible && <span aria-hidden="true" />}
+          </button>
+        )
+      })}
       <span id={`window-resize-instructions-${id}`} className="window-drag-instructions">
-        Drag the lower-right corner to resize. Use arrow keys to resize this window; hold Shift for larger steps.
+        Drag any window edge or corner to resize. Use arrow keys on the lower-right corner to resize this window; hold Shift for larger steps.
       </span>
     </section>
   )
