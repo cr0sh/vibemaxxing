@@ -83,23 +83,89 @@
 
 .window-resize-handle {
   position: absolute;
-  right: 0.12rem;
-  bottom: 0.12rem;
-  z-index: 3;
-  width: 1.1rem;
-  height: 1.1rem;
+  z-index: 4;
+  box-sizing: border-box;
+  display: block;
+  width: auto;
+  height: auto;
   padding: 0;
   border: 0;
-  border-radius: 0.25rem;
+  border-radius: 0;
   background: transparent;
   color: rgba(74, 43, 147, 0.58);
-  cursor: nwse-resize;
   touch-action: none;
+  user-select: none;
 }
 
-.window-resize-handle::before,
-.window-resize-handle::after,
-.window-resize-handle > span {
+/* Keep corner targets above edge targets where their hit zones overlap. */
+.window-resize-handle-nw,
+.window-resize-handle-ne,
+.window-resize-handle-sw,
+.window-resize-handle-se {
+  z-index: 5;
+  width: 1rem;
+  height: 1rem;
+}
+
+.window-resize-handle-n,
+.window-resize-handle-s {
+  right: 0.8rem;
+  left: 0.8rem;
+  height: 0.62rem;
+  cursor: ns-resize;
+}
+
+.window-resize-handle-n { top: 0.08rem; }
+.window-resize-handle-s { bottom: 0.08rem; }
+
+.window-resize-handle-e,
+.window-resize-handle-w {
+  top: 0.8rem;
+  bottom: 0.8rem;
+  width: 0.62rem;
+  cursor: ew-resize;
+}
+
+.window-resize-handle-e { right: 0.08rem; }
+.window-resize-handle-w { left: 0.08rem; }
+
+.window-resize-handle-ne,
+.window-resize-handle-sw {
+  cursor: nesw-resize;
+}
+
+.window-resize-handle-nw,
+.window-resize-handle-se {
+  cursor: nwse-resize;
+}
+
+.window-resize-handle-nw {
+  top: 0.08rem;
+  left: 0.08rem;
+  border-top-left-radius: 0.75rem;
+}
+
+.window-resize-handle-ne {
+  top: 0.08rem;
+  right: 0.08rem;
+  border-top-right-radius: 0.75rem;
+}
+
+.window-resize-handle-sw {
+  bottom: 0.08rem;
+  left: 0.08rem;
+  border-bottom-left-radius: 0.75rem;
+}
+
+.window-resize-handle-se {
+  right: 0.08rem;
+  bottom: 0.08rem;
+  border-bottom-right-radius: 0.75rem;
+}
+
+.window-resize-handle-se::before,
+.window-resize-handle-se::after,
+.window-resize-handle-se > span {
   position: absolute;
   right: 0.16rem;
   bottom: 0.18rem;
@@ -113,13 +179,13 @@
   transform-origin: right center;
 }
 
-.window-resize-handle::before {
+.window-resize-handle-se::before {
   right: 0.18rem;
   bottom: 0.4rem;
   width: 0.4rem;
 }
 
-.window-resize-handle::after {
+.window-resize-handle-se::after {
   right: 0.18rem;
   bottom: 0.62rem;
   width: 0.22rem;
