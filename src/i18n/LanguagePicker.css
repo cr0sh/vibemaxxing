@@ -4,7 +4,7 @@
   position: fixed;
   top: var(--language-picker-top);
   right: var(--language-picker-right);
-  width: 2.8rem;
+  width: var(--widget-height);
   height: var(--widget-height);
   border-radius: 0.85rem;
   z-index: 100;
@@ -19,6 +19,7 @@
   border: 0;
   border-radius: inherit;
   background: transparent;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -107,7 +108,7 @@
 @media (max-width: 1100px) {
   .widget-band .widget-cluster {
     flex-wrap: wrap;
-    padding-right: 3.3rem;
+    padding-right: calc(var(--widget-height) + 0.8rem);
   }
 }
 
@@ -115,7 +116,6 @@
   .language-picker {
     --language-picker-top: 0.55rem;
     --language-picker-right: 0.58rem;
-    width: 2.5rem;
   }
 
   .widget-band .paid-resources {
