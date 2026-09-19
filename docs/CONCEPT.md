@@ -137,6 +137,22 @@ The flow of the game is:
 
 - After further progression, there will be another "job slot" unlocked so the
   user can have the second job. Just add the job application app back, autofill enabled at start. The new job starts from L3.
+- After accepting the second job, owners of Mercury can buy **Mercury 2.0** for
+  **$50,000**. The upgrade is announced and visible in Shop even before it is
+  affordable, with no extra waiting timer. Base Mercury remains a separate
+  $8,000 prerequisite.
+  - New assignments and eligible retries use deadline-aware terminal matching:
+    estimate execution time and the number of attempts that fit, maximize the
+    chance of finishing by the deadline, then avoid excess model intelligence.
+    Expected completion time, execution token cost, workload, and stable terminal
+    order resolve remaining ties. If no attempt fits, prefer faster completion.
+  - Only free, funded placements are considered. Failed tasks can move to a
+    better terminal; running tasks are never interrupted. Terminal models remain
+    player-selected. Handoff fees, reserved return fees, and the 10-second retry
+    delay are unchanged; rerouting a retry does not charge its initial handoff again.
+  - Ownership adds **10 percentage points** to every task's completion success
+    chance, capped at 100%. This includes manual work, local terminals, tasks
+    already running at purchase, and work while Mercury automation is off.
 - Also, the promotion upside is raised to L5(don't notify explicitly about
   this). While progressing the work process, the boss will promote you
   occasionally and start giving more complex tasks. Level N engineers will get
@@ -261,6 +277,12 @@ The flow of the game is:
   During minutes 10–20, Shorts actions fall from 5.68/5.33 to 2.24/2.54 per minute.
   These controls keep Mercury enabled through monopoly and do not trade; they
   are pacing benchmarks, not human win rates. Deadline rules remain unchanged.
+- Mercury 2.0 calibration uses the same 32-seed 2s/4s Fast-mode control policies,
+  adding only the paid upgrade purchase after second-job acceptance. Wins rise
+  from 1/32 and 0/32 without the upgrade to 20/32 and 13/32 with it; no upgraded
+  run loses before monopoly. These remain automated policy comparisons, not
+  human win-rate estimates. All 64 controls could afford $50,000 at introduction:
+  median cash at second-job acceptance was $108,648 / $225,057.50.
 - The $4.242M victory threshold includes cash, trading USD, and BTC at its current
   market price, without double-counting transfers. Winning pauses only until
   acknowledgment; the achievement remains recorded during continued play.
