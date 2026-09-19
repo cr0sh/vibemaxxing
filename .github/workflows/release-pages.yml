@@ -1,18 +1,18 @@
-name: Deploy staging to GitHub Pages
+name: Deploy release to GitHub Pages
 
 on:
   push:
     tags:
-      - staging
+      - release
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A moved staging tag may queue another run while the previous deployment is
+# A moved release tag may queue another run while the previous deployment is
 # still running. Keep deployments serialized and retain the newest queued run.
 concurrency:
-  group: staging-pages
+  group: release-pages
   cancel-in-progress: false
 
 jobs:
@@ -22,12 +22,12 @@ jobs:
       contents: read
       pages: read
     steps:
-      - name: Check out staging tag
+      - name: Check out release tag
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.0
         with:
           # Use the tag for both tag pushes and manual runs; never use the
           # branch from which workflow_dispatch was launched.
-          ref: refs/tags/staging
+          ref: refs/tags/release
           fetch-depth: 1
           persist-credentials: false
 
