@@ -275,7 +275,7 @@ describe('employment transitions', () => {
     expect(lost).toEqual({ ...state, stage: 'lost', tokens: 0, money: 200 })
   })
   test('token auto-buy funds a Mercury assignment whose required reserve exceeds one million', () => {
-    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const base: GameState = { ...hire(), advancedModelUnlocked: true, mercuryOwned: true, mercuryEnabled: true }
     const pending: WorkTask = {
       ...hire().tasks[0]!,
       id: 990,
@@ -294,7 +294,7 @@ describe('employment transitions', () => {
       tasks: [pending],
       taskQueue: [],
       nextTaskAt: Number.MAX_SAFE_INTEGER,
-      terminals: [{ ...base.terminals[0]!, slots: 1, fastMode: false, model: 'advanced' }],
+      terminals: [{ ...base.terminals[0]!, slots: 1, yolo: true, fastMode: false, model: 'advanced' }],
     }
 
     const started = gameReducer(state, { type: 'tick', seconds: 1 })
@@ -306,11 +306,11 @@ describe('employment transitions', () => {
       mercuryAuto: true,
     })
     expect(started.tokens).toBe(300_000)
-    expect(started.money).toBe(99_915)
+    expect(started.money).toBe(state.money + BASE_SALARY - 100)
   })
 
   test('token auto-buy does not buy when a sufficient balance is blocked only by capacity', () => {
-    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const base: GameState = { ...hire(), advancedModelUnlocked: true, mercuryOwned: true, mercuryEnabled: true }
     const source = hire().tasks[0]!
     const occupied: WorkTask = {
       ...source,
@@ -346,17 +346,17 @@ describe('employment transitions', () => {
       tasks: [occupied, pending],
       taskQueue: [],
       nextTaskAt: Number.MAX_SAFE_INTEGER,
-      terminals: [{ ...base.terminals[0]!, slots: 1, fastMode: false, model: 'advanced' }],
+      terminals: [{ ...base.terminals[0]!, slots: 1, yolo: true, fastMode: false, model: 'advanced' }],
     }
 
     const blocked = gameReducer(state, { type: 'tick', seconds: 1 })
     expect(taskWith(blocked, pending.id).status).toBe('assigned')
     expect(blocked.tokens).toBe(1_000_000)
-    expect(blocked.money).toBe(100_015)
+    expect(blocked.money).toBe(state.money + BASE_SALARY)
   })
 
   test('token auto-buy funds a Mercury retry while preserving an in-flight return reserve', () => {
-    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const base: GameState = { ...hire(), advancedModelUnlocked: true, mercuryOwned: true, mercuryEnabled: true }
     const source = hire().tasks[0]!
     const active: WorkTask = {
       ...source,
@@ -400,8 +400,8 @@ describe('employment transitions', () => {
       taskQueue: [],
       nextTaskAt: Number.MAX_SAFE_INTEGER,
       terminals: [
-        { ...base.terminals[0]!, slots: 1, fastMode: false, model: 'advanced' },
-        { ...base.terminals[1]!, slots: 1, fastMode: false, model: 'advanced' },
+        { ...base.terminals[0]!, slots: 1, yolo: true, fastMode: false, model: 'advanced' },
+        { ...base.terminals[0]!, id: 'terminal-2', slots: 1, yolo: true, fastMode: false, model: 'advanced' },
       ],
     }
 
@@ -409,7 +409,7 @@ describe('employment transitions', () => {
     expect(taskWith(retried, failed.id)).toMatchObject({ status: 'working', attempt: 2, mercuryAuto: true })
     expect(taskWith(retried, active.id).status).toBe('working')
     expect(retried.tokens).toBe(700_000)
-    expect(retried.money).toBe(99_515)
+    expect(retried.money).toBe(state.money + BASE_SALARY - 500)
   })
 
 
