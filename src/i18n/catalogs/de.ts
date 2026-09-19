@@ -409,7 +409,7 @@ export const germanCatalog = {
   'shorts.status.hidden': 'Wiedergabe pausiert, solange dieses Fenster ausgeblendet ist.',
   'shorts.status.ended': 'Run beendet · Shorts ist schreibgeschützt.',
   'shorts.status.background': 'Wiedergabe pausiert, solange Shorts im Hintergrund ist.',
-  'shorts.status.active': 'Doomscrolling gibt dir Energie, oder?',
+  'shorts.status.active': 'Scrolle für +{amount} Energie. Nur Zuschauen lädt nicht auf.',
   'shorts.feed': 'Kurzvideos',
   'shorts.loop': 'Loopender Meme-Clip',
   'shorts.viewGiphy': 'Auf GIPHY ansehen',

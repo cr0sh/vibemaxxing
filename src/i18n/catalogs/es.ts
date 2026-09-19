@@ -412,7 +412,7 @@ export const spanishCatalog = {
   'shorts.status.hidden': 'La reproducción está en pausa mientras esta ventana está oculta.',
   'shorts.status.ended': 'Partida terminada · Shorts es de solo lectura.',
   'shorts.status.background': 'La reproducción está en pausa mientras Shorts está en segundo plano.',
-  'shorts.status.active': 'El doomscrolling te da energía, ¿verdad?',
+  'shorts.status.active': 'Pasa al siguiente video para ganar +{amount} de energía. Solo mirar no recarga.',
   'shorts.feed': 'Videos cortos',
   'shorts.loop': 'Clip de meme en bucle',
   'shorts.viewGiphy': 'Ver en GIPHY',

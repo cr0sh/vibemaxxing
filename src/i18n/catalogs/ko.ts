@@ -416,7 +416,7 @@ export const koreanCatalog = {
   'shorts.status.hidden': '이 창이 숨겨져 있는 동안 재생이 일시정지됩니다.',
   'shorts.status.ended': '실행 종료 · Shorts는 읽기 전용입니다.',
   'shorts.status.background': 'Shorts가 백그라운드에 있는 동안 재생이 일시정지됩니다.',
-  'shorts.status.active': '숏폼을 계속 넘기면 에너지가 되지, 그렇지?',
+  'shorts.status.active': '영상을 넘기면 에너지 +{amount}. 보기만 해서는 충전되지 않습니다.',
   'shorts.feed': '짧은 영상',
   'shorts.loop': '반복 재생 밈 클립',
   'shorts.viewGiphy': 'GIPHY에서 보기',

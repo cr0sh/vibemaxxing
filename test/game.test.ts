@@ -309,7 +309,7 @@ describe('employment transitions', () => {
     expect(started.money).toBe(state.money + BASE_SALARY - 100)
   })
 
-  test('token auto-buy does not buy when a sufficient balance is blocked only by capacity', () => {
+  test('token auto-buy waits for capacity before funding an assigned task', () => {
     const base: GameState = { ...hire(), advancedModelUnlocked: true, mercuryOwned: true, mercuryEnabled: true }
     const source = hire().tasks[0]!
     const occupied: WorkTask = {
@@ -1924,9 +1924,9 @@ describe('extended engine contracts', () => {
     state = gameReducer(state, { type: 'tick', seconds: 20 })
     expect(state.energy).toBe(97)
     state = gameReducer(state, { type: 'scroll-short' })
-    expect(state.energy).toBe(98)
+    expect(state.energy).toBe(100)
     state = gameReducer(state, { type: 'tick', seconds: 20 })
-    expect(state.energy).toBe(97)
+    expect(state.energy).toBe(99)
   })
 
 

@@ -315,7 +315,7 @@ export const englishCatalog = {
   'shorts.status.hidden': 'Playback paused while this window is hidden.',
   'shorts.status.ended': 'Run ended · Shorts is read-only.',
   'shorts.status.background': 'Playback paused while Shorts is in the background.',
-  'shorts.status.active': 'Doomscrolling gives you energy, right?',
+  'shorts.status.active': 'Scroll for +{amount} energy. Watching alone does not recharge.',
   'shorts.feed': 'Short videos',
   'shorts.loop': 'Looping meme clip',
   'shorts.viewGiphy': 'View on GIPHY',

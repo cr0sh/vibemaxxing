@@ -413,7 +413,7 @@ export const japaneseCatalog = {
   'shorts.status.hidden': 'このウィンドウが非表示の間は再生を一時停止しています。',
   'shorts.status.ended': "プレイ終了 · Shortsは読み取り専用です。",
   'shorts.status.background': 'Shorts がバックグラウンドの間は再生を一時停止しています。',
-  'shorts.status.active': '無限スクロールで元気が出るだろ？',
+  'shorts.status.active': 'スクロールでエネルギー+{amount}。見ているだけでは回復しません。',
   'shorts.feed': 'ショート動画',
   'shorts.loop': 'ループするミームクリップ',
   'shorts.viewGiphy': 'GIPHY で見る',

@@ -413,7 +413,7 @@ export const frenchCatalog = {
   'shorts.status.hidden': 'Lecture en pause tant que cette fenêtre est masquée.',
   'shorts.status.ended': 'Partie terminée · Shorts est en lecture seule.',
   'shorts.status.background': 'Lecture en pause tant que Shorts est en arrière-plan.',
-  'shorts.status.active': 'Le doomscrolling te donne de l’énergie, non ?',
+  'shorts.status.active': 'Fais défiler pour gagner +{amount} d’énergie. Regarder ne suffit pas à recharger.',
   'shorts.feed': 'Vidéos courtes',
   'shorts.loop': 'Clip meme en boucle',
   'shorts.viewGiphy': 'Voir sur GIPHY',
