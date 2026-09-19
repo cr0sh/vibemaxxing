@@ -411,6 +411,7 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
   const highlighted = useShopHighlights(state, active)
   const hasDiscovery = (id: ShopItemId): boolean => state.shopDiscoveries.includes(id)
+  const isProductVisible = (id: ShopItemId): boolean => hasDiscovery(id) || (id === 'yolo' && state.stage === 'hired')
 
   const selectedTargetTerminal = state.terminals.some((terminal) => terminal.id === targetTerminal)
     ? targetTerminal
@@ -462,7 +463,7 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
 
 
       <div className="shop-products">
-        {upgradeProducts.filter((product) => hasDiscovery(product.upgrade)).map((product) => (
+        {upgradeProducts.filter((product) => isProductVisible(product.upgrade)).map((product) => (
           <UpgradeProductCard
             key={product.upgrade}
             product={product}
@@ -541,9 +542,12 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
               ? t('shop.tokensReceived', { amount: formatNumber(refillAmount) })
               : t('shop.inventoryFull')}</p>
             {monopolyActive && (
-              <p className="shop-token-rate">
-                {t('shop.monopolyRate', { multiplier: formatNumber(tokenMultiplier, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), seconds: formatNumber(secondsToNextTokenIncrease ?? 0) })}
-              </p>
+              <>
+                <p className="shop-token-rate">
+                  {t('shop.monopolyRate', { multiplier: formatNumber(tokenMultiplier, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), seconds: formatNumber(secondsToNextTokenIncrease ?? 0) })}
+                </p>
+                <p className="shop-monopoly-guidance">{t('shop.monopolyGuidance')}</p>
+              </>
             )}
           </div>
           <button className="shop-buy-button" type="button" onClick={buyTokens} disabled={!canBuyTokens}>
