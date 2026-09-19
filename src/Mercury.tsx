@@ -8,6 +8,7 @@ import {
   mercuryReturnReservations,
   MERCURY_FORWARD_COST,
   MERCURY_RETRY_DELAY,
+  MERCURY_SUCCESS_BONUS,
   taskReward,
   taskTokenCost,
   terminalModel,
@@ -315,7 +316,10 @@ export function MercuryContent({ state, dispatch }: MercuryProps) {
   return (
     <div className="mercury-app">
       <header className="mercury-header">
-        <h2>{t('mercury.dashboard')}</h2>
+        <div className="mercury-title-block">
+          <h2>{t('mercury.dashboard')}</h2>
+          <span className="mercury-version">{t('mercury.version', { version: state.mercuryUpgraded ? '2.0' : '1.0' })}</span>
+        </div>
         <label className="mercury-switch">
           <input
             type="checkbox"
@@ -327,6 +331,12 @@ export function MercuryContent({ state, dispatch }: MercuryProps) {
           <span>{state.mercuryEnabled ? t('mercury.mercuryOn') : t('mercury.mercuryOff')}</span>
         </label>
       </header>
+      {state.mercuryUpgraded && (
+        <div className="mercury-upgrade-banner" role="status">
+          <strong>{t('mercury.upgradeInstalled')}</strong>
+          <span>{t('mercury.upgradeBoost', { bonus: formatNumber(MERCURY_SUCCESS_BONUS * 100) })}</span>
+        </div>
+      )}
       <div className="mercury-summary" aria-label={t('mercury.tokenBalanceAria')}>
         <div>
           <span>{t('mercury.balance')}</span>

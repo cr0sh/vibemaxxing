@@ -303,6 +303,10 @@
   border-color: #c48fca;
   background: linear-gradient(105deg, #4b2d5f, #33205d);
 }
+.shop-mercury-upgrade-product {
+  border-color: #c7b4ff;
+  background: linear-gradient(105deg, #443075, #33205d);
+}
 .shop-product-newly-discovered {
   --shop-update-border: #f5d76e;
   border-color: var(--shop-update-border);

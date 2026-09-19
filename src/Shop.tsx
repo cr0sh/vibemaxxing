@@ -5,6 +5,8 @@ import {
   AGENT_MODELS,
   MAX_TOKENS,
   MERCURY_PRICE,
+  MERCURY_UPGRADE_PRICE,
+  MERCURY_SUCCESS_BONUS,
   SPARK_PRICE,
   SPARK_ULTRA_PRICE,
   TOKEN_PACK_COUNTS,
@@ -65,6 +67,8 @@ const purchaseChanged = (previous: GameState, current: GameState, item: ShopItem
       return !previous.advancedModelUnlocked && current.advancedModelUnlocked
     case 'mercury':
       return !previous.mercuryOwned && current.mercuryOwned
+    case 'mercury-upgrade':
+      return !previous.mercuryUpgraded && current.mercuryUpgraded
   }
 }
 
@@ -406,6 +410,45 @@ function MercuryProduct({ state, dispatch, highlighted }: ShopProps & ShopHighli
 }
 
 
+function MercuryUpgradeProduct({ state, dispatch, highlighted }: ShopProps & ShopHighlightProps) {
+  const { t, formatCurrency, formatNumber } = useI18n()
+  const price = moneyLabel(MERCURY_UPGRADE_PRICE, formatCurrency)
+  const bonus = formatNumber(MERCURY_SUCCESS_BONUS * 100)
+  const gateOpen = state.mercuryOwned && state.secondJob !== null
+  const canBuy = state.stage === 'hired' && gateOpen && !state.mercuryUpgraded &&
+    Number.isFinite(state.money) && state.money >= MERCURY_UPGRADE_PRICE
+  const buyUpgrade = () => {
+    if (canBuy) dispatch({ type: 'buy-mercury-upgrade' })
+  }
+  const detail = state.mercuryUpgraded
+    ? t('shop.mercuryUpgradeOwnedDetail', { bonus })
+    : t('shop.mercuryUpgradeDetail', { price, bonus })
+  const buttonLabel = state.mercuryUpgraded
+    ? t('common.installed')
+    : state.stage !== 'hired' || !gateOpen
+      ? t('common.unavailable')
+      : canBuy
+        ? t('shop.buy', { price })
+        : t('shop.need', { price })
+  return (
+    <article
+      className={productClassName(`shop-product shop-mercury-upgrade-product ${canBuy || state.mercuryUpgraded ? '' : 'shop-product-unavailable'}`, highlighted)}
+      aria-label={t('shop.mercuryUpgrade.title')}
+    >
+      <span className="shop-product-icon" aria-hidden="true">✧</span>
+      <div className="shop-product-copy">
+        <h3>{t('shop.mercuryUpgrade.title')}</h3>
+        <p>{detail}</p>
+        {!state.mercuryUpgraded && <p>{t('shop.mercuryUpgradeRequirements')}</p>}
+      </div>
+      <button className="shop-buy-button" type="button" onClick={buyUpgrade} disabled={!canBuy}>
+        {buttonLabel}
+      </button>
+    </article>
+  )
+}
+
+
 export function ShopContent({ state, dispatch, active }: ShopContentProps) {
   const { t, formatCurrency, formatNumber } = useI18n()
   const [targetTerminal, setTargetTerminal] = useState<TerminalId>('terminal')
@@ -500,6 +543,13 @@ export function ShopContent({ state, dispatch, active }: ShopContentProps) {
         {hasDiscovery('spark-ultra') && <SparkUltraProduct state={state} dispatch={dispatch} highlighted={highlighted.has('spark-ultra')} />}
         {hasDiscovery('advanced-model') && <AdvancedModelProduct state={state} dispatch={dispatch} highlighted={highlighted.has('advanced-model')} />}
         {hasDiscovery('mercury') && <MercuryProduct state={state} dispatch={dispatch} highlighted={highlighted.has('mercury')} />}
+        {state.mercuryOwned && state.secondJob !== null && (
+          <MercuryUpgradeProduct
+            state={state}
+            dispatch={dispatch}
+            highlighted={highlighted.has('mercury-upgrade')}
+          />
+        )}
         <article
           className={`shop-product ${canBuyTokens ? '' : 'shop-product-unavailable'}`}
           aria-label={t('shop.tokenRefillAria')}

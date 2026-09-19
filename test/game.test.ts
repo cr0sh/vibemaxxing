@@ -14,10 +14,13 @@ import {
   MERCURY_FORWARD_COST,
   MERCURY_PRICE,
   MERCURY_RETRY_DELAY,
+  MERCURY_SUCCESS_BONUS,
+  MERCURY_UPGRADE_PRICE,
   SPARK_ULTRA_PRICE,
   WIN_NET_WORTH,
   mercuryReturnReservations,
   taskReward,
+  taskSuccessChance,
   taskTokenCost,
   type EmploymentJob,
   type GameState,
@@ -105,6 +108,59 @@ describe('shop product discovery', () => {
     expect(sparkBeforeSale.shopDiscoveries).not.toContain('spark')
     const sparkOnSale = gameReducer({ ...sparkBeforeSale, elapsed: 10 }, { type: 'set-token-packs', packs: 5 })
     expect(sparkOnSale.shopDiscoveries).toContain('spark')
+  })
+  test('Mercury 2.0 waits for an accepted second job, ignores affordability for discovery, and rejects duplicates', () => {
+    const mercury = gameReducer(hire(), { type: 'dev-jump', stage: 'mercury' })
+    const beforeAcceptance = {
+      ...mercury,
+      money: MERCURY_UPGRADE_PRICE,
+      secondJobOffer: companies[1]!,
+      shopDiscoveries: [],
+    }
+    expect(gameReducer(beforeAcceptance, { type: 'buy-mercury-upgrade' })).toBe(beforeAcceptance)
+
+    const secondJob = gameReducer(hire(), { type: 'dev-jump', stage: 'second-job' })
+    const unaffordable = gameReducer({ ...secondJob, money: 0 }, { type: 'tick', seconds: 1 })
+    expect(unaffordable.shopDiscoveries).toContain('mercury-upgrade')
+    expect(unaffordable.socialPosts.some((post) => post.type === 'mercury-upgrade')).toBe(true)
+    expect(gameReducer(unaffordable, { type: 'buy-mercury-upgrade' })).toBe(unaffordable)
+
+    const purchaseState = {
+      ...secondJob,
+      money: MERCURY_UPGRADE_PRICE,
+      energy: 50,
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+    }
+    const purchased = gameReducer(purchaseState, { type: 'buy-mercury-upgrade' })
+    expect(purchased).toMatchObject({ mercuryUpgraded: true, money: 0, energy: 51 })
+    expect(gameReducer(purchased, { type: 'buy-mercury-upgrade' })).toBe(purchased)
+  })
+
+  test('Mercury 2.0 adds a capped global success bonus to every task', () => {
+    const task = { complexity: 5 }
+    expect(taskSuccessChance(task, 'basic', { mercuryUpgraded: false })).toBe(0.2)
+    expect(taskSuccessChance(task, 'basic', { mercuryUpgraded: true })).toBe(0.2 + MERCURY_SUCCESS_BONUS)
+    expect(taskSuccessChance({ complexity: 1 }, 'basic', { mercuryUpgraded: true })).toBe(1)
+  })
+
+  test('Mercury 2.0 boosts an already-running manual local task while automation is off', () => {
+    const hired = hire()
+    const running: WorkTask = {
+      ...hired.tasks[0]!, difficulty: 1, complexity: 4, progress: 0.9,
+      status: 'working', terminalId: 'spark', slot: 0, model: 'reasoning',
+      local: true, fastMode: false, mercuryAuto: false, startedAt: 0, attempt: 1,
+    }
+    const state: GameState = {
+      ...hired, mercuryOwned: true, mercuryEnabled: false,
+      // This draw is between the ordinary 50% and upgraded 60% success odds.
+      rng: 6, tasks: [running], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER,
+      terminals: [{ id: 'spark', slots: 2, model: 'reasoning', yolo: true, fastMode: false }],
+    }
+    expect(taskWith(gameReducer(state, { type: 'tick', seconds: 1 }), running.id).status).toBe('failed')
+    const upgraded = gameReducer({ ...state, mercuryUpgraded: true }, { type: 'tick', seconds: 1 })
+    expect(taskWith(upgraded, running.id).status).toBe('artifact')
   })
 
   test('captures transient split affordability before automatic token spending in a batched tick', () => {
@@ -1596,6 +1652,132 @@ describe('extended engine contracts', () => {
     const forwarded = gameReducer(state, { type: 'tick', seconds: 1 })
     expect(taskWith(forwarded, task.id)).toMatchObject({ status: 'working', terminalId: 'terminal-2' })
     expect(forwarded.tokens).toBe(300_000)
+  })
+  test('Mercury 2.0 chooses the placement with the best deadline success', () => {
+    const base: GameState = { ...hire(), mercuryOwned: true, mercuryEnabled: true, advancedModelUnlocked: true, frontierModelUnlocked: true }
+    const task: WorkTask = {
+      ...hire().tasks[0]!,
+      id: 720,
+      difficulty: 5,
+      complexity: 4,
+      deadlineAt: 30,
+      status: 'assigned',
+      terminalId: null,
+      slot: null,
+    }
+    const state: GameState = {
+      ...base,
+      mercuryUpgraded: true,
+      tokens: MAX_TOKENS,
+      tasks: [task],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+      terminals: [
+        { id: 'terminal', slots: 1, model: 'advanced', fastMode: false, yolo: true },
+        { id: 'terminal-2', slots: 1, model: 'frontier', fastMode: true, yolo: true },
+      ],
+    }
+    const dispatched = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(dispatched, task.id)).toMatchObject({ status: 'working', terminalId: 'terminal-2', model: 'frontier', fastMode: true })
+  })
+
+  test('Mercury 2.0 avoids excess intelligence when success, speed, and cost are equal', () => {
+    const hired = hire()
+    const task: WorkTask = {
+      ...hired.tasks[0]!, difficulty: 5, complexity: 2, deadlineAt: 100,
+      status: 'assigned', terminalId: null, slot: null,
+    }
+    const state: GameState = {
+      ...hired, mercuryOwned: true, mercuryEnabled: true, mercuryUpgraded: true,
+      reasoningUnlocked: true, advancedModelUnlocked: true, frontierModelUnlocked: true,
+      tasks: [task], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER,
+      terminals: [
+        { id: 'terminal', slots: 1, model: 'advanced', fastMode: false, yolo: true },
+        { id: 'terminal-2', slots: 1, model: 'reasoning', fastMode: false, yolo: true },
+      ],
+    }
+    const dispatched = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(dispatched, task.id)).toMatchObject({ status: 'working', terminalId: 'terminal-2' })
+  })
+
+  test('Mercury 2.0 chooses faster completion when no placement can fit an attempt', () => {
+    const base: GameState = { ...hire(), mercuryOwned: true, mercuryEnabled: true, advancedModelUnlocked: true, frontierModelUnlocked: true }
+    const task: WorkTask = {
+      ...hire().tasks[0]!,
+      id: 721,
+      difficulty: 2,
+      complexity: 1,
+      deadlineAt: 1.5,
+      status: 'assigned',
+      terminalId: null,
+      slot: null,
+    }
+    const state: GameState = {
+      ...base,
+      mercuryUpgraded: true,
+      tokens: MAX_TOKENS,
+      tasks: [task],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+      terminals: [
+        { id: 'terminal', slots: 1, model: 'basic', fastMode: false, yolo: true },
+        { id: 'terminal-2', slots: 1, model: 'frontier', fastMode: true, yolo: true },
+      ],
+    }
+    const dispatched = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(dispatched, task.id).terminalId).toBe('terminal-2')
+  })
+
+  test('Mercury 2.0 reroutes an eligible retry without double-charging its forwarding fee', () => {
+    const base: GameState = { ...hire(), mercuryOwned: true, mercuryEnabled: true, advancedModelUnlocked: true, frontierModelUnlocked: true }
+    const source = hire().tasks[0]!
+    const active: WorkTask = {
+      ...source,
+      id: 722,
+      difficulty: 1,
+      status: 'working',
+      terminalId: 'terminal',
+      slot: 0,
+      model: 'advanced',
+      mercuryAuto: true,
+      attempt: 1,
+      failedAt: null,
+    }
+    const failed: WorkTask = {
+      ...source,
+      id: 723,
+      difficulty: 1,
+      status: 'failed',
+      terminalId: 'terminal',
+      slot: 0,
+      model: 'advanced',
+      mercuryAuto: true,
+      attempt: 1,
+      failedAt: 0,
+      deadlineAt: 100,
+    }
+    const state: GameState = {
+      ...base,
+      mercuryUpgraded: true,
+      elapsed: MERCURY_RETRY_DELAY,
+      tokens: 700_000,
+      tasks: [active, failed],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+      terminals: [
+        { id: 'terminal', slots: 1, model: 'advanced', fastMode: false, yolo: true },
+        { id: 'terminal-2', slots: 1, model: 'basic', fastMode: false, yolo: true },
+      ],
+    }
+    const shortOfReserve = { ...state, tokens: state.tokens - 1 }
+    expect(canFundMercuryRetry(shortOfReserve, failed)).toBe(false)
+    const blocked = gameReducer(shortOfReserve, { type: 'tick', seconds: 1 })
+    expect(taskWith(blocked, failed.id).status).toBe('failed')
+    expect(blocked.tokens).toBe(shortOfReserve.tokens)
+    const retried = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(retried, failed.id)).toMatchObject({ status: 'working', terminalId: 'terminal-2', model: 'basic', attempt: 2 })
+    expect(retried.tokens).toBe(600_000)
+    expect(mercuryReturnReservations(retried.tasks)).toBe(2 * MERCURY_FORWARD_COST)
   })
 
   test('Mercury dispatches all affordable assignments across every terminal slot', () => {
