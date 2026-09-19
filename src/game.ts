@@ -792,20 +792,10 @@ function canFundMercuryRetryAt(state: GameState, task: WorkTask, terminalId: Ter
   return Number.isFinite(attemptCost) && attemptCost >= 0 && Number.isFinite(required) &&
     Number.isFinite(state.tokens) && state.tokens >= required
 }
-export function canFundMercuryRetry(
-  state: GameState,
-  task: WorkTask,
-  terminalId?: TerminalId,
-  slot?: number,
-): boolean {
-  if (state.mercuryUpgraded && terminalId === undefined && slot === undefined) {
-    return bestMercuryPlacement(state, task, true) !== null
-  }
-  const selectedTerminal = terminalId ?? task.terminalId
-  const selectedSlot = slot ?? task.slot
-  return selectedTerminal !== null && selectedTerminal !== undefined &&
-    selectedSlot !== null && selectedSlot !== undefined &&
-    canFundMercuryRetryAt(state, task, selectedTerminal, selectedSlot)
+export function canFundMercuryRetry(state: GameState, task: WorkTask): boolean {
+  if (state.mercuryUpgraded) return bestMercuryPlacement(state, task, true) !== null
+  return task.terminalId !== null && task.slot !== null &&
+    canFundMercuryRetryAt(state, task, task.terminalId, task.slot)
 }
 
 
@@ -995,6 +985,7 @@ export const initialGame: GameState = {
   stage: 'ready', tiroAvatar: TIRO_AVATARS[0]!, submissions: 0, company: null, lastResult: null, energy: MAX_ENERGY,
   tokens: MAX_TOKENS, money: 0, shopDiscoveries: [], elapsed: 0, wonAt: null, tickRemainder: 0, tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }],
   completedTasks: 0, level: 3, completedArchitectureTasks: 0, reasoningUnlocked: false, fastModeUnlocked: false,
+  watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
   mercuryOwned: false, mercuryEnabled: false, mercuryUpgraded: false, tokenAutoBuy: false, tokenPacks: 10, market: null,
   socialPosts: [], nextTaskId: 1, nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
   expectation: 0.2, rng: 1, socialRng: 1, secondJob: null, secondJobUnlocked: false, secondJobApplications: 0,
@@ -1019,6 +1010,16 @@ export function isLocalTerminal(id: TerminalId): boolean {
 function cloudTerminalId(value: string): value is 'terminal' | 'terminal-2' {
   return value === 'terminal' || value === 'terminal-2'
 }
+export function gameNetWorth(state: Pick<GameState, 'money' | 'market'>): number {
+  const market = state.market
+  const markedBtc = market !== null && Number.isFinite(market.btc) && Number.isFinite(market.price)
+    ? market.btc * market.price
+    : 0
+  const tradingUsd = market !== null && Number.isFinite(market.usd) ? market.usd : 0
+  const cash = Number.isFinite(state.money) ? state.money : 0
+  return cash + tradingUsd + markedBtc
+}
+
 function advanceTask(
   task: WorkTask,
   elapsed: number,
@@ -1069,8 +1070,8 @@ function updateSparkDelivery(state: GameState): GameState {
 function taskSlotFree(state: GameState, terminalId: TerminalId, slot: number, ignoreTaskId?: number): boolean {
   return state.tasks.every((task) => task.id === ignoreTaskId || task.terminalId !== terminalId || task.slot !== slot || task.status === 'assigned')
 }
-function firstFreeSlot(state: GameState, terminal: TerminalState): number | null {
-  for (let slot = 0; slot < terminal.slots; slot += 1) if (taskSlotFree(state, terminal.id, slot)) return slot
+function firstFreeSlot(state: GameState, terminal: TerminalState, ignoreTaskId?: number): number | null {
+  for (let slot = 0; slot < terminal.slots; slot += 1) if (taskSlotFree(state, terminal.id, slot, ignoreTaskId)) return slot
   return null
 }
 function canFundAssignedTask(state: GameState, task: WorkTask): boolean {
@@ -1078,7 +1079,6 @@ function canFundAssignedTask(state: GameState, task: WorkTask): boolean {
     if (state.mercuryUpgraded) return bestMercuryPlacement(state, task, false) !== null
     return state.terminals.some((terminal) => {
       const slot = firstFreeSlot(state, terminal)
-      const fastMode = isLocalTerminal(terminal.id) ? false : terminal.fastMode
       return slot !== null && canFundMercuryAttempt(state, task, terminal.id)
     })
   }
@@ -1236,11 +1236,7 @@ function mercuryTerminalOrder(state: GameState, task: WorkTask): TerminalState[]
 type MercuryPlacement = {
   terminal: TerminalState
   slot: number
-  model: AgentModelId
-  fastMode: boolean
-  local: boolean
   cost: number
-  duration: number
   attempts: number
   deadlineSuccess: number
   expectedCompletion: number
@@ -1250,7 +1246,7 @@ type MercuryPlacement = {
 
 function mercuryExecutionDuration(task: WorkTask, model: AgentModelId, fastMode: boolean): number {
   const speed = AGENT_MODELS[model].speed * (fastMode ? 2 : 1) / TASK_PACING_MULTIPLIER
-  return speed > 0 && Number.isFinite(task.difficulty) ? Math.max(0, task.difficulty / speed) : Number.POSITIVE_INFINITY
+  return speed > 0 && Number.isFinite(task.difficulty) ? Math.max(0, Math.ceil(task.difficulty / speed)) : Number.POSITIVE_INFINITY
 }
 
 function mercuryAttemptsUntilDeadline(duration: number, remaining: number): number {
@@ -1259,16 +1255,10 @@ function mercuryAttemptsUntilDeadline(duration: number, remaining: number): numb
 }
 
 function mercuryExpectedCompletion(duration: number, chance: number, attempts: number): number {
-  if (!Number.isFinite(duration) || attempts <= 0) return duration
-  let survival = 1
-  let expected = 0
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const completion = attempt * duration + (attempt - 1) * MERCURY_RETRY_DELAY
-    expected += survival * chance * completion
-    survival *= 1 - chance
-  }
-  const finalCompletion = attempts * duration + (attempts - 1) * MERCURY_RETRY_DELAY
-  return expected + survival * finalCompletion
+  if (!Number.isFinite(duration) || attempts <= 0 || chance <= 0) return duration
+  // Expected attempts of a geometric distribution truncated at the deadline.
+  const expectedAttempts = (1 - (1 - chance) ** attempts) / chance
+  return expectedAttempts * (duration + MERCURY_RETRY_DELAY) - MERCURY_RETRY_DELAY
 }
 
 function mercuryPlacement(
@@ -1289,11 +1279,7 @@ function mercuryPlacement(
     ? {
       terminal,
       slot,
-      model,
-      fastMode,
-      local,
       cost,
-      duration,
       attempts,
       deadlineSuccess,
       expectedCompletion: mercuryExpectedCompletion(duration, chance, attempts),
@@ -1306,15 +1292,14 @@ function mercuryPlacement(
 function mercuryPlacementCandidates(state: GameState, task: WorkTask, retry: boolean): MercuryPlacement[] {
   const candidates: MercuryPlacement[] = []
   for (const terminal of state.terminals) {
-    for (let slot = 0; slot < terminal.slots; slot += 1) {
-      if (!taskSlotFree(state, terminal.id, slot, retry ? task.id : undefined)) continue
-      const placement = mercuryPlacement(state, task, terminal, slot)
-      if (placement === null) continue
-      const fundable = retry
-        ? canFundMercuryRetryAt(state, task, terminal.id, slot)
-        : canFundMercuryAttempt(state, task, terminal.id)
-      if (fundable) candidates.push(placement)
-    }
+    const slot = firstFreeSlot(state, terminal, retry ? task.id : undefined)
+    if (slot === null) continue
+    const fundable = retry
+      ? canFundMercuryRetryAt(state, task, terminal.id, slot)
+      : canFundMercuryAttempt(state, task, terminal.id)
+    if (!fundable) continue
+    const placement = mercuryPlacement(state, task, terminal, slot)
+    if (placement !== null) candidates.push(placement)
   }
   return candidates
 }
@@ -1848,6 +1833,10 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         frontierPreview = {
           ...frontierPreview,
           elapsed: monopolyAt,
+          monopolyAnnouncedAt: monopolyAt,
+          money: 300_000,
+          tasks: [],
+          taskQueue: [],
           nextTaskAt: monopolyAt,
           secondJob: frontierPreview.secondJob === null ? null : { ...frontierPreview.secondJob, nextTaskAt: monopolyAt },
         }
