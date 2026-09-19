@@ -63,7 +63,7 @@ The flow of the game is:
   surrounding window into an empty bottom gutter.
   - Split window(\$200, $400, $1000): The window can be split at max 4. Agents
     can run simultaneously.
-  - Yolo mode($420): By default, the terminal asks for command approval(yes/no) for
+  - Yolo mode($4,242): By default, the terminal asks for command approval(yes/no) for
     confirmation, randomly every 3–6 seconds of active work, including the opening. This lifts the restriction.
     Applies to window-wise. The terminal window border shines with rainbow color
     animation. Idle panes display “YOLO!”.
