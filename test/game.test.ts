@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  BASE_SALARY,
   canFundMercuryRetry,
   energyDecayInterval,
   hasTokenDeficit,
@@ -60,11 +61,11 @@ describe('shop product discovery', () => {
     expect(available.shopDiscoveries).not.toContain('terminal')
   })
   test('YOLO discovery and purchase honor the exact affordability boundary', () => {
-    const belowThreshold = gameReducer({ ...hire(), money: 4_241 }, { type: 'set-token-packs', packs: 1 })
+    const belowThreshold = gameReducer({ ...hire(), money: 2_221 }, { type: 'set-token-packs', packs: 1 })
     expect(belowThreshold.shopDiscoveries).not.toContain('yolo')
     expect(gameReducer(belowThreshold, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'terminal', source: 'click' })).toBe(belowThreshold)
 
-    const atThreshold = gameReducer({ ...hire(), money: 4_242 }, { type: 'set-token-packs', packs: 1 })
+    const atThreshold = gameReducer({ ...hire(), money: 2_222 }, { type: 'set-token-packs', packs: 1 })
     expect(atThreshold.shopDiscoveries).toContain('yolo')
 
     const purchased = gameReducer(atThreshold, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'terminal', source: 'click' })
@@ -118,13 +119,13 @@ describe('shop product discovery', () => {
       nextTaskAt: Number.MAX_SAFE_INTEGER,
     }
     const ticked = gameReducer(state, { type: 'tick', seconds: 1 })
-    expect(ticked.money).toBe(104)
+    expect(ticked.money).toBe(199 + BASE_SALARY - 100)
     expect(ticked.tokens).toBe(100_000)
     expect(ticked.shopDiscoveries).toContain('split')
   })
 
   test('reset clears discoveries and dev previews include owned products', () => {
-    const discovered = gameReducer({ ...hire(), money: 4_242 }, { type: 'set-token-packs', packs: 1 })
+    const discovered = gameReducer({ ...hire(), money: 2_222 }, { type: 'set-token-packs', packs: 1 })
     expect(discovered.shopDiscoveries).toContain('yolo')
     expect(gameReducer(discovered, { type: 'reset' })).toBe(initialGame)
 
@@ -229,7 +230,7 @@ describe('employment transitions', () => {
       individual = gameReducer(individual, { type: 'tick', seconds: 1 })
     }
     expect(batch).toEqual(individual)
-    expect(batch.money).toBe(100)
+    expect(batch.money).toBe(20 * BASE_SALARY)
   })
 
   test('fractional ticks accumulate without double-paying or double-working', () => {
@@ -248,7 +249,7 @@ describe('employment transitions', () => {
     const whole = gameReducer(half, { type: 'tick', seconds: 0.5 })
     expect(whole.elapsed).toBe(1)
     expect(whole.tickRemainder).toBe(0)
-    expect(whole.money).toBe(5)
+    expect(whole.money).toBe(BASE_SALARY)
     expect(whole).toEqual(gameReducer(state, { type: 'tick', seconds: 1 }))
   })
 
@@ -265,9 +266,9 @@ describe('employment transitions', () => {
     expect(state.money).toBe(99)
     state = gameReducer(state, { type: 'tick', seconds: 0.5 })
     expect(state.tokens).toBe(200_000)
-    expect(state.money).toBe(4)
+    expect(state.money).toBe(199 + BASE_SALARY - 200)
     const unaffordable = gameReducer({ ...state, tokens: 0 }, { type: 'tick', seconds: 1 })
-    expect(unaffordable.money).toBe(9)
+    expect(unaffordable.money).toBe(state.money + BASE_SALARY)
     const off = gameReducer({ ...state, tokenAutoBuy: false, tokens: 0, money: 200 }, { type: 'tick', seconds: 1 })
     expect(off.tokens).toBe(0)
     const lost = gameReducer({ ...state, stage: 'lost', tokens: 0, money: 200 }, { type: 'tick', seconds: 1 })
@@ -520,7 +521,7 @@ describe('employment transitions', () => {
     expect(longRunning.stage).toBe('hired')
     expect(longRunning.failure).toBeNull()
     expect(longRunning.elapsed).toBe(10_000)
-    expect(longRunning.money).toBe(50_000)
+    expect(longRunning.money).toBe(10_000 * BASE_SALARY)
     expect(longRunning.tasks).toHaveLength(0)
   })
 
@@ -559,7 +560,7 @@ describe('terminal upgrades and concurrent work', () => {
   test('upgrade purchases are atomic, affordable, and non-repeatable', () => {
     let state = hire()
     expect(upgradePrice(state, 'split', 'terminal')).toBe(200)
-    expect(upgradePrice(state, 'yolo', 'terminal')).toBe(4_242)
+    expect(upgradePrice(state, 'yolo', 'terminal')).toBe(2_222)
     expect(upgradePrice(state, 'terminal', 'terminal')).toBe(1_000)
     expect(gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'click' })).toEqual(state)
 
@@ -576,7 +577,7 @@ describe('terminal upgrades and concurrent work', () => {
     const id = taskWith(state, 1).id
     state = {
       ...state,
-      money: 4_242,
+      money: 2_222,
       tasks: state.tasks.map((task) => ({ ...task, deadlineAt: 1_000 })),
     }
     state = gameReducer(state, { type: 'start-task', id, terminalId: 'terminal', slot: 0 })
@@ -587,7 +588,7 @@ describe('terminal upgrades and concurrent work', () => {
     expect(taskWith(state, id).status).toBe('approval')
     const moneyBeforeYolo = state.money
     state = gameReducer(state, { type: 'buy-upgrade', upgrade: 'yolo', terminalId: 'terminal', source: 'click' })
-    expect(state.money).toBe(moneyBeforeYolo - 4_242)
+    expect(state.money).toBe(moneyBeforeYolo - 2_222)
     expect(state.terminals[0]?.yolo).toBe(true)
     expect(taskWith(state, id).status).toBe('working')
     expect(taskWith(state, id).approvalPromptKey).toBeNull()

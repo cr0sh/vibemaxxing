@@ -249,7 +249,7 @@ export const TOKEN_PURCHASE_COST = 100
 // Three-times longer work windows preserve the existing model and fast-mode ratios.
 const TASK_PACING_MULTIPLIER = 3
 const TASK_REWARD_PER_DIFFICULTY = 15
-export const BASE_SALARY = 5
+export const BASE_SALARY = 15
 // Keep gross-income projection aligned with the slower assignment cadence.
 const BASELINE_TASK_CYCLE_SECONDS = 18
 const OPENING_GRACE_SECONDS = 180
@@ -266,7 +266,7 @@ const MAX_TERMINAL_SLOTS = 4
 const MAX_CLOUD_TERMINALS = 2
 const TASK_QUEUE_SIZE = 3
 const SPLIT_PRICES: readonly number[] = [200, 400, 1_000]
-const YOLO_PRICE = 4_242
+const YOLO_PRICE = 2_222
 const SECONDARY_PRICE_MULTIPLIER = 2
 const ADDITIONAL_TERMINAL_PRICE = 1_000
 const WATERCOOLER_THRESHOLD = MAX_TOKENS * 0.2

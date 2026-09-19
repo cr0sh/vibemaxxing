@@ -42,7 +42,7 @@ The flow of the game is:
     that the boss specified. You'll lose.
     Basic tasks take 9–18 seconds of active work, excluding approval pauses.
     Other models and Fast mode retain their relative speed advantages.
-  - Each employed job pays you \$5 every second.
+  - Each employed job pays you \$15 every second.
 - The terminal can be "upgraded" with several features. Features are purchased
   by drag-and-dropping the item icon from the shop UI to the terminal.
   Mouse, touch, and stylus drops install the upgrade on the target terminal.
@@ -63,14 +63,14 @@ The flow of the game is:
   surrounding window into an empty bottom gutter.
   - Split window(\$200, $400, $1000): The window can be split at max 4. Agents
     can run simultaneously.
-  - Yolo mode($4,242): By default, the terminal asks for command approval(yes/no) for
+  - Yolo mode($2,222): By default, the terminal asks for command approval(yes/no) for
     confirmation, randomly every 3–6 seconds of active work, including the opening. This lifts the restriction.
     Applies to window-wise. The terminal window border shines with rainbow color
     animation. Idle panes display “YOLO!”.
   - Multi-window($1000): One more window. The split window upgrade costs double
     here, \$400/\$800/\$2000 each.
 - The boss has an internal "expectation" value governing assignment cadence and
-  deadlines. It rises with projected gross earnings, using the same \$5/s base
+  deadlines. It rises with projected gross earnings, using the same \$15/s base
   wage as actual pay plus expected task rewards. Opening grace and minimum
   execution budgets are retained.
 - After solving the first two tasks, the boss enables "incentivized mode".
@@ -224,9 +224,22 @@ The flow of the game is:
   33 combined tasks; L5 27 per job after the second-career unlock; frontier
   97 combined tasks with a second job. Checkpoints remain earned, not timer-gated.
 - Rewards per difficulty are 15 instead of 5, compensating for fewer deliveries.
-  L4/L5 multipliers remain 100×/600×. Boss income projection per real second,
-  model/token multipliers, purchase prices, and \$5/s wages are unchanged.
-  Base wages alone fund the first \$200 split in 40 seconds.
+  L4/L5 multipliers remain 100×/600×, as do model/token multipliers and purchase
+  prices other than YOLO. Base wages are \$15/s per job, with the same rate used
+  in boss income projection. Without other spending, wages fund the first \$200
+  split after 14 seconds.
+- YOLO's \$2,222 price and \$15/s wage target a median purchase at 3:00 ±45s
+  after hiring. A 64-seed real-reducer calibration measured 217.5s (3:37.5),
+  ranging from 211–223.5s, with every run reaching YOLO. The policy uses serialized
+  2s actions, 2.5s approval reactions, all three primary split upgrades before
+  YOLO, and legal social token recovery without artificial cash or token grants.
+  Price reduction alone at the old \$5/s wage measured a 326.25s median.
+  Across the same 64 seeds, buying only one split before YOLO gives a 145s median
+  (140–149.5s); buying all splits with slower 3s actions gives a 220.25s median
+  (214.5–228.5s). All policy medians fit the target; individual slower-action runs
+  can exceed 225s. No run failed before YOLO, and pre-Mercury energy stayed intact.
+  Other purchase orders and reaction times can shift the checkpoint; this is a
+  simulation benchmark, not a human playtest or a scripted unlock timer.
 - The $4.242M victory threshold includes cash, trading USD, and BTC at its current
   market price, without double-counting transfers. Winning pauses only until
   acknowledgment; the achievement remains recorded during continued play.
