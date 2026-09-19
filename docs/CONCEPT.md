@@ -67,6 +67,9 @@ The flow of the game is:
     confirmation, randomly every 3–6 seconds of active work, including the opening. This lifts the restriction.
     Applies to window-wise. The terminal window border shines with rainbow color
     animation. Idle panes display “YOLO!”.
+    Its price is visible from hiring as a savings target, but buying and dragging
+    remain disabled until affordable. Each purchase affects only the selected
+    terminal, including local Spark and Spark Ultra windows.
   - Multi-window($1000): One more window. The split window upgrade costs double
     here, \$400/\$800/\$2000 each.
 - The boss has an internal "expectation" value governing assignment cadence and
@@ -156,12 +159,18 @@ The flow of the game is:
   - Realizing a positive PNL on BTC trading
   - Scrolling "shorts"(explained below)
 
-  Each qualifying interaction resets the inactivity timer and penalty ramp,
-  and restores 1 energy.
+  Each qualifying interaction resets the inactivity timer and penalty ramp.
+  A settled Shorts navigation restores 5 energy; other qualifying interactions
+  restore 1. Energy is capped at 100. Watching a clip without navigating does not
+  restore energy.
 
 - Tiro gloats that the competition is gone and demands payment. Token refill
   prices compound by 1.1× every five seconds. The widget bar shows the current
   multiplier in bold dark red, so the rising cost stays visible outside Shop.
+  Shop explains the escape route: local Spark and Spark Ultra execution is
+  token-free, but Mercury handoffs are not. Disable Mercury, drag assignments to
+  local terminals, and return artifacts to Messenger manually to avoid those
+  fees. Energy decay continues while Mercury is disabled.
 
 - Some time later(like ≈1m?), Mapple announces another local LLM machine (Mapple
   Spark Ultra) that costs \$100k, with intelligence=3. Same delivery delay
@@ -215,21 +224,25 @@ The flow of the game is:
   pre-purchase penalties or refilling energy to maximum. The decay curve still
   uses total game time, not time since purchase. Application submission costs,
   task deadlines, wages, and token rules remain unchanged.
-- Monopoly starts 60 seconds after the frontier model unlock. Spark Ultra is
+- Automatic token purchases consider pending assignment/retry costs and reserved
+  Mercury return fees, not just balances below 1M. They still buy the selected
+  pack at most once per simulation second, using the current price and available
+  cash. A capacity-only blockage does not cause an otherwise unnecessary refill.
+- Monopoly starts 360 seconds after the frontier model unlock. Spark Ultra is
   announced 60 seconds later; orders open after another 10 seconds. Its price
   remains $100,000, with the same 15–60 second delivery rule as Spark.
 - Execution, deadline budgets, and assignment cadence are about 3× longer.
   Task-count gates are correspondingly reduced: incentives 2; L4 17; Fast mode
   2 architecture tasks; Market 18 total plus 3 architecture tasks; second job
   33 combined tasks; L5 27 per job after the second-career unlock; frontier
-  97 combined tasks with a second job. Checkpoints remain earned, not timer-gated.
+  65 combined tasks with a second job. Checkpoints remain earned, not timer-gated.
 - Rewards per difficulty are 15 instead of 5, compensating for fewer deliveries.
   L4/L5 multipliers remain 100×/600×, as do model/token multipliers and purchase
   prices other than YOLO. Base wages are \$15/s per job, with the same rate used
   in boss income projection. Without other spending, wages fund the first \$200
   split after 14 seconds.
 - YOLO's \$2,222 price and \$15/s wage target a median purchase at 3:00 ±45s
-  after hiring. A 64-seed real-reducer calibration measured 217.5s (3:37.5),
+  after hiring. An earlier 64-seed real-reducer calibration measured 217.5s (3:37.5),
   ranging from 211–223.5s, with every run reaching YOLO. The policy uses serialized
   2s actions, 2.5s approval reactions, all three primary split upgrades before
   YOLO, and legal social token recovery without artificial cash or token grants.
@@ -240,6 +253,14 @@ The flow of the game is:
   can exceed 225s. No run failed before YOLO, and pre-Mercury energy stayed intact.
   Other purchase orders and reaction times can shift the checkpoint; this is a
   simulation benchmark, not a human playtest or a scripted unlock timer.
+- Follow-up pacing controls use 32 seeds each at serialized 2s and 4s action
+  cadences, cloud Fast mode, YOLO on every terminal, and priority energy recovery.
+  Moving Frontier from 97 to 65 tasks reduces median second-job-to-Frontier gaps
+  from 535/506s to 257/228s. The longer monopoly delay preserves its approximate
+  arrival: medians move from 1186/1244s to 1180/1238s.
+  During minutes 10–20, Shorts actions fall from 5.68/5.33 to 2.24/2.54 per minute.
+  These controls keep Mercury enabled through monopoly and do not trade; they
+  are pacing benchmarks, not human win rates. Deadline rules remain unchanged.
 - The $4.242M victory threshold includes cash, trading USD, and BTC at its current
   market price, without double-counting transfers. Winning pauses only until
   acknowledgment; the achievement remains recorded during continued play.
@@ -248,7 +269,7 @@ The flow of the game is:
   clip-keyed cards for bounded infinite scrolling. Both neighboring videos
   preload before navigation; moving a clip to the center preserves its media
   element. Only the current foreground clip plays. Each settled user transition
-  increments the viewing count and restores energy once; playback, focus,
+  increments the viewing count and restores 5 energy once; playback, focus,
   resizing, and internal recentering do not. Clips retain their source links.
   Media failures show an explicit error and source link rather than an unloaded
   placeholder; playback still depends on GIPHY availability.

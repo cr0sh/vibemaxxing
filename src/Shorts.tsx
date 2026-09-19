@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Dispatch, KeyboardEvent, WheelEvent } from 'react'
-import type { GameAction, GameState } from './game'
+import { SHORTS_ENERGY_GAIN, type GameAction, type GameState } from './game'
 import { SHORTS_CATALOG, type ShortVideo } from './shortsCatalog'
 import { useI18n } from './i18n'
 import './Shorts.css'
@@ -296,7 +296,7 @@ export function ShortsContent({ state, dispatch, active }: ShortsProps) {
             ? t('shorts.status.ended')
             : !active
               ? t('shorts.status.background')
-              : t('shorts.status.active')}
+              : t('shorts.status.active', { amount: formatNumber(SHORTS_ENERGY_GAIN) })}
       </p>
       <div
         ref={feedRef}

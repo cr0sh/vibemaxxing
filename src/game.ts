@@ -240,6 +240,7 @@ export const companies: readonly string[] = [
 ]
 
 const MAX_ENERGY = 100
+export const SHORTS_ENERGY_GAIN = 5
 export const MAX_TOKENS = 10_000_000
 export const SPARK_ULTRA_PRICE = 100_000
 export const WIN_NET_WORTH = 4_242_000
@@ -286,7 +287,9 @@ const MARKET_TASK_GATE = 18
 const MARKET_ARCHITECTURE_GATE = 3
 const SECOND_JOB_TASK_GATE = 33
 const LEVEL_5_TASK_GATE = 27
-const FRONTIER_TASK_GATE = 97
+const FRONTIER_TASK_GATE = 65
+// Bring Frontier forward without also bringing the monopoly cliff forward.
+const MONOPOLY_DELAY_SECONDS = 360
 const APPROVAL_DELAY_MIN_SECONDS = 3
 const APPROVAL_DELAY_MAX_SECONDS = 6
 const DELIVERY_ASSIGNMENT_ACCELERATION_SECONDS = 15
@@ -913,8 +916,8 @@ function appendFeatureAnnouncements(state: GameState): GameState {
     current = appendSocialPost(current, { id: 'fast-mode-unlocked', type: 'fast-mode', elapsed: current.elapsed, likes: 0 })
   }
   if (current.frontierUnlockedAt !== null && current.monopolyAnnouncedAt === null &&
-    current.elapsed >= current.frontierUnlockedAt + 60) {
-    const announcedAt = current.frontierUnlockedAt + 60
+    current.elapsed >= current.frontierUnlockedAt + MONOPOLY_DELAY_SECONDS) {
+    const announcedAt = current.frontierUnlockedAt + MONOPOLY_DELAY_SECONDS
     current = { ...current, monopolyAnnouncedAt: announcedAt }
     current = appendSocialPost(current, { id: 'monopoly-announced', type: 'monopoly', elapsed: announcedAt, likes: 0 })
   }
@@ -1242,7 +1245,7 @@ function processMercury(state: GameState): GameState {
   return current
 }
 function autoBuyTokens(state: GameState): GameState {
-  return state.stage === 'hired' && state.tokenAutoBuy && state.tokens < TOKEN_AUTO_BUY_THRESHOLD
+  return state.stage === 'hired' && state.tokenAutoBuy && hasTokenDeficit(state)
     ? purchaseTokens(state, state.tokenPacks)
     : state
 }
@@ -1264,11 +1267,11 @@ function unlockShorts(state: GameState): GameState {
     appendSocialPost(unlocked, { id: 'shorts-unlocked', type: 'shorts', elapsed: state.elapsed, likes: 0 })
 }
 
-function humanInteraction(state: GameState): GameState {
+function humanInteraction(state: GameState, energyGain = 1): GameState {
   if (state.stage !== 'hired') return state
   return {
     ...state,
-    energy: Math.min(MAX_ENERGY, state.energy + 1),
+    energy: Math.min(MAX_ENERGY, state.energy + energyGain),
     inactivityElapsed: 0,
     inactivityDecay: 1,
   }
@@ -1636,7 +1639,7 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         if (action.stage === 'second-job') return issueAvailableAssignments(preview)
         preview = {
           ...preview,
-          completedTasks: 67,
+          completedTasks: FRONTIER_TASK_GATE - 30,
           level: 5,
           tasks: [],
           taskQueue: [],
@@ -1655,26 +1658,28 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         }
         let frontierPreview = appendSocialPost(issueAvailableAssignments(preview), { id: 'frontier-model-unlocked', type: 'frontier-model', elapsed: 30, likes: 0 })
         if (action.stage === 'frontier') return frontierPreview
+        const monopolyAt = frontierPreview.elapsed + MONOPOLY_DELAY_SECONDS
         frontierPreview = {
           ...frontierPreview,
-          elapsed: 90,
-          monopolyAnnouncedAt: 90,
+          elapsed: monopolyAt,
+          monopolyAnnouncedAt: monopolyAt,
           money: 300_000,
           tasks: [],
           taskQueue: [],
-          nextTaskAt: 90,
-          secondJob: frontierPreview.secondJob === null ? null : { ...frontierPreview.secondJob, nextTaskAt: 90 },
+          nextTaskAt: monopolyAt,
+          secondJob: frontierPreview.secondJob === null ? null : { ...frontierPreview.secondJob, nextTaskAt: monopolyAt },
         }
-        frontierPreview = appendSocialPost(frontierPreview, { id: 'monopoly-announced', type: 'monopoly', elapsed: 90, likes: 0 })
+        frontierPreview = appendSocialPost(frontierPreview, { id: 'monopoly-announced', type: 'monopoly', elapsed: monopolyAt, likes: 0 })
         if (action.stage === 'monopoly') return issueAvailableAssignments(frontierPreview)
+        const sparkUltraAt = monopolyAt + 60
         frontierPreview = {
           ...frontierPreview,
-          elapsed: 150,
-          sparkUltraAnnouncedAt: 150,
-          nextTaskAt: 150,
-          secondJob: frontierPreview.secondJob === null ? null : { ...frontierPreview.secondJob, nextTaskAt: 150 },
+          elapsed: sparkUltraAt,
+          sparkUltraAnnouncedAt: sparkUltraAt,
+          nextTaskAt: sparkUltraAt,
+          secondJob: frontierPreview.secondJob === null ? null : { ...frontierPreview.secondJob, nextTaskAt: sparkUltraAt },
         }
-        frontierPreview = appendSocialPost(frontierPreview, { id: 'spark-ultra-announced', type: 'spark-ultra', elapsed: 150, likes: 0 })
+        frontierPreview = appendSocialPost(frontierPreview, { id: 'spark-ultra-announced', type: 'spark-ultra', elapsed: sparkUltraAt, likes: 0 })
         return issueAvailableAssignments(frontierPreview)
       }
       const company = state.company !== null && companies.includes(state.company) ? state.company : companies[0]
@@ -1863,7 +1868,7 @@ function reduceGame(state: GameState, action: GameAction): GameState {
       return issueAvailableAssignments(refillTaskQueue(accepted))
     }
     case 'scroll-short':
-      return state.stage === 'hired' && state.shortsUnlocked ? maybeWin(humanInteraction(state)) : state
+      return state.stage === 'hired' && state.shortsUnlocked ? maybeWin(humanInteraction(state, SHORTS_ENERGY_GAIN)) : state
     case 'market-transfer': {
       if (state.stage !== 'hired' || state.market === null) return state
       const amount = action.amount === 'max'
