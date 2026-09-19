@@ -146,10 +146,11 @@ The flow of the game is:
 - (Til the above the targeted playtime cumulative is 15 mins)
 
 - As work becomes automated, boredom becomes part of the resource pressure.
-  After the first hire, energy declines after an interval without qualifying
-  human interaction. The interval decreases continuously from 20 seconds
-  initially to 10 seconds at 10 elapsed minutes and 5 seconds at 30 minutes,
-  then stays at 5 seconds. Consecutive idle penalties double: -1, -2, -4, -8,
+  Energy inactivity decay starts only after purchasing Mercury, when Shorts
+  also becomes available. Manual work before that purchase does not accumulate
+  idle time or energy penalties. After activation, the interval follows total
+  game time: 20 seconds at time zero, 10 seconds at 10 elapsed minutes, and
+  5 seconds at 30 minutes, then stays at 5 seconds. Consecutive idle penalties double: -1, -2, -4, -8,
   then -16 per interval. The qualifying interactions are:
   - Purchasing an item with CLICKING (so token autopurchase is not counted)
   - Realizing a positive PNL on BTC trading
@@ -208,9 +209,12 @@ The flow of the game is:
 
 ## Implementation and balance notes
 
-- The inactivity clock starts on accepting the first job, not during initial
-  applications, where none of the qualifying recovery interactions are available.
-  Application submission costs remain unchanged.
+- Mercury ownership gates the inactivity clock; disabling its automatic handoffs
+  does not pause energy decay. Purchasing Mercury resets the idle timer and
+  penalty ramp through the normal purchase interaction, without retroactive
+  pre-purchase penalties or refilling energy to maximum. The decay curve still
+  uses total game time, not time since purchase. Application submission costs,
+  task deadlines, wages, and token rules remain unchanged.
 - Monopoly starts 60 seconds after the frontier model unlock. Spark Ultra is
   announced 60 seconds later; orders open after another 10 seconds. Its price
   remains $100,000, with the same 15–60 second delivery rule as Spark.
