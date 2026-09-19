@@ -409,7 +409,7 @@ export function MarketContent({ state, dispatch }: MarketProps) {
                   aria-describedby="market-btc-help market-btc-notional"
                 />
                 <span id="market-btc-notional" className="market-quantity-hint">
-                  <AnimatedMarketNumber target={btcNotional ?? undefined} format={formatQuantityNotional} />
+                  {formatQuantityNotional(btcNotional ?? undefined)}
                 </span>
               </div>
               <span id="market-btc-help" className="market-form-help">
