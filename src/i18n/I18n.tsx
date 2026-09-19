@@ -7,11 +7,9 @@ import {
   LOCALE_STORAGE_KEY,
   preferredLocale,
   resolveLocale,
-  SUPPORTED_LOCALES,
   type Locale,
   type MessageKey,
 } from './catalog'
-import './LanguagePicker.css'
 
 
 
@@ -76,22 +74,4 @@ export function Localized({ message, values = {} }: { message: MessageKey; value
     if (!Object.hasOwn(values, part)) throw new Error(`Missing parameter "${part}" for message "${message}"`)
     return <Fragment key={index}>{values[part]}</Fragment>
   })}</>
-}
-
-export function LanguagePicker() {
-  const { locale, setLocale, t } = useI18n()
-  return (
-    <label className="language-picker" title={t('language.picker.label')}>
-      <span className="language-picker-globe" aria-hidden="true">🌐</span>
-      <select
-        value={locale}
-        aria-label={t('language.picker.aria')}
-        onChange={(event) => setLocale(resolveLocale(event.currentTarget.value))}
-      >
-        {SUPPORTED_LOCALES.map((option) => (
-          <option key={option} value={option} lang={option}>{englishCatalog[`language.name.${option}`]}</option>
-        ))}
-      </select>
-    </label>
-  )
 }
