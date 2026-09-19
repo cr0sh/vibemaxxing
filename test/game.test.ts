@@ -506,6 +506,8 @@ describe('employment transitions', () => {
   test('task-free employment remains active when the player keeps scrolling Shorts', () => {
     let longRunning: GameState = {
       ...hire(),
+      mercuryOwned: true,
+      mercuryEnabled: false,
       tasks: [],
       taskQueue: [],
       nextTaskAt: 1_000_000,
