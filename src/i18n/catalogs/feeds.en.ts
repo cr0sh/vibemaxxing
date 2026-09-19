@@ -23,5 +23,5 @@ export const feedsEnglish = {
   'social.fastMode.emphasis': 'twice the speed, twice the tokens',
   'social.fastMode.body': 'You’ll find the switch in Shop.',
   'social.monopoly.lead': 'Where else are you going to go?',
-  'social.monopoly.body': 'The competition’s gone. Token refills cost 8% more every five seconds now. Pay up or stop working.',
+  'social.monopoly.body': 'The competition’s gone. Token refills cost 7% more every five seconds now. Pay up or stop working.',
 } as const
