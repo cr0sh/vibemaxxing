@@ -342,7 +342,7 @@ export function tokenPriceMultiplier(state: Pick<GameState, 'elapsed' | 'monopol
   if (state.monopolyAnnouncedAt === null || !Number.isFinite(state.monopolyAnnouncedAt)) return 1
   const elapsed = Number.isFinite(state.elapsed) ? state.elapsed : state.monopolyAnnouncedAt
   const steps = Math.floor(Math.max(0, elapsed - state.monopolyAnnouncedAt) / 5 + Number.EPSILON * 8)
-  return 1.05 ** steps
+  return 1.08 ** steps
 }
 
 export function tokenPurchaseCost(amount: number, state: Pick<GameState, 'elapsed' | 'monopolyAnnouncedAt'>): number {

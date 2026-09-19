@@ -211,7 +211,7 @@ export const englishCatalog = {
   'shop.autoBuyAria': 'Automatically buy tokens when balance is low or pending work needs them',
   'shop.tokensReceived': '{amount} tokens received · partial packs prorated',
   'shop.inventoryFull': 'Inventory is at the 10M token limit.',
-  'shop.monopolyRate': 'Monopoly rate {multiplier}× · +5% every 5s · next increase in {seconds}s.',
+  'shop.monopolyRate': 'Monopoly rate {multiplier}× · +8% every 5s · next increase in {seconds}s.',
   'shop.monopolyGuidance': 'Escape route: local Spark and Spark Ultra execution is token-free, but Mercury handoffs still cost tokens. Turn Mercury off and manually forward tasks and artifacts to avoid those fees; turning automation off does not stop energy decay.',
   'shop.balanceFull': 'Balance full',
 

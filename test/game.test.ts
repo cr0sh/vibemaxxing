@@ -2232,10 +2232,10 @@ describe('extended engine contracts', () => {
 
   test('monopoly purchases compound on five second boundaries without an extra rounding cent', () => {
     const base = gameReducer(hire(), { type: 'dev-jump', stage: 'monopoly' })
-    for (const [seconds, price] of [[4, 100], [5, 105], [10, 110.25]] as const) {
+    for (const [seconds, price] of [[4, 100], [5, 108], [10, 116.64]] as const) {
       const state = { ...base, elapsed: base.monopolyAnnouncedAt! + seconds, tokens: 0 }
       const bought = gameReducer(state, { type: 'buy-tokens', packs: 1 })
-      expect(state.money - bought.money).toBe(price)
+      expect(bought.money).toBe(state.money - price)
       expect(bought.tokens).toBe(100_000)
     }
   })
