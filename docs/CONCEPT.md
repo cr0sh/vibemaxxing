@@ -53,7 +53,7 @@ The flow of the game is:
   Newly discovered products notify the Shop dock icon; balance fluctuations
   and already-discovered upgrades do not. Viewing Shop acknowledges its updates.
   Newly discovered entries wait until Shop is visible and focused, then get a
-  golden border/glow for five real seconds or until that product is purchased,
+  golden border/glow for fifteen real seconds or until that product is purchased,
   whichever comes first. Independent timers start immediately for discoveries
   made while Shop is already focused. Once started, they continue while Shop is
   hidden or unfocused and do not restart on refocus. Reduced motion keeps a static
@@ -237,6 +237,8 @@ The flow of the game is:
   placeholder; playback still depends on GIPHY availability.
 - Default-open and already-focused apps do not bounce in the dock. Unseen
   background updates and newly available unopened apps can still attract attention.
+  Each terminal approval checkpoint and blocked state counts as a fresh update;
+  focusing the terminal acknowledges it, without suppressing later checkpoints.
 - Every window resizes from all four edges and corners with directional cursors.
   The opposite edge stays anchored at minimum-size and screen-boundary limits.
   The lower-right handle remains the single keyboard resize control: arrow keys

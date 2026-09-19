@@ -35,7 +35,7 @@ type ShopHighlightProps = {
   highlighted: boolean
 }
 
-const SHOP_HIGHLIGHT_DURATION_MS = 5_000
+const SHOP_HIGHLIGHT_DURATION_MS = 15_000
 
 const purchaseChanged = (previous: GameState, current: GameState, item: ShopItemId): boolean => {
   switch (item) {
