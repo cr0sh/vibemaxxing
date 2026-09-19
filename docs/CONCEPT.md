@@ -58,6 +58,9 @@ The flow of the game is:
   made while Shop is already focused. Once started, they continue while Shop is
   hidden or unfocused and do not restart on refocus. Reduced motion keeps a static
   gold border.
+  Shop toggle inputs are positioned inside their visible labels so mouse,
+  touch, and keyboard focus scroll only the Shop's inner content, never the
+  surrounding window into an empty bottom gutter.
   - Split window(\$200, $400, $1000): The window can be split at max 4. Agents
     can run simultaneously.
   - Yolo mode($420): By default, the terminal asks for command approval(yes/no) for

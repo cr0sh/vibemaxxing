@@ -199,6 +199,7 @@
 }
 
 .shop-fast-mode-toggle {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.48rem;
@@ -216,6 +217,9 @@
 
 .shop-fast-mode-toggle input {
   position: absolute;
+  top: 50%;
+  right: 1.4rem;
+  margin: 0;
   width: 1px;
   height: 1px;
   overflow: hidden;
