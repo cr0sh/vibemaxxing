@@ -294,8 +294,8 @@ function Desktop({
       `setup:${terminal.slots}:${terminal.yolo}:${terminal.model}:${terminal.fastMode}:${!isLocalTerminal(terminal.id) && state.frontierModelUnlocked}`,
     ])
     for (const task of state.tasks) {
-      if (task.terminalId === terminal.id && (task.status === 'approval' || task.status === 'failed' || task.status === 'artifact')) {
-        revision.add(`${task.id}:${task.attempt}:${task.status}`)
+      if (task.terminalId === terminal.id && (task.status === 'approval' || task.status === 'blocked' || task.status === 'failed' || task.status === 'artifact')) {
+        revision.add(`${task.id}:${task.attempt}:${task.status}:${task.nextApprovalAt}`)
       }
     }
     revisions[terminal.id] = revision
