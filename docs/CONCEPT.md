@@ -181,6 +181,12 @@ The flow of the game is:
   A saved explicit choice wins; otherwise the first supported browser language
   is selected, including regional variants. Unsupported preferences fall back
   to English. Unavailable browser storage does not prevent session-only changes.
+- The dedicated language menu matches the translucent cream-and-purple widgets,
+  with a checkmark for the active language. Its popover uses the browser's top
+  layer so desktop windows cannot cover its options. Arrow keys and Home/End
+  move focus; Enter/Space select; Escape restores focus to the globe. Tab and
+  outside clicks dismiss the menu without trapping focus. Options remain
+  touch-sized on narrow screens.
 - Changing language preserves the current run, window state, task and dialogue
   history, and the current Shorts media element. Number, currency, and time
   formatting follows the selected locale. Brands, company and model names,
