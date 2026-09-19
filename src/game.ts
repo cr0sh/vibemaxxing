@@ -1242,7 +1242,7 @@ function processMercury(state: GameState): GameState {
   return current
 }
 function autoBuyTokens(state: GameState): GameState {
-  return state.stage === 'hired' && state.tokenAutoBuy && state.tokens < TOKEN_AUTO_BUY_THRESHOLD
+  return state.stage === 'hired' && state.tokenAutoBuy && hasTokenDeficit(state)
     ? purchaseTokens(state, state.tokenPacks)
     : state
 }

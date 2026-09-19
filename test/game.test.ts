@@ -274,6 +274,144 @@ describe('employment transitions', () => {
     const lost = gameReducer({ ...state, stage: 'lost', tokens: 0, money: 200 }, { type: 'tick', seconds: 1 })
     expect(lost).toEqual({ ...state, stage: 'lost', tokens: 0, money: 200 })
   })
+  test('token auto-buy funds a Mercury assignment whose required reserve exceeds one million', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const pending: WorkTask = {
+      ...hire().tasks[0]!,
+      id: 990,
+      difficulty: 5,
+      deadlineAt: 100,
+      status: 'assigned',
+      terminalId: null,
+      slot: null,
+    }
+    const state: GameState = {
+      ...base,
+      money: 100_000,
+      tokens: 1_000_000,
+      tokenAutoBuy: true,
+      tokenPacks: 1,
+      tasks: [pending],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+      terminals: [{ ...base.terminals[0]!, slots: 1, fastMode: false, model: 'advanced' }],
+    }
+
+    const started = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(started, pending.id)).toMatchObject({
+      status: 'working',
+      terminalId: 'terminal',
+      slot: 0,
+      model: 'advanced',
+      mercuryAuto: true,
+    })
+    expect(started.tokens).toBe(300_000)
+    expect(started.money).toBe(99_915)
+  })
+
+  test('token auto-buy does not buy when a sufficient balance is blocked only by capacity', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const source = hire().tasks[0]!
+    const occupied: WorkTask = {
+      ...source,
+      id: 991,
+      difficulty: 5,
+      deadlineAt: 100,
+      status: 'working',
+      startedAt: base.elapsed,
+      terminalId: 'terminal',
+      slot: 0,
+      model: 'advanced',
+      fastMode: false,
+      local: false,
+      mercuryAuto: false,
+      failedAt: null,
+      attempt: 1,
+    }
+    const pending: WorkTask = {
+      ...source,
+      id: 992,
+      difficulty: 5,
+      deadlineAt: 100,
+      status: 'assigned',
+      terminalId: null,
+      slot: null,
+    }
+    const state: GameState = {
+      ...base,
+      money: 100_000,
+      tokens: 1_000_000,
+      tokenAutoBuy: true,
+      tokenPacks: 1,
+      tasks: [occupied, pending],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+      terminals: [{ ...base.terminals[0]!, slots: 1, fastMode: false, model: 'advanced' }],
+    }
+
+    const blocked = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(blocked, pending.id).status).toBe('assigned')
+    expect(blocked.tokens).toBe(1_000_000)
+    expect(blocked.money).toBe(100_015)
+  })
+
+  test('token auto-buy funds a Mercury retry while preserving an in-flight return reserve', () => {
+    const base = gameReducer(hire(), { type: 'dev-jump', stage: 'frontier' })
+    const source = hire().tasks[0]!
+    const active: WorkTask = {
+      ...source,
+      id: 993,
+      difficulty: 5,
+      deadlineAt: 100,
+      status: 'working',
+      startedAt: base.elapsed,
+      terminalId: 'terminal-2',
+      slot: 0,
+      model: 'advanced',
+      fastMode: false,
+      local: false,
+      mercuryAuto: true,
+      failedAt: null,
+      attempt: 1,
+    }
+    const failed: WorkTask = {
+      ...source,
+      id: 994,
+      difficulty: 8,
+      deadlineAt: 100,
+      status: 'failed',
+      startedAt: base.elapsed,
+      terminalId: 'terminal',
+      slot: 0,
+      model: 'advanced',
+      fastMode: false,
+      local: false,
+      mercuryAuto: true,
+      failedAt: base.elapsed - MERCURY_RETRY_DELAY,
+      attempt: 1,
+    }
+    const state: GameState = {
+      ...base,
+      money: 100_000,
+      tokens: 1_000_000,
+      tokenAutoBuy: true,
+      tokenPacks: 5,
+      tasks: [active, failed],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+      terminals: [
+        { ...base.terminals[0]!, slots: 1, fastMode: false, model: 'advanced' },
+        { ...base.terminals[1]!, slots: 1, fastMode: false, model: 'advanced' },
+      ],
+    }
+
+    const retried = gameReducer(state, { type: 'tick', seconds: 1 })
+    expect(taskWith(retried, failed.id)).toMatchObject({ status: 'working', attempt: 2, mercuryAuto: true })
+    expect(taskWith(retried, active.id).status).toBe('working')
+    expect(retried.tokens).toBe(700_000)
+    expect(retried.money).toBe(99_515)
+  })
+
 
   test('duplicate task starts and deliveries cannot spend or award twice', () => {
     let state = hire()
