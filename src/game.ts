@@ -20,8 +20,8 @@ export type TaskStatus = 'assigned' | 'working' | 'approval' | 'blocked' | 'arti
 export type TerminalId = 'terminal' | 'terminal-2' | 'spark' | 'spark-ultra'
 export type TerminalUpgrade = 'split' | 'yolo' | 'terminal'
 
-export type ShopItemId = 'split' | 'yolo' | 'terminal' | 'fast-mode' | 'spark' | 'spark-ultra' | 'advanced-model' | 'mercury'
-export const SHOP_ITEM_IDS: readonly ShopItemId[] = ['split', 'yolo', 'terminal', 'fast-mode', 'spark', 'spark-ultra', 'advanced-model', 'mercury']
+export type ShopItemId = 'split' | 'yolo' | 'terminal' | 'fast-mode' | 'spark' | 'spark-ultra' | 'advanced-model' | 'mercury' | 'mercury-upgrade'
+export const SHOP_ITEM_IDS: readonly ShopItemId[] = ['split', 'yolo', 'terminal', 'fast-mode', 'spark', 'spark-ultra', 'advanced-model', 'mercury', 'mercury-upgrade']
 
 export const TOKEN_PACK_COUNTS = [1, 5, 10, 100] as const
 export type TokenPackCount = (typeof TOKEN_PACK_COUNTS)[number]
@@ -109,7 +109,7 @@ export type EmploymentMessage =
   | ({ id: string; type: 'firing'; elapsed: number; failure: MessageReference } & JobMessage)
 
 type SocialPostType = 'campaign' | 'lottery' | 'reset' | 'model' | 'fast-mode' | 'market' | 'spark' | 'spark-delivered' |
-  'advanced-model' | 'mercury' | 'second-job' | 'frontier-model' | 'monopoly' | 'spark-ultra' | 'spark-ultra-delivered' | 'shorts'
+  'advanced-model' | 'mercury' | 'mercury-upgrade' | 'second-job' | 'frontier-model' | 'monopoly' | 'spark-ultra' | 'spark-ultra-delivered' | 'shorts'
 type SocialPostBase = {
   id: string
   elapsed: number
@@ -183,6 +183,7 @@ export type GameState = {
   inactivityDecay: number
   mercuryOwned: boolean
   mercuryEnabled: boolean
+  mercuryUpgraded: boolean
   tokenAutoBuy: boolean
   tokenPacks: TokenPackCount
   market: MarketState | null
@@ -222,6 +223,7 @@ export type GameAction =
   | { type: 'buy-spark-ultra' }
   | { type: 'buy-model'; model: 'advanced' }
   | { type: 'set-terminal-model'; terminalId: TerminalId; model: AgentModelId }
+  | { type: 'buy-mercury-upgrade' }
   | { type: 'buy-mercury' }
   | { type: 'set-mercury'; enabled: boolean }
   | { type: 'submit-second-job'; roll: number; companyIndex: number }
@@ -278,7 +280,9 @@ export const MERCURY_RETRY_DELAY = 10
 export const SPARK_PRICE = 15_000
 export const ADVANCED_MODEL_PRICE = 5_000
 export const MERCURY_PRICE = 8_000
+export const MERCURY_UPGRADE_PRICE = 50_000
 export const MERCURY_FORWARD_COST = 300_000
+export const MERCURY_SUCCESS_BONUS = 0.1
 // Rounded one-third checkpoints keep the progression readable without artificial waits.
 const INCENTIVE_TASK_GATE = 2
 const LEVEL_4_TASK_GATE = 17
@@ -312,10 +316,15 @@ export function taskTokenCost(
   return TOKEN_TASK_COST * task.difficulty * (fastMode ? 2 : 1) * modelConfig.tokenMultiplier
 }
 
-export function taskSuccessChance(task: Pick<TaskDescriptor, 'complexity'>, model: AgentModelId): number {
+export function taskSuccessChance(
+  task: Pick<TaskDescriptor, 'complexity'>,
+  model: AgentModelId,
+  state: Pick<GameState, 'mercuryUpgraded'>,
+): number {
   const modelConfig = AGENT_MODELS[model]
   if (modelConfig === undefined || !Number.isFinite(task.complexity) || task.complexity <= 0) return 0
-  return Math.min(1, modelConfig.intelligence / task.complexity)
+  const bonus = state.mercuryUpgraded ? MERCURY_SUCCESS_BONUS : 0
+  return Math.min(1, modelConfig.intelligence / task.complexity + bonus)
 }
 
 export function taskReward(task: Pick<WorkTask, 'baseReward' | 'assignedAt'>, elapsed: number): number {
@@ -771,18 +780,32 @@ export function canFundMercuryAttempt(state: GameState, task: WorkTask, terminal
   return Number.isFinite(attemptCost) && attemptCost >= 0 && Number.isFinite(required) &&
     Number.isFinite(state.tokens) && state.tokens >= required
 }
-export function canFundMercuryRetry(state: GameState, task: WorkTask): boolean {
-  if (!state.mercuryOwned || !state.mercuryEnabled || task.status !== 'failed' || task.failedAt === null || task.terminalId === null || task.slot === null) return false
-  const terminal = getTerminal(state, task.terminalId)
-  if (terminal === undefined || task.slot < 0 || task.slot >= terminal.slots || !taskSlotFree(state, task.terminalId, task.slot, task.id)) return false
-  const local = isLocalTerminal(task.terminalId)
+function canFundMercuryRetryAt(state: GameState, task: WorkTask, terminalId: TerminalId, slot: number): boolean {
+  if (!state.mercuryOwned || !state.mercuryEnabled || task.status !== 'failed' || task.failedAt === null) return false
+  const terminal = getTerminal(state, terminalId)
+  if (terminal === undefined || slot < 0 || slot >= terminal.slots || !taskSlotFree(state, terminalId, slot, task.id)) return false
+  const local = isLocalTerminal(terminalId)
   const fastMode = local ? false : terminal.fastMode === true
-  const model = terminalModel(state, task.terminalId)
+  const model = terminalModel(state, terminalId)
   const attemptCost = taskTokenCost(task, fastMode, model, local)
-  const required = attemptCost + MERCURY_FORWARD_COST +
-    mercuryReturnReservations(state.tasks)
+  const required = attemptCost + MERCURY_FORWARD_COST + mercuryReturnReservations(state.tasks)
   return Number.isFinite(attemptCost) && attemptCost >= 0 && Number.isFinite(required) &&
     Number.isFinite(state.tokens) && state.tokens >= required
+}
+export function canFundMercuryRetry(
+  state: GameState,
+  task: WorkTask,
+  terminalId?: TerminalId,
+  slot?: number,
+): boolean {
+  if (state.mercuryUpgraded && terminalId === undefined && slot === undefined) {
+    return bestMercuryPlacement(state, task, true) !== null
+  }
+  const selectedTerminal = terminalId ?? task.terminalId
+  const selectedSlot = slot ?? task.slot
+  return selectedTerminal !== null && selectedTerminal !== undefined &&
+    selectedSlot !== null && selectedSlot !== undefined &&
+    canFundMercuryRetryAt(state, task, selectedTerminal, selectedSlot)
 }
 
 
@@ -891,6 +914,7 @@ function createHiredState(state: GameState): GameState {
     inactivityDecay: 1,
     mercuryOwned: false,
     mercuryEnabled: false,
+    mercuryUpgraded: false,
     tokenAutoBuy: false,
     tokenPacks: 10,
     market: null,
@@ -926,6 +950,10 @@ function appendFeatureAnnouncements(state: GameState): GameState {
     const announcedAt = current.monopolyAnnouncedAt + 60
     current = { ...current, sparkUltraAnnouncedAt: announcedAt }
     current = appendSocialPost(current, { id: 'spark-ultra-announced', type: 'spark-ultra', elapsed: announcedAt, likes: 0 })
+  }
+  if (current.socialInstalledAt !== null && current.mercuryOwned && current.secondJob !== null &&
+    !current.socialPosts.some((post) => post.type === 'mercury-upgrade')) {
+    current = appendSocialPost(current, { id: 'mercury-upgrade-available', type: 'mercury-upgrade', elapsed: current.elapsed, likes: 0 })
   }
   return current
 }
@@ -967,7 +995,7 @@ export const initialGame: GameState = {
   stage: 'ready', tiroAvatar: TIRO_AVATARS[0]!, submissions: 0, company: null, lastResult: null, energy: MAX_ENERGY,
   tokens: MAX_TOKENS, money: 0, shopDiscoveries: [], elapsed: 0, wonAt: null, tickRemainder: 0, tasks: [], taskQueue: [], terminals: [{ ...PRIMARY_TERMINAL }],
   completedTasks: 0, level: 3, completedArchitectureTasks: 0, reasoningUnlocked: false, fastModeUnlocked: false,
-  watercoolerUnlocked: false, watercoolerRead: false, socialInstalledAt: null,
+  mercuryOwned: false, mercuryEnabled: false, mercuryUpgraded: false, tokenAutoBuy: false, tokenPacks: 10, market: null,
   socialPosts: [], nextTaskId: 1, nextTaskAt: 0, welcomeReacted: false, messages: [], failure: null,
   expectation: 0.2, rng: 1, socialRng: 1, secondJob: null, secondJobUnlocked: false, secondJobApplications: 0,
   secondJobOffer: null, advancedModelAnnouncedAt: null, advancedModelUnlocked: false, frontierModelUnlocked: false,
@@ -976,7 +1004,6 @@ export const initialGame: GameState = {
   sparkUltraAnnouncedAt: null, sparkUltraPurchasedAt: null, sparkUltraDeliveryAt: null,
   taskBags: { standard: [], architecture: [] }, lastTaskBlueprint: { standard: null, architecture: null },
   shortsUnlocked: false, inactivityElapsed: 0, inactivityDecay: 1,
-  mercuryOwned: false, mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null,
   lossReason: null,
 }
 
@@ -992,24 +1019,20 @@ export function isLocalTerminal(id: TerminalId): boolean {
 function cloudTerminalId(value: string): value is 'terminal' | 'terminal-2' {
   return value === 'terminal' || value === 'terminal-2'
 }
-export function gameNetWorth(state: Pick<GameState, 'money' | 'market'>): number {
-  const market = state.market
-  const markedBtc = market !== null && Number.isFinite(market.btc) && Number.isFinite(market.price)
-    ? market.btc * market.price
-    : 0
-  const tradingUsd = market !== null && Number.isFinite(market.usd) ? market.usd : 0
-  const cash = Number.isFinite(state.money) ? state.money : 0
-  return cash + tradingUsd + markedBtc
-}
-
-function advanceTask(task: WorkTask, elapsed: number, terminals: readonly TerminalState[], rng: number): readonly [WorkTask, number] {
+function advanceTask(
+  task: WorkTask,
+  elapsed: number,
+  terminals: readonly TerminalState[],
+  rng: number,
+  mercuryState: Pick<GameState, 'mercuryUpgraded'>,
+): readonly [WorkTask, number] {
   if (task.status !== 'working') return [task, rng]
   const model = task.model ?? 'basic'
   const speed = AGENT_MODELS[model].speed * (task.fastMode ? 2 : 1) / TASK_PACING_MULTIPLIER
   const progress = Math.min(task.difficulty, roundedProgress(task.progress + speed))
   if (progress >= task.difficulty - 0.000001) {
     const completed = { ...task, progress: task.difficulty, nextApprovalAt: 0, approvalPromptKey: null }
-    const successChance = taskSuccessChance(task, model)
+    const successChance = taskSuccessChance(task, model, mercuryState)
     if (successChance === 1) return [{ ...completed, status: 'artifact', failedAt: null }, rng]
     const [nextRng, successRoll] = nextRandom(rng)
     return [{ ...completed, status: successRoll < successChance ? 'artifact' : 'failed', failedAt: successRoll < successChance ? null : elapsed }, nextRng]
@@ -1051,22 +1074,31 @@ function firstFreeSlot(state: GameState, terminal: TerminalState): number | null
   return null
 }
 function canFundAssignedTask(state: GameState, task: WorkTask): boolean {
+  if (state.mercuryOwned && state.mercuryEnabled) {
+    if (state.mercuryUpgraded) return bestMercuryPlacement(state, task, false) !== null
+    return state.terminals.some((terminal) => {
+      const slot = firstFreeSlot(state, terminal)
+      const fastMode = isLocalTerminal(terminal.id) ? false : terminal.fastMode
+      return slot !== null && canFundMercuryAttempt(state, task, terminal.id)
+    })
+  }
   return state.terminals.some((terminal) => {
-    if (firstFreeSlot(state, terminal) === null) return false
+    const slot = firstFreeSlot(state, terminal)
     const fastMode = isLocalTerminal(terminal.id) ? false : terminal.fastMode
-    return state.mercuryOwned && state.mercuryEnabled
-      ? canFundMercuryAttempt(state, task, terminal.id)
-      : canFundTaskAttempt(state, task, fastMode, terminal.id)
+    return slot !== null && canFundTaskAttempt(state, task, fastMode, terminal.id)
   })
 }
 function canFundRetryTask(state: GameState, task: WorkTask): boolean {
+  if (state.mercuryOwned && state.mercuryEnabled) {
+    if (task.failedAt === null || state.elapsed < task.failedAt + MERCURY_RETRY_DELAY) return false
+    if (state.mercuryUpgraded) return bestMercuryPlacement(state, task, true) !== null
+    return task.terminalId !== null && task.slot !== null && canFundMercuryRetry(state, task)
+  }
   if (task.terminalId === null || task.slot === null) return false
   const terminal = getTerminal(state, task.terminalId)
   if (terminal === undefined || task.slot < 0 || task.slot >= terminal.slots || !taskSlotFree(state, task.terminalId, task.slot, task.id)) return false
   const fastMode = isLocalTerminal(terminal.id) ? false : terminal.fastMode
-  return state.mercuryOwned && state.mercuryEnabled
-    ? task.failedAt !== null && state.elapsed >= task.failedAt + MERCURY_RETRY_DELAY && canFundMercuryRetry(state, task)
-    : canFundTaskAttempt(state, task, fastMode, terminal.id)
+  return canFundTaskAttempt(state, task, fastMode, terminal.id)
 }
 
 export function hasTokenDeficit(state: GameState): boolean {
@@ -1196,13 +1228,120 @@ function mercuryTerminalOrder(state: GameState, task: WorkTask): TerminalState[]
   return [...state.terminals].sort((a, b) => {
     const workload = terminalWorkload(state, a.id) - terminalWorkload(state, b.id)
     if (workload !== 0) return workload
-    const quality = taskSuccessChance(task, terminalModel(state, b.id)) - taskSuccessChance(task, terminalModel(state, a.id))
+    const quality = taskSuccessChance(task, terminalModel(state, b.id), state) - taskSuccessChance(task, terminalModel(state, a.id), state)
     return quality !== 0 ? quality : a.id.localeCompare(b.id)
   })
 }
 
-function processMercury(state: GameState): GameState {
-  if (!state.mercuryOwned || !state.mercuryEnabled) return state
+type MercuryPlacement = {
+  terminal: TerminalState
+  slot: number
+  model: AgentModelId
+  fastMode: boolean
+  local: boolean
+  cost: number
+  duration: number
+  attempts: number
+  deadlineSuccess: number
+  expectedCompletion: number
+  overuse: number
+  load: number
+}
+
+function mercuryExecutionDuration(task: WorkTask, model: AgentModelId, fastMode: boolean): number {
+  const speed = AGENT_MODELS[model].speed * (fastMode ? 2 : 1) / TASK_PACING_MULTIPLIER
+  return speed > 0 && Number.isFinite(task.difficulty) ? Math.max(0, task.difficulty / speed) : Number.POSITIVE_INFINITY
+}
+
+function mercuryAttemptsUntilDeadline(duration: number, remaining: number): number {
+  if (!Number.isFinite(duration) || !Number.isFinite(remaining) || duration <= 0 || remaining < duration - ENERGY_DECAY_EPSILON) return 0
+  return Math.max(0, Math.floor((remaining + MERCURY_RETRY_DELAY + ENERGY_DECAY_EPSILON) / (duration + MERCURY_RETRY_DELAY)))
+}
+
+function mercuryExpectedCompletion(duration: number, chance: number, attempts: number): number {
+  if (!Number.isFinite(duration) || attempts <= 0) return duration
+  let survival = 1
+  let expected = 0
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const completion = attempt * duration + (attempt - 1) * MERCURY_RETRY_DELAY
+    expected += survival * chance * completion
+    survival *= 1 - chance
+  }
+  const finalCompletion = attempts * duration + (attempts - 1) * MERCURY_RETRY_DELAY
+  return expected + survival * finalCompletion
+}
+
+function mercuryPlacement(
+  state: GameState,
+  task: WorkTask,
+  terminal: TerminalState,
+  slot: number,
+): MercuryPlacement | null {
+  const local = isLocalTerminal(terminal.id)
+  const fastMode = local ? false : terminal.fastMode === true
+  const model = terminalModel(state, terminal.id)
+  const cost = taskTokenCost(task, fastMode, model, local)
+  const duration = mercuryExecutionDuration(task, model, fastMode)
+  const attempts = mercuryAttemptsUntilDeadline(duration, Math.max(0, task.deadlineAt - state.elapsed))
+  const chance = taskSuccessChance(task, model, state)
+  const deadlineSuccess = attempts <= 0 ? 0 : 1 - (1 - chance) ** attempts
+  return Number.isFinite(cost) && cost >= 0 && Number.isFinite(duration) && Number.isFinite(deadlineSuccess)
+    ? {
+      terminal,
+      slot,
+      model,
+      fastMode,
+      local,
+      cost,
+      duration,
+      attempts,
+      deadlineSuccess,
+      expectedCompletion: mercuryExpectedCompletion(duration, chance, attempts),
+      overuse: Math.max(0, AGENT_MODELS[model].intelligence - task.complexity),
+      load: terminalWorkload(state, terminal.id),
+    }
+    : null
+}
+
+function mercuryPlacementCandidates(state: GameState, task: WorkTask, retry: boolean): MercuryPlacement[] {
+  const candidates: MercuryPlacement[] = []
+  for (const terminal of state.terminals) {
+    for (let slot = 0; slot < terminal.slots; slot += 1) {
+      if (!taskSlotFree(state, terminal.id, slot, retry ? task.id : undefined)) continue
+      const placement = mercuryPlacement(state, task, terminal, slot)
+      if (placement === null) continue
+      const fundable = retry
+        ? canFundMercuryRetryAt(state, task, terminal.id, slot)
+        : canFundMercuryAttempt(state, task, terminal.id)
+      if (fundable) candidates.push(placement)
+    }
+  }
+  return candidates
+}
+
+function bestMercuryPlacement(state: GameState, task: WorkTask, retry: boolean): MercuryPlacement | null {
+  const candidates = mercuryPlacementCandidates(state, task, retry)
+  if (candidates.length === 0) return null
+  const anyAttemptFits = candidates.some((candidate) => candidate.attempts > 0)
+  candidates.sort((a, b) => {
+    if (anyAttemptFits) {
+      if (a.deadlineSuccess !== b.deadlineSuccess) return b.deadlineSuccess - a.deadlineSuccess
+      if (a.attempts > 0 && b.attempts === 0) return -1
+      if (a.attempts === 0 && b.attempts > 0) return 1
+      if (a.overuse !== b.overuse) return a.overuse - b.overuse
+    } else if (a.expectedCompletion !== b.expectedCompletion) {
+      return a.expectedCompletion - b.expectedCompletion
+    }
+    if (a.expectedCompletion !== b.expectedCompletion) return a.expectedCompletion - b.expectedCompletion
+    if (a.cost !== b.cost) return a.cost - b.cost
+    if (a.load !== b.load) return a.load - b.load
+    const terminalOrder = a.terminal.id.localeCompare(b.terminal.id)
+    return terminalOrder !== 0 ? terminalOrder : a.slot - b.slot
+  })
+  return candidates[0] ?? null
+}
+
+function processMercuryArtifacts(state: GameState): GameState {
   let current = state
   const artifacts = current.tasks
     .filter((task) => task.status === 'artifact')
@@ -1216,6 +1355,11 @@ function processMercury(state: GameState): GameState {
     if (artifact.mercuryAuto) reserved -= MERCURY_FORWARD_COST
     current = delivered
   }
+  return current
+}
+
+function processLegacyMercury(state: GameState): GameState {
+  let current = processMercuryArtifacts(state)
   const retries = current.tasks
     .filter((task) => task.status === 'failed' && task.failedAt !== null && current.elapsed >= task.failedAt + MERCURY_RETRY_DELAY)
     .sort((a, b) => a.deadlineAt - b.deadlineAt || a.id - b.id)
@@ -1243,6 +1387,41 @@ function processMercury(state: GameState): GameState {
     }
   }
   return current
+}
+
+function processUpgradedMercury(state: GameState): GameState {
+  let current = processMercuryArtifacts(state)
+  const retries = current.tasks
+    .filter((task) => task.status === 'failed' && task.failedAt !== null && current.elapsed >= task.failedAt + MERCURY_RETRY_DELAY)
+    .sort((a, b) => a.deadlineAt - b.deadlineAt || a.id - b.id)
+  for (const task of retries) {
+    const currentTask = current.tasks.find((candidate) => candidate.id === task.id)
+    if (currentTask === undefined) continue
+    const placement = bestMercuryPlacement(current, currentTask, true)
+    if (placement === null) continue
+    const taskIndex = current.tasks.findIndex((candidate) => candidate.id === task.id)
+    const started = startTaskAttempt(current, taskIndex, placement.terminal.id, placement.slot, true)
+    if (started !== current) current = started
+  }
+  const assignments = current.tasks
+    .filter((task) => task.status === 'assigned')
+    .sort((a, b) => a.deadlineAt - b.deadlineAt || a.id - b.id)
+  for (const task of assignments) {
+    const currentTask = current.tasks.find((candidate) => candidate.id === task.id)
+    if (currentTask === undefined) continue
+    const placement = bestMercuryPlacement(current, currentTask, false)
+    if (placement === null) continue
+    const taskIndex = current.tasks.findIndex((candidate) => candidate.id === task.id)
+    const funded = { ...current, tokens: current.tokens - MERCURY_FORWARD_COST }
+    const started = startTaskAttempt(funded, taskIndex, placement.terminal.id, placement.slot, true)
+    if (started !== funded) current = started
+  }
+  return current
+}
+
+function processMercury(state: GameState): GameState {
+  if (!state.mercuryOwned || !state.mercuryEnabled) return state
+  return state.mercuryUpgraded ? processUpgradedMercury(state) : processLegacyMercury(state)
 }
 function autoBuyTokens(state: GameState): GameState {
   return state.stage === 'hired' && state.tokenAutoBuy && hasTokenDeficit(state)
@@ -1364,7 +1543,7 @@ function tickHired(state: GameState, seconds: number): GameState {
       let nextRng = current.rng
       const advancedTasks: WorkTask[] = []
       for (const task of previousTasks) {
-        const [advanced, taskRng] = advanceTask(task, current.elapsed, current.terminals, nextRng)
+        const [advanced, taskRng] = advanceTask(task, current.elapsed, current.terminals, nextRng, current)
         advancedTasks.push(advanced)
         nextRng = taskRng
       }
@@ -1456,6 +1635,12 @@ function shopItemEligible(state: GameState, item: ShopItemId): boolean {
         state.advancedModelUnlocked &&
         affordableMoney(MERCURY_PRICE)
       )
+    case 'mercury-upgrade':
+      return state.mercuryUpgraded || (
+        state.stage === 'hired' &&
+        state.mercuryOwned &&
+        state.secondJob !== null
+      )
   }
 }
 
@@ -1485,7 +1670,7 @@ function resetEmploymentPreview(state: GameState, stage: 'applying' | 'offer'): 
     advancedModelUnlocked: false, frontierModelUnlocked: false, frontierUnlockedAt: null, monopolyAnnouncedAt: null,
     sparkAnnouncedAt: null, sparkPurchasedAt: null, sparkDeliveryAt: null, sparkUltraAnnouncedAt: null,
     sparkUltraPurchasedAt: null, sparkUltraDeliveryAt: null, shortsUnlocked: false, inactivityElapsed: 0, inactivityDecay: 1,
-    mercuryOwned: false, mercuryEnabled: false, tokenAutoBuy: false, tokenPacks: 10, market: null, lossReason: null,
+    mercuryOwned: false, mercuryEnabled: false, mercuryUpgraded: false, tokenAutoBuy: false, tokenPacks: 10, market: null, lossReason: null,
     taskBags: { standard: [], architecture: [] }, lastTaskBlueprint: { standard: null, architecture: null },
   }
 }
@@ -1636,6 +1821,7 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         }
         preview = appendSocialPost(preview, { id: 'second-job-unlocked', type: 'second-job', elapsed: 30, likes: 0 })
         preview = appendMessage(preview, { id: 'welcome-secondary', type: 'welcome', jobId: 'secondary', elapsed: 30 })
+        preview = appendFeatureAnnouncements(preview)
         if (action.stage === 'second-job') return issueAvailableAssignments(preview)
         preview = {
           ...preview,
@@ -1662,10 +1848,6 @@ function reduceGame(state: GameState, action: GameAction): GameState {
         frontierPreview = {
           ...frontierPreview,
           elapsed: monopolyAt,
-          monopolyAnnouncedAt: monopolyAt,
-          money: 300_000,
-          tasks: [],
-          taskQueue: [],
           nextTaskAt: monopolyAt,
           secondJob: frontierPreview.secondJob === null ? null : { ...frontierPreview.secondJob, nextTaskAt: monopolyAt },
         }
@@ -1842,10 +2024,19 @@ function reduceGame(state: GameState, action: GameAction): GameState {
     case 'set-terminal-model':
       if (state.stage !== 'hired' || !cloudTerminalId(action.terminalId) || !state.frontierModelUnlocked || !availableModels(state, action.terminalId).includes(action.model)) return state
       return { ...state, terminals: state.terminals.map((terminal) => terminal.id === action.terminalId ? { ...terminal, model: action.model } : terminal) }
+    case 'buy-mercury-upgrade': {
+      if (state.stage !== 'hired' || !state.mercuryOwned || state.secondJob === null || state.mercuryUpgraded ||
+        !Number.isFinite(state.money) || state.money < MERCURY_UPGRADE_PRICE) return state
+      return maybeWin(humanInteraction({
+        ...state,
+        money: state.money - MERCURY_UPGRADE_PRICE,
+        mercuryUpgraded: true,
+      }))
+    }
     case 'buy-mercury': {
       if (state.stage !== 'hired' || !state.advancedModelUnlocked || state.mercuryOwned || !Number.isFinite(state.money) || state.money < MERCURY_PRICE) return state
       const purchased = unlockShorts(appendSocialPost({ ...state, money: state.money - MERCURY_PRICE, mercuryOwned: true, mercuryEnabled: true }, { id: 'mercury-owned', type: 'mercury', elapsed: state.elapsed, likes: 0 }))
-      return maybeWin(humanInteraction(purchased))
+      return maybeWin(appendFeatureAnnouncements(humanInteraction(purchased)))
     }
     case 'set-mercury':
       return state.stage === 'hired' && state.mercuryOwned && typeof action.enabled === 'boolean' && state.mercuryEnabled !== action.enabled ? { ...state, mercuryEnabled: action.enabled } : state
@@ -1865,7 +2056,7 @@ function reduceGame(state: GameState, action: GameAction): GameState {
       if (company === null) return state
       const job: EmploymentJob = { company, level: 3, completedTasks: 0, completedArchitectureTasks: 0, nextTaskAt: state.elapsed, expectation: bossExpectationAt(state.elapsed), welcomeReacted: false, startedAt: state.elapsed }
       const accepted = appendMessage({ ...state, secondJob: job, secondJobOffer: null }, { id: 'welcome-secondary', type: 'welcome', jobId: 'secondary', elapsed: state.elapsed })
-      return issueAvailableAssignments(refillTaskQueue(accepted))
+      return appendFeatureAnnouncements(issueAvailableAssignments(refillTaskQueue(accepted)))
     }
     case 'scroll-short':
       return state.stage === 'hired' && state.shortsUnlocked ? maybeWin(humanInteraction(state, SHORTS_ENERGY_GAIN)) : state
