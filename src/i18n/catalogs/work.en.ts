@@ -8,5 +8,9 @@ export const workEnglish = {
   'shop.sparkUltra.title': 'Mapple Spark Ultra',
   'shop.advancedModel.title': 'ConvexLM Pro',
   'shop.mercury.title': 'Mercury',
+  'shop.mercuryUpgrade.title': 'Mercury 2.0',
+  'shop.mercuryUpgradeDetail': '{price} · Deadline-aware routing without wasting stronger models. +{bonus} percentage points success on every task, capped at 100%.',
+  'shop.mercuryUpgradeOwnedDetail': 'Installed · Smarter assignments and retries. +{bonus} percentage points on all tasks, even with automation off. Maximum 100%; handoff fees unchanged.',
+  'shop.mercuryUpgradeRequirements': 'Requires Mercury and an accepted second job. Includes manual and local tasks; handoff fees stay unchanged.',
   'shop.upgrade.aria': '{title} upgrade',
 } as const

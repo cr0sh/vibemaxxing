@@ -37,6 +37,36 @@
   letter-spacing: -0.045em;
   line-height: 1.05;
 }
+.mercury-title-block {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.mercury-version {
+  color: #7658aa;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.mercury-upgrade-banner {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.38rem 0.65rem;
+  margin: 0.55rem 0 0;
+  padding: 0.48rem 0.65rem;
+  color: #574276;
+  border: 1px solid rgba(121, 84, 246, 0.24);
+  border-radius: 0.58rem;
+  background: rgba(238, 233, 255, 0.72);
+  font-size: 0.68rem;
+}
+
+.mercury-upgrade-banner strong {
+  color: #4b3478;
+}
 
 
 .mercury-eyebrow {

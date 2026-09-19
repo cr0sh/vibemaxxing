@@ -374,13 +374,13 @@ function TaskAttachment({
             <div className="employment-attachment-meta employment-task-economy" key={terminal.id}>
               {state.terminals.length > 1 && <span>{label}</span>}
               <span>{t('employment.task.cost', { amount: compactTokens(taskTokenCost(task, terminal.fastMode, model, local), formatNumber) })}</span>
-              <span>{t('employment.task.successOdds', { percent: Math.round(taskSuccessChance(task, model) * 100) })}</span>
+              <span>{t('employment.task.successOdds', { percent: Math.round(taskSuccessChance(task, model, state) * 100) })}</span>
             </div>
           )
         }) : (
           <span className="employment-attachment-meta employment-task-economy">
             <span>{t('employment.task.cost', { amount: compactTokens(taskCost(task), formatNumber) })}</span>
-            {!archived && <span>{t('employment.task.successOdds', { percent: Math.round(taskSuccessChance(task, taskModel(task)) * 100) })}</span>}
+            {!archived && <span>{t('employment.task.successOdds', { percent: Math.round(taskSuccessChance(task, taskModel(task), state) * 100) })}</span>}
           </span>
         )}
         <div className="employment-attachment-meta">

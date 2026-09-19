@@ -4,6 +4,8 @@ import type { Dispatch } from 'react'
 import {
   ADVANCED_MODEL_PRICE,
   MERCURY_PRICE,
+  MERCURY_UPGRADE_PRICE,
+  MERCURY_SUCCESS_BONUS,
   SOCIAL_LOTTERY_KEYS,
   SPARK_PRICE,
   SPARK_ULTRA_PRICE,
@@ -78,8 +80,9 @@ const postAuthor = (post: SocialPost): string => {
     case 'spark':
     case 'spark-delivered':
     case 'monopoly':
-    case 'shorts':
     case 'mercury':
+    case 'mercury-upgrade':
+    case 'shorts':
     case 'second-job':
       return 'Tiro'
   }
@@ -266,6 +269,13 @@ function PostBody({
     return (
       <p className="social-post-copy">
         <Localized message="social.mercury" values={{ price: <strong>{formatCurrency(MERCURY_PRICE)}</strong> }} />
+      </p>
+    )
+  }
+  if (post.type === 'mercury-upgrade') {
+    return (
+      <p className="social-post-copy">
+        <Localized message="social.mercuryUpgrade" values={{ price: <strong>{formatCurrency(MERCURY_UPGRADE_PRICE)}</strong>, bonus: formatNumber(MERCURY_SUCCESS_BONUS * 100) }} />
       </p>
     )
   }
