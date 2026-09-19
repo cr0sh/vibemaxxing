@@ -1646,9 +1646,80 @@ describe('extended engine contracts', () => {
     expect(energyDecayInterval({ elapsed: 2_000 })).toBe(5)
   })
 
+
+  test('energy stays untouched before Mercury across large and fractional ticks', () => {
+    let state: GameState = {
+      ...hire(),
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+    }
+    for (const seconds of [0.25, 1_000, 0.75]) {
+      state = gameReducer(state, { type: 'tick', seconds })
+    }
+    expect(state.stage).toBe('hired')
+    expect(state.energy).toBe(100)
+    expect(state.inactivityElapsed).toBe(0)
+    expect(state.inactivityDecay).toBe(1)
+  })
+
+  test('deadlines still fire before Mercury is purchased', () => {
+    const hired = hire()
+    const overdue = { ...hired.tasks[0]!, deadlineAt: 1 }
+    const state = {
+      ...hired,
+      tasks: [overdue],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+    }
+    const lost = gameReducer(state, { type: 'tick', seconds: 2 })
+    expect(lost.stage).toBe('lost')
+    expect(lost.lossReason).toBe('deadline')
+    expect(lost.energy).toBe(100)
+    expect(lost.inactivityElapsed).toBe(0)
+  })
+
+  test('buying Mercury starts the decay timer without a pre-purchase penalty', () => {
+    let state = gameReducer(hire(), { type: 'dev-jump', stage: 'spark' })
+    state = gameReducer(state, { type: 'buy-model', model: 'advanced' })
+    state = {
+      ...state,
+      energy: 80,
+      money: MERCURY_PRICE,
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+    }
+    state = gameReducer(state, { type: 'tick', seconds: 100 })
+    expect(state.energy).toBe(80)
+    expect(state.inactivityElapsed).toBe(0)
+    expect(state.inactivityDecay).toBe(1)
+    const purchased = gameReducer(state, { type: 'buy-mercury' })
+    expect(purchased.energy).toBe(81)
+    expect(purchased.inactivityElapsed).toBe(0)
+    expect(purchased.inactivityDecay).toBe(1)
+    expect(gameReducer(purchased, { type: 'tick', seconds: 1 }).energy).toBe(81)
+  })
+
+  test('owned Mercury decays energy even when disabled', () => {
+    const state: GameState = {
+      ...hire(),
+      mercuryOwned: true,
+      mercuryEnabled: false,
+      tasks: [],
+      taskQueue: [],
+      nextTaskAt: Number.MAX_SAFE_INTEGER,
+    }
+    const decayed = gameReducer(state, { type: 'tick', seconds: 20 })
+    expect(decayed.energy).toBe(99)
+    expect(decayed.inactivityDecay).toBe(2)
+  })
+
   test('fractional idle time crosses the dynamic decay boundary exactly once', () => {
     let state: GameState = {
       ...hire(),
+      mercuryOwned: true,
+      mercuryEnabled: false,
       tasks: [],
       taskQueue: [],
       nextTaskAt: Number.MAX_SAFE_INTEGER,
@@ -1667,6 +1738,8 @@ describe('extended engine contracts', () => {
     for (const [elapsed, inactivityElapsed] of [[599, 9.7], [1_799, 4.7]] as const) {
       let state: GameState = {
         ...hire(), elapsed, tickRemainder: 0.8, inactivityElapsed,
+        mercuryOwned: true,
+        mercuryEnabled: false,
         tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER,
       }
       state = gameReducer(state, { type: 'tick', seconds: 0.15 })
@@ -1679,6 +1752,8 @@ describe('extended engine contracts', () => {
   test('bulk idle ticks match one-second ticks across a shrinking interval boundary', () => {
     const start: GameState = {
       ...hire(),
+      mercuryOwned: true,
+      mercuryEnabled: false,
       elapsed: 590,
       energy: 1_000,
       tasks: [],
@@ -1696,6 +1771,8 @@ describe('extended engine contracts', () => {
   test('idle decay ramps, while a genuine Shorts scroll resets the ramp and timer', () => {
     let state: GameState = {
       ...hire(),
+      mercuryOwned: true,
+      mercuryEnabled: false,
       tasks: [],
       taskQueue: [],
       nextTaskAt: Number.MAX_SAFE_INTEGER,
@@ -1715,6 +1792,8 @@ describe('extended engine contracts', () => {
   test('token autopurchase does not count as human interaction', () => {
     let state: GameState = {
       ...hire(),
+      mercuryOwned: true,
+      mercuryEnabled: false,
       elapsed: 19,
       tickRemainder: 0.5,
       inactivityElapsed: 19.5,
@@ -1788,7 +1867,7 @@ describe('extended engine contracts', () => {
     expect(running.stage).toBe('hired')
     expect(running.wonAt).toBe(won.wonAt)
 
-    const exhausted = gameReducer({ ...running, energy: 1, inactivityElapsed: 19 }, { type: 'tick', seconds: 1 })
+    const exhausted = gameReducer({ ...running, mercuryOwned: true, mercuryEnabled: false, energy: 1, inactivityElapsed: 19 }, { type: 'tick', seconds: 1 })
     expect(exhausted.stage).toBe('lost')
     expect(gameReducer(exhausted, { type: 'continue-after-win' })).toBe(exhausted)
     expect(gameReducer(exhausted, { type: 'reset' }).wonAt).toBeNull()
@@ -1796,7 +1875,7 @@ describe('extended engine contracts', () => {
   })
 
   test('idle energy caps each penalty at sixteen and stops the run at zero', () => {
-    let state = { ...hire(), tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER } as GameState
+    let state = { ...hire(), mercuryOwned: true, mercuryEnabled: false, tasks: [], taskQueue: [], nextTaskAt: Number.MAX_SAFE_INTEGER } as GameState
     state = gameReducer(state, { type: 'tick', seconds: 100 })
     expect(state.energy).toBe(69)
     expect(state.inactivityDecay).toBe(16)
@@ -1810,7 +1889,7 @@ describe('extended engine contracts', () => {
   })
 
   test('a clicked Shop upgrade resets inactivity but an equivalent drag purchase does not', () => {
-    const state = { ...hire(), money: 1_000, energy: 80, inactivityElapsed: 19.5, inactivityDecay: 16 }
+    const state = { ...hire(), mercuryOwned: true, mercuryEnabled: false, money: 1_000, energy: 80, inactivityElapsed: 19.5, inactivityDecay: 16 }
     const clicked = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'click' })
     const dragged = gameReducer(state, { type: 'buy-upgrade', upgrade: 'split', terminalId: 'terminal', source: 'drag' })
     expect(clicked.money).toBe(dragged.money)

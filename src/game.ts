@@ -1279,7 +1279,7 @@ function applyIdleTime(
   seconds: number,
   startElapsed = state.elapsed + state.tickRemainder - seconds,
 ): GameState {
-  if (state.stage !== 'hired' || !Number.isFinite(seconds) || seconds < 0) return state
+  if (state.stage !== 'hired' || !state.mercuryOwned || !Number.isFinite(seconds) || seconds < 0) return state
   let cursor = Number.isFinite(startElapsed) ? Math.max(0, startElapsed) : Math.max(0, state.elapsed)
   let inactivityElapsed = Number.isFinite(state.inactivityElapsed) ? Math.max(0, state.inactivityElapsed) : 0
   let inactivityDecay = Number.isFinite(state.inactivityDecay) ? clamp(state.inactivityDecay, 1, INACTIVITY_MAX_DECAY) : 1
@@ -1326,7 +1326,7 @@ function tickHired(state: GameState, seconds: number): GameState {
     const currentElapsed = current.elapsed + fraction
     const untilSecond = 1 - fraction
     const untilMarket = current.market === null ? untilSecond : fraction < 0.5 - ENERGY_DECAY_EPSILON ? 0.5 - fraction : untilSecond
-    const untilDecay = timeUntilEnergyDecay(currentElapsed, current.inactivityElapsed)
+    const untilDecay = current.mercuryOwned ? timeUntilEnergyDecay(currentElapsed, current.inactivityElapsed) : Number.POSITIVE_INFINITY
     if (untilDecay <= ENERGY_DECAY_EPSILON) {
       current = applyIdleTime(current, 0, currentElapsed)
       if (current.stage !== 'hired') return current
