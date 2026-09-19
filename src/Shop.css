@@ -121,6 +121,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+.shop-monopoly-guidance {
+  padding-top: 0.2rem;
+  color: #f6e4b8 !important;
+  font-weight: 700;
+}
+
 
 .shop-token-options {
   display: flex;
